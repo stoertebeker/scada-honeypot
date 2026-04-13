@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.schrammns_workflow/
+logs/
+pcap/
+captures/
+tmp/
+*.log
+*.pcap
+*.pcapng
