@@ -1,0 +1,1 @@
+"""Konfigurationsmodul fuer den Honeypot."""

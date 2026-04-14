@@ -1,7 +1,16 @@
 .env
 .env.*
 !.env.example
+.venv/
 .schrammns_workflow/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+dist/
+*.egg-info/
 logs/
 pcap/
 captures/
