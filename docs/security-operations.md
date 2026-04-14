@@ -118,7 +118,7 @@ Vor Exponierung definieren:
 
 - welche Ports offen sind
 - welche HMI-Pfade aktiv sind
-- ob `service/login` aktiv ist
+- ob `service/login` fuer das jeweilige Deployment aktiv bleibt
 - ob der Tracker in V1 ueberhaupt sichtbar ist
 
 ## 6. Systemhygiene
@@ -310,6 +310,7 @@ Vor Exponierung:
 - Fehlerpfade pruefen
 - HMI und Modbus vergleichen
 - Exporter-Ausfall simulieren
+- Entscheidung zu `/service/login` dokumentieren
 
 Nach Stop oder Incident:
 
@@ -323,6 +324,7 @@ Nach Stop oder Incident:
 Dieses Dokument arbeitet zusammen mit:
 
 - [README.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/README.md)
+- [v1-decisions.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/v1-decisions.md)
 - [testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
 - [implementation-roadmap.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/implementation-roadmap.md)
 - [logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)

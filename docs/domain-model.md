@@ -357,7 +357,8 @@ Alarme sind fachliche Verdichtungen von Zustaenden oder Sequenzen.
 - `BREAKER_OPEN`
   - Netzuebergabepfad geoeffnet
 - `LOW_SITE_OUTPUT_UNEXPECTED`
-  - Leistung deutlich unter erwarteter Verfuegbarkeit
+  - Leistung deutlich unter erwarteter Verfuegbarkeit; V1-Startschwelle ueber
+    `ALARM_THRESHOLD_LOW_OUTPUT_PCT`, Default `35`
 - `REACTIVE_POWER_DEVIATION`
   - Blindleistungsziel weicht deutlich ab
 - `TRACKER_STOW_ACTIVE`
@@ -512,14 +513,15 @@ Besonders kritisch waere:
 Die Fachseite muss glaubhaft sein, aber unter voller Kontrolle der Deckscrew
 bleiben.
 
-## 18. Offene Punkte
+## 18. Punkte fuer spaetere Erweiterung
 
-Diese Punkte sind fuer die naechste Dokumentationsrunde offen:
+Nach der baubaren V1 koennen spaeter vertieft werden:
 
-- wie fein die Inverter-Bloecke intern weiter unterteilt werden
-- welche Alarmgrenzen fuer `LOW_SITE_OUTPUT_UNEXPECTED` gelten
-- welche Betriebsmodi der PPC exakt anbietet
-- welche Setpoints schreibbar und welche nur scheinbar schreibbar sind
+- feinere interne Unterteilung der Inverter-Bloecke
+- zusaetzliche PPC-Betriebsmodi ueber `normal`, `curtailed`, `maintenance` und
+  `faulted` hinaus
+- weitere Tracker-Details fuer bewusst erweiterte Deployments
+- feinere Alarmmodelle ueber die V1-Startmenge hinaus
 
 ## 19. Kurzfazit
 

@@ -55,8 +55,7 @@ Fuer V1 empfehle ich einen dreistufigen Aufbau:
 ### 4.1 Autoritativer lokaler Eventstore
 
 Der Kern des Systems speichert jedes normalisierte Ereignis in einem lokalen
-Eventstore, zum Beispiel in `SQLite` oder einem gleichwertigen lokalen
-Persistenzmechanismus.
+Eventstore. Fuer V1 wird dafuer `SQLite` im `WAL`-Modus festgelegt.
 
 Warum das sinnvoll ist:
 - einfach genug fuer V1
@@ -660,15 +659,19 @@ werden.
 - kontrollierte Aktivierung von Rohdaten
 - strikte Entkopplung von Export und Anfragepfad
 
-## 22. Offene Entscheidungen
+## 22. Festgezogene V1-Entscheidungen und spaetere Feinarbeit
 
-Diese Punkte muessen spaeter noch konkretisiert werden:
+Fuer V1 festgezogen:
 
-- welches lokale Speicherformat V1 genau nutzt
+- lokaler Eventstore ist `SQLite`
+- `PCAP` bleibt in der Default-Konfiguration deaktiviert
+- Exporter laufen im selben Prozess ueber entkoppelte Outbox-/Runner-Logik
+- erste Alert-Regeln sind wiederholte Login-Fehler, erfolgreiche
+  Setpoint-Aenderung, `BREAKER_OPEN` und `COMM_LOSS_INVERTER_BLOCK`
+
+Spaeter noch zu konkretisieren:
+
 - wie lang Rohdaten aufbewahrt werden
-- ob `PCAP` standardmaessig deaktiviert bleibt
-- welche Alert-Regeln in V1 zuerst aktiv sind
-- ob Exporter im selben Prozess oder in getrennten Worker-Kontexten laufen
 - wie streng Dedupe und Suppression anfangs sein sollen
 
 ## 23. V1-Empfehlung in einem Satz

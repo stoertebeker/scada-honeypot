@@ -142,19 +142,27 @@ Logging ist ein Kernziel des Projekts. Jede relevante Aktion muss
 korrelierbar, analysierbar und exportierbar sein.
 
 Pflichtfelder pro Event:
-- timestamp
-- event_id
-- correlation_id
-- source_ip
-- protocol
-- endpoint_or_service
-- asset_id
-- actor_type
-- action
-- requested_value
-- previous_value
-- resulting_state
-- severity
+- `timestamp`
+- `event_id`
+- `correlation_id`
+- `event_type`
+- `category`
+- `severity`
+- `source_ip`
+- `actor_type`
+- `component`
+- `asset_id`
+- `action`
+- `result`
+
+Hauefige Zusatzfelder fuer Protokoll- und HMI-Zugriffe:
+- `protocol`
+- `service`
+- `endpoint_or_register`
+- `requested_value`
+- `previous_value`
+- `resulting_value`
+- `resulting_state`
 
 Zu protokollieren sind mindestens:
 - Verbindungsaufbau und Session-Daten
@@ -227,10 +235,9 @@ V1 ist erfolgreich, wenn:
 - der Honeypot ohne reale Identitaetsmerkmale auskommt
 - die Umgebung schnell und sauber ruecksetzbar ist
 
-## 14. Offene Punkte fuer die naechste Phase
+## 14. Punkte fuer spaetere Erweiterung
 
-- Soll der Tracker-Controller in V1 enthalten sein oder erst spaeter?
-- Welche Protokolle sind fuer V1 zwingend noetig, z. B. Modbus/TCP und HTTP?
-- Wie stark soll das Login-Verhalten simuliert werden?
-- Welche Event-Schweregrade und Alarmklassen werden benoetigt?
-- Welche Log-Senke wird zuerst genutzt: lokale Dateien oder zentrales System?
+- zusaetzliche Protokolle neben `Modbus/TCP` und `HTTP`
+- feinere Alarm- und Severity-Unterklassen ueber die V1-Startmenge hinaus
+- weitere Log-Senken neben lokalem Eventstore und `JSONL`
+- tracker-nahe Zusatzsichten fuer bewusst erweiterte Deployments

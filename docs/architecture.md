@@ -7,8 +7,9 @@ Es soll auch fuer Nicht-Programmierer verstaendlich bleiben und erklaeren,
 welche Bausteine es gibt, wie sie zusammenarbeiten und warum diese Aufteilung
 fuer einen glaubhaften, testbaren und erweiterbaren Honeypot sinnvoll ist.
 
-Das Dokument ist bewusst konzeptionell. Es legt noch keine konkrete Sprache,
-kein Framework und keine technische Detailimplementierung fest.
+Das Dokument ist bewusst konzeptionell. Konkrete V1-Entscheidungen zu Sprache,
+Framework, Persistenz und Startkommandos stehen in
+`docs/v1-decisions.md`.
 
 ## 2. Architekturentscheidung
 
@@ -492,12 +493,10 @@ zerlegen:
 
 Diese Punkte muessen spaeter in eigenen Dokumenten vertieft werden:
 
-- exakter Vertrag des Event-Schemas
-- genaue Form der Exporter-Schnittstelle
-- Persistenzmodell fuer Zustand, Events und Outbox
-- Fehler- und Timeout-Strategie der HMI
-- Granularitaet der Alarmklassen
-- Umfang der V1-Protokolltreue im Modbus-/SunSpec-Modell
+- genaue Form der Exporter-Schnittstelle auf Code-Ebene
+- Fehler- und Timeout-Strategie der HMI unter Last
+- Granularitaet der Alarmklassen nach V1
+- Umfang optionaler Protokollerweiterungen ueber das V1-Modbus-/SunSpec-Profil hinaus
 
 ## 15. Kurzfazit
 

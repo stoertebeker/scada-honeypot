@@ -358,6 +358,8 @@ Die Seite soll:
 - aber keine echten Admin-Funktionen freischalten, die ueber die definierten
   V1-Bedienpfade hinausgehen
 
+In der V1-Default-Konfiguration ist `ENABLE_SERVICE_LOGIN=1`.
+
 Sichtbare Elemente:
 
 - Username
@@ -377,7 +379,7 @@ V1 braucht kein komplexes Rollenmodell, aber eine glaubhafte Trennung.
 ### 8.1 Empfohlene Sichten
 
 - `anonymous_view`
-  - kann Betriebsseiten ansehen
+  - kann alle read-only Betriebsseiten ansehen
   - kann keine schreibenden Aktionen ausfuehren
 
 - `service_view`
@@ -421,9 +423,14 @@ Bei fehlgeschlagenem Login:
 
 Sessions sollen:
 
+- serverseitig ueber einen signierten Cookie-Handle verwaltet werden
 - zeitlich begrenzt sein
 - sauber auslaufen
 - keine inkonsistenten Zwischenzustaende erzeugen
+
+V1-Startwerte:
+- `20` Minuten Idle-Timeout
+- Prozessneustart invalidiert bestehende Sessions
 
 Abgelaufene Session:
 
@@ -545,15 +552,16 @@ Wichtige Regel:
 
 ## 14. Logging-Anforderungen fuer die HMI
 
-Jeder HMI-Aufruf soll mindestens loggen:
+Jeder HMI-Aufruf soll zusaetzlich zum allgemeinen Event-Schema mindestens
+loggen:
 
+- `component` mit Wert `hmi-web`
+- `service` mit Wert `web-hmi`
+- `endpoint_or_register` mit Wert des angefragten HTTP-Pfads
 - `http_method`
 - `http_path`
 - `http_status`
 - `session_id`
-- `source_ip`
-- `actor_type`
-- `component=hmi-web`
 
 Bei Login-Versuchen zusaetzlich:
 
@@ -567,6 +575,7 @@ Bei Bedienhandlungen zusaetzlich:
 - `setpoint_name`
 - `requested_value`
 - `previous_value`
+- `resulting_value`
 - `resulting_state`
 - `correlation_id`
 
@@ -638,14 +647,12 @@ Wichtige Regel:
 - `ATTACKER_UI_LOCALE` und `ATTACKER_UI_FALLBACK_LOCALE` referenzieren Dateinamen
   ohne `.json`
 
-## 18. Offene Punkte
+## 18. Punkte fuer spaetere Verfeinerung
 
-Diese Punkte koennen spaeter weiter verfeinert werden:
-
-- exakte Session-Technik
-- ob `anonymous_view` wirklich alle Betriebsseiten sieht
 - wie stark Trends geglaettet oder verrauscht werden
 - ob eine kleine Event-Liste auf `/overview` zusaetzlich sichtbar sein soll
+- ob exponierte Deployments spaeter eine restriktivere `anonymous_view`
+  erhalten
 
 ## 19. Kurzfazit
 

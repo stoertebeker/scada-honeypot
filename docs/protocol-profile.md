@@ -509,6 +509,9 @@ Empfohlen:
 - `/trends`
 - `/service/login`
 
+Die Seite `/service/login` ist in der V1-Default-Konfiguration aktiv und kann
+fuer strengere Deployments bewusst deaktiviert werden.
+
 ### 16.3 HTTP-Verhalten
 
 Wichtige Regeln:
@@ -578,6 +581,8 @@ Felder sauber tragen, soweit vorhanden:
 
 ### 18.2 HTTP-spezifisch
 
+- `service` mit Wert `web-hmi`
+- `endpoint_or_register` mit dem angefragten HTTP-Pfad
 - `http_method`
 - `http_path`
 - `http_status`
@@ -674,11 +679,11 @@ Besonders wichtig:
 - Protokollstandardnaehe darf nicht in gefaehrliche Betriebsnaehe kippen
 - glaubhafte Interaktion ja, reale Steuerbarkeit nein
 
-## 23. Offene Punkte fuer die naechste Runde
+## 23. Punkte fuer spaetere Erweiterung
 
-- exakte Registermatrix je Unit-ID
-- genaue Wortreihenfolge fuer Mehrregisterwerte
-- konkrete HMI-Login-Semantik
+- optionale `3xxxx`-Spiegelungen ausserhalb der V1-Default-Konfiguration
+- weitere HTTP-Servicepfade ueber `/service/login` hinaus
+- zusaetzliche Protokolle nach V1
 
 ## 24. Kurzfazit
 

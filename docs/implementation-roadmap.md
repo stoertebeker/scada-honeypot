@@ -72,6 +72,7 @@ Eine Phase gilt erst als beendet, wenn:
 
 Diese Dokumente bilden die Grundlage der Umsetzung:
 
+- [v1-decisions.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/v1-decisions.md)
 - [solarpark-honeypot-scope.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/solarpark-honeypot-scope.md)
 - [architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
 - [domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
@@ -83,8 +84,8 @@ Diese Dokumente bilden die Grundlage der Umsetzung:
 
 ## 5. Empfohlene Projektstruktur
 
-Die genaue Sprache ist noch offen, aber die Struktur sollte schon jetzt
-modular gedacht werden.
+Die Struktur soll modular gedacht werden. Der technische Grundkurs fuer V1 ist
+in `docs/v1-decisions.md` verbindlich festgezogen.
 
 Empfohlene Zielstruktur:
 
@@ -123,20 +124,17 @@ Diese Entscheidungen sollten vor Implementierungsstart bewusst getroffen werden.
 
 ### 6.1 Technischer Grundkurs
 
-Festlegen:
+Fuer V1 festgelegt:
 
-- Hauptsprache
-- Testframework
-- lokales Persistenzformat fuer V1
-- lokale Dev-Startmethode
+- Hauptsprache: `Python 3.12`
+- Paket- und Startwerkzeug: `uv`
+- Web-Stack: `FastAPI` plus serverseitige `Jinja2`-Templates
+- Modbus-Stack: `pymodbus`
+- lokales Persistenzformat: `SQLite` im `WAL`-Modus
+- Teststack: `pytest`, `pytest-asyncio`, `httpx`, `Playwright`
+- lokale Startmethode: `uv sync --dev` und `uv run python -m honeypot.main`
 
-Meine technische Empfehlung fuer V1 waere:
-
-- eine Sprache mit starker Schnellstart- und Teststory
-- einfacher lokaler SQLite-Unterstuetzung
-- gutem Modbus- und Web-Toolkit
-
-### 6.2 Festgezogene und offene Fachschalter
+### 6.2 Festgezogene Fachschalter
 
 Vor Coding fuer V1 festgezogen:
 
@@ -144,10 +142,7 @@ Vor Coding fuer V1 festgezogen:
 - `FC04` bleibt in der V1-Default-Konfiguration deaktiviert
 - Exporter laufen in V1 im selben Prozess ueber entkoppelte
   Outbox-/Runner-Logik
-
-Weiter offen:
-
-- `ENABLE_SERVICE_LOGIN` standardmaessig `1` oder `0`
+- `ENABLE_SERVICE_LOGIN` ist in der V1-Default-Konfiguration aktiviert
 
 ### 6.3 Sicherheitsvorgabe
 
@@ -623,8 +618,6 @@ Am Ende von V1 sollten mindestens vorliegen:
 
 Diese Punkte sind bewusst noch nicht fest:
 
-- konkrete Sprache und Frameworks
-- genaue Repo-Startskripte
 - Containerisierung oder Prozessmanager fuer V1
 - Nightly- vs PR-Teststrategie
 - Rolloutmodell fuer mehrere Honeypot-Instanzen

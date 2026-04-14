@@ -104,6 +104,13 @@ desto haeufiger soll sie laufen.
 
 ## 6. Testumgebungen
 
+Technische Festlegung fuer V1:
+
+- `pytest` fuer Unit-, Contract-, Integrations- und Szenario-Tests
+- `pytest-asyncio` fuer asynchrone Modul- und Integrationspfade
+- `httpx` fuer HTTP-nahe Tests
+- `Playwright` fuer HMI-End-to-End, Screenshots und UI-Fehlerpfade
+
 ### 6.1 `fast-local`
 
 Zweck:
@@ -541,7 +548,6 @@ Sinnvolle Artefakte:
 
 Spaeter noch zu konkretisieren:
 
-- exakte Testtools und Frameworks
 - Verteilung der Tests nach Modulpfaden
 - Umgang mit Snapshot-Tests fuer HMI
 - Schwellwerte fuer Timing- und Soak-Tests

@@ -55,6 +55,8 @@ Dieses Projekt folgt diesen Grundsaetzen:
 
 Die wichtigsten Dokumente:
 
+- [docs/v1-decisions.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/v1-decisions.md)
+  - verbindlicher V1-Entscheidungsstand fuer Defaults, Technikgrundkurs und Startkommandos
 - [docs/solarpark-honeypot-scope.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/solarpark-honeypot-scope.md)
   - Projektziel, Scope, Nicht-Ziele, Grundannahmen
 - [docs/architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
@@ -103,8 +105,9 @@ Wichtige Konfigurationsprinzipien:
 - Defaults bleiben generisch
 - keine realen Firmen-, Orts- oder Produktdaten im Repo
 - Exporter sind standardmaessig aus
-- Security-relevante Schalter wie `ENABLE_TRACKER` oder
-  `ENABLE_SERVICE_LOGIN` muessen bewusst gesetzt werden
+- `ENABLE_TRACKER` bleibt in der V1-Default-Konfiguration aus
+- `ENABLE_SERVICE_LOGIN` ist in der V1-Default-Konfiguration aktiv und kann fuer
+  strengere Deployments bewusst deaktiviert werden
 
 Wichtige Variablengruppen:
 
