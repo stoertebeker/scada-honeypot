@@ -464,10 +464,10 @@ Fachstruktur zu aendern.
 Geeignete Parameter:
 - `CAPACITY_MW`
 - `INVERTER_BLOCK_COUNT`
-- `TRACKER_ENABLED`
+- `ENABLE_TRACKER`
 - `DEFAULT_POWER_LIMIT_PCT`
 - `ALARM_THRESHOLD_LOW_OUTPUT_PCT`
-- `SITE_TIMEZONE`
+- `TIMEZONE`
 
 Nicht konfigurierbar im Sinne des Domänenmodells:
 - grundlegende Existenz des `site`

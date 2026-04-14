@@ -176,16 +176,16 @@ hart codiert werden, sondern ueber eine `.env` oder aequivalente Konfiguration
 befuellbar sein.
 
 Beispiele fuer spaeter konfigurierbare Werte:
-- SITE_NAME
-- SITE_CODE
-- OPERATOR_NAME
-- HMI_TITLE
-- TIMEZONE
-- CAPACITY_MW
-- INVERTER_COUNT
-- ENABLE_TRACKER
-- DEFAULT_CURTAILMENT_LIMIT
-- LOG_LEVEL
+- `SITE_NAME`
+- `SITE_CODE`
+- `OPERATOR_NAME`
+- `HMI_TITLE`
+- `TIMEZONE`
+- `CAPACITY_MW`
+- `INVERTER_BLOCK_COUNT`
+- `ENABLE_TRACKER`
+- `DEFAULT_POWER_LIMIT_PCT`
+- `LOG_LEVEL`
 
 Wichtige Vorgabe:
 - Standardwerte bleiben generisch und bewusst nicht OSINT-freundlich.
