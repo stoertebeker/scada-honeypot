@@ -122,11 +122,18 @@ Wichtige Variablengruppen:
 
 - HMI und Protokoll:
   - `ENABLE_SERVICE_LOGIN`
+  - `MODBUS_BIND_HOST`
   - `MODBUS_PORT`
+  - `HMI_BIND_HOST`
   - `HMI_PORT`
   - `TIMEZONE`
   - `ATTACKER_UI_LOCALE`
   - `ATTACKER_UI_FALLBACK_LOCALE`
+
+Fuer lokale Entwicklung und Tests binden `MODBUS_BIND_HOST` und
+`HMI_BIND_HOST` standardmaessig an `127.0.0.1`. Eine Bindung an `0.0.0.0`
+oder andere Interfaces ist eine bewusste Deployment-Entscheidung und darf erst
+nach den Security-Gates erfolgen.
 
 - Logging und Events:
   - `EVENT_STORE_BACKEND`
