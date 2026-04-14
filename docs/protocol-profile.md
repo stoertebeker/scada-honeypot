@@ -343,6 +343,9 @@ Typische schreibbare Punkte:
 
 ### 11.6 `tracker_controller`
 
+Der `tracker_controller` bleibt in der V1-Default-Konfiguration deaktiviert
+und ist nur fuer bewusst erweiterte Deployments vorgesehen.
+
 Typische Datenklassen:
 - Tracking-Status
 - Stow-Status
@@ -367,9 +370,9 @@ Diese drei Codes bilden den Kern fuer:
 - Setpoint-Aenderungen
 - glaubhafte Steuerpfade
 
-### 12.2 Optionale Unterstuetzung
+### 12.2 Optionale Unterstuetzung ausserhalb der V1-Default-Konfiguration
 
-Optional, aber nicht zwingend fuer V1:
+Optional, aber nicht Teil der V1-Default-Konfiguration:
 
 - `04` -> Read Input Registers
 
@@ -674,10 +677,8 @@ Besonders wichtig:
 ## 23. Offene Punkte fuer die naechste Runde
 
 - exakte Registermatrix je Unit-ID
-- Entscheidung, ob `04 Read Input Registers` in V1 mitkommt
 - genaue Wortreihenfolge fuer Mehrregisterwerte
 - konkrete HMI-Login-Semantik
-- Entscheidung, ob der Tracker in V1 aktiv bleibt
 
 ## 24. Kurzfazit
 

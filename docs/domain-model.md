@@ -119,8 +119,9 @@ Es modelliert:
 
 ### 4.7 `tracker_controller`
 
-Der `tracker_controller` ist optional. Falls V1 ihn enthaelt, bleibt seine
-Rolle bewusst klein.
+Der `tracker_controller` ist optional. In der V1-Default-Konfiguration bleibt
+er deaktiviert. Falls er fuer ein bewusst erweitertes Deployment enthalten ist,
+bleibt seine Rolle bewusst klein.
 
 Er modelliert:
 - normalen Tracking-Betrieb
@@ -515,7 +516,6 @@ bleiben.
 
 Diese Punkte sind fuer die naechste Dokumentationsrunde offen:
 
-- ob der `tracker_controller` in V1 aktiv enthalten ist
 - wie fein die Inverter-Bloecke intern weiter unterteilt werden
 - welche Alarmgrenzen fuer `LOW_SITE_OUTPUT_UNEXPECTED` gelten
 - welche Betriebsmodi der PPC exakt anbietet

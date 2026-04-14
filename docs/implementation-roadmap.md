@@ -136,14 +136,18 @@ Meine technische Empfehlung fuer V1 waere:
 - einfacher lokaler SQLite-Unterstuetzung
 - gutem Modbus- und Web-Toolkit
 
-### 6.2 Noch offene Fachschalter
+### 6.2 Festgezogene und offene Fachschalter
 
-Vor Coding moeglichst festziehen:
+Vor Coding fuer V1 festgezogen:
 
-- `TRACKER_ENABLED` standardmaessig `0` oder `1`
+- `Tracker` standardmaessig deaktiviert
+- `FC04` bleibt in der V1-Default-Konfiguration deaktiviert
+- Exporter laufen in V1 im selben Prozess ueber entkoppelte
+  Outbox-/Runner-Logik
+
+Weiter offen:
+
 - `ENABLE_SERVICE_LOGIN` standardmaessig `1` oder `0`
-- ob `FC04` wirklich komplett aus bleibt
-- ob Exporter in V1 im selben Prozess oder als separater Worker laufen
 
 ### 6.3 Sicherheitsvorgabe
 

@@ -408,6 +408,7 @@ Bei erfolgreichem Login:
 - Session-Cookie oder aequivalenter Session-Zustand
 - sichtbarer Wechsel in `service_view`
 - keine weitreichenderen Funktionen als im V1-Scope dokumentiert
+- kein sichtbarer Logout-Link in V1
 
 Bei fehlgeschlagenem Login:
 
@@ -643,7 +644,6 @@ Diese Punkte koennen spaeter weiter verfeinert werden:
 
 - exakte Session-Technik
 - ob `anonymous_view` wirklich alle Betriebsseiten sieht
-- ob ein Logout-Link in V1 benoetigt wird
 - wie stark Trends geglaettet oder verrauscht werden
 - ob eine kleine Event-Liste auf `/overview` zusaetzlich sichtbar sein soll
 

@@ -433,11 +433,12 @@ Regeln:
 | `40302` | `alarm_breaker_open_state` | `u16` | `ro` | `alarm_state` | `BREAKER_OPEN` |
 | `40303` | `alarm_export_path_unavailable_state` | `u16` | `ro` | `alarm_state` | Pfad nicht verfuegbar |
 
-## 13. Unit 51: `tracker_controller` optional
+## 13. Unit 51: `tracker_controller` optional und in V1 standardmaessig aus
 
-Diese Unit ist nur aktiv, wenn `TRACKER_ENABLED=1`.
+Diese Unit ist in der V1-Default-Konfiguration deaktiviert und nur aktiv,
+wenn der Tracker bewusst zugeschaltet wurde.
 
-Wenn `TRACKER_ENABLED=0` gilt:
+Wenn der Tracker deaktiviert ist:
 - Zugriffe auf Unit `51` fuehren bei `FC03`, `FC06` und `FC16` zu
   `02 Illegal Data Address`
 
@@ -549,7 +550,6 @@ Fuer spaeter offen:
 - ob V2 zusaetzliche `3xxxx`-Spiegelungen bekommt
 - ob bestimmte Alarmcodes feiner aufgeteilt werden
 - ob Block 11-13 intern weitere Untergeraete simulieren sollen
-- ob der Tracker in V1 aktiv ausgeliefert wird
 
 ## 19. Kurzfazit
 
