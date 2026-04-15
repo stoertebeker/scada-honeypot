@@ -1,5 +1,5 @@
 """Simulationskern fuer Anlagenzustand und Prozesswirkung."""
 
-from honeypot.plant_sim.core import PlantSimulationError, PlantSimulator
+from honeypot.plant_sim.core import PlantSimulationError, PlantSimulator, determine_data_quality
 
-__all__ = ["PlantSimulationError", "PlantSimulator"]
+__all__ = ["PlantSimulationError", "PlantSimulator", "determine_data_quality"]

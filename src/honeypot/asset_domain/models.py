@@ -19,6 +19,9 @@ AssetStatus = Literal["online", "offline", "degraded", "faulted"]
 DataQuality = Literal["good", "estimated", "stale", "invalid"]
 ControlAuthority = Literal["local_auto", "remote_scada", "schedule"]
 GridAcceptanceState = Literal["accepted", "limited", "unavailable"]
+AlarmCategory = Literal["communication", "process", "control", "equipment", "site"]
+AlarmSeverity = Literal["low", "medium", "high", "critical"]
+AlarmLifecycleState = Literal["inactive", "active_unacknowledged", "active_acknowledged", "cleared"]
 
 
 class DomainModelBuildError(ValueError):
@@ -98,6 +101,21 @@ class GridInterconnect(AssetBase):
     grid_acceptance_state: GridAcceptanceState
 
 
+class PlantAlarm(BaseModel):
+    """Typisierter Alarmzustand fuer das Fachmodell."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str = Field(min_length=1)
+    category: AlarmCategory
+    severity: AlarmSeverity
+    state: AlarmLifecycleState
+
+    @property
+    def is_active(self) -> bool:
+        return self.state in ("active_unacknowledged", "active_acknowledged")
+
+
 class PlantSnapshot(BaseModel):
     """Typisierter Startzustand fuer Tests und spaetere Simulation."""
 
@@ -111,7 +129,7 @@ class PlantSnapshot(BaseModel):
     weather_station: WeatherStation
     revenue_meter: RevenueMeter
     grid_interconnect: GridInterconnect
-    active_alarm_codes: tuple[str, ...] = ()
+    alarms: tuple[PlantAlarm, ...] = ()
 
     @model_validator(mode="after")
     def validate_consistency(self) -> "PlantSnapshot":
@@ -131,9 +149,23 @@ class PlantSnapshot(BaseModel):
             raise ValueError(
                 "site.reactive_power_setpoint und power_plant_controller.reactive_power_target muessen uebereinstimmen"
             )
-        if self.site.active_alarm_count != len(self.active_alarm_codes):
+        if self.site.active_alarm_count != len(self.active_alarms):
             raise ValueError("site.active_alarm_count muss der Anzahl aktiver Alarmcodes entsprechen")
         return self
+
+    @property
+    def active_alarms(self) -> tuple[PlantAlarm, ...]:
+        return tuple(alarm for alarm in self.alarms if alarm.is_active)
+
+    @property
+    def active_alarm_codes(self) -> tuple[str, ...]:
+        return tuple(alarm.code for alarm in self.active_alarms)
+
+    def alarm_by_code(self, code: str) -> PlantAlarm | None:
+        for alarm in self.alarms:
+            if alarm.code == code:
+                return alarm
+        return None
 
     @property
     def total_inverter_power_kw(self) -> float:
@@ -151,10 +183,14 @@ class PlantSnapshot(BaseModel):
             sorted(_assets_of_type(fixture.assets, "inverter_block"), key=lambda asset: asset.asset_id)
         )
 
-        active_alarm_codes = tuple(
-            alarm.alarm_code
+        alarms = tuple(
+            PlantAlarm(
+                code=alarm.alarm_code,
+                category=alarm.category,
+                severity=alarm.severity,
+                state=alarm.state,
+            )
             for alarm in fixture.active_alarms
-            if alarm.state in ("active_unacknowledged", "active_acknowledged")
         )
 
         try:
@@ -237,7 +273,7 @@ class PlantSnapshot(BaseModel):
                     ),
                     grid_acceptance_state=_measurement_string(grid_asset, "grid_acceptance_state"),
                 ),
-                active_alarm_codes=active_alarm_codes,
+                alarms=alarms,
             )
         except ValidationError as exc:
             raise DomainModelBuildError(

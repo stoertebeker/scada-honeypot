@@ -1,7 +1,7 @@
 import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
-from honeypot.plant_sim import PlantSimulator
+from honeypot.plant_sim import PlantSimulator, determine_data_quality
 
 
 def build_snapshot() -> PlantSnapshot:
@@ -63,3 +63,25 @@ def test_comm_loss_marks_target_block_stale_without_zeroing_site_power() -> None
     assert degraded_snapshot.site.availability_state == "partially_available"
     assert degraded_snapshot.revenue_meter.export_power_kw == pytest.approx(5800.0)
     assert degraded_snapshot.active_alarm_codes == ("COMM_LOSS_INVERTER_BLOCK",)
+
+
+def test_acknowledge_alarm_keeps_alarm_active_until_condition_clears() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    curtailed_snapshot = simulator.apply_curtailment(snapshot, active_power_limit_pct=60)
+    acknowledged_snapshot = simulator.acknowledge_alarm(curtailed_snapshot, code="PLANT_CURTAILED")
+    cleared_snapshot = simulator.simulate_normal_operation(acknowledged_snapshot)
+
+    assert acknowledged_snapshot.alarm_by_code("PLANT_CURTAILED").state == "active_acknowledged"
+    assert acknowledged_snapshot.site.active_alarm_count == 1
+    assert cleared_snapshot.alarm_by_code("PLANT_CURTAILED").state == "cleared"
+    assert cleared_snapshot.site.active_alarm_count == 0
+    assert cleared_snapshot.active_alarm_codes == ()
+
+
+def test_determine_data_quality_covers_all_v1_quality_states() -> None:
+    assert determine_data_quality(status="online", communication_state="healthy") == "good"
+    assert determine_data_quality(status="degraded", communication_state="degraded") == "estimated"
+    assert determine_data_quality(status="degraded", communication_state="lost") == "stale"
+    assert determine_data_quality(status="offline", communication_state="lost") == "invalid"

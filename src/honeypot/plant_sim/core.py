@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from honeypot.asset_domain import PlantSnapshot
+from honeypot.asset_domain import PlantAlarm, PlantSnapshot
+from honeypot.asset_domain.models import AssetStatus, CommunicationState, DataQuality
 
 SCENARIO_ALARM_CODES = frozenset(
     {
@@ -13,10 +14,27 @@ SCENARIO_ALARM_CODES = frozenset(
         "COMM_LOSS_INVERTER_BLOCK",
     }
 )
+SCENARIO_ALARM_DEFINITIONS = {
+    "PLANT_CURTAILED": {"category": "process", "severity": "medium"},
+    "BREAKER_OPEN": {"category": "site", "severity": "high"},
+    "COMM_LOSS_INVERTER_BLOCK": {"category": "communication", "severity": "medium"},
+}
 
 
 class PlantSimulationError(ValueError):
     """Signalisiert ungueltige Simulationskommandos oder Startzustaende."""
+
+
+def determine_data_quality(*, status: AssetStatus, communication_state: CommunicationState) -> DataQuality:
+    """Leitet Datenqualitaet aus Status und Kommunikationslage ab."""
+
+    if communication_state == "healthy":
+        return "good"
+    if communication_state == "degraded":
+        return "estimated"
+    if status in ("offline", "faulted"):
+        return "invalid"
+    return "stale"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +108,7 @@ class PlantSimulator:
                 "grid_acceptance_state": "accepted",
             }
         )
-        active_alarm_codes = _replace_scenario_alarm_codes(snapshot.active_alarm_codes)
+        alarms = _replace_scenario_alarms(snapshot.alarms)
         return _build_snapshot(
             snapshot,
             site=site,
@@ -98,7 +116,7 @@ class PlantSimulator:
             inverter_blocks=inverter_blocks,
             revenue_meter=revenue_meter,
             grid_interconnect=grid_interconnect,
-            active_alarm_codes=active_alarm_codes,
+            alarms=alarms,
         )
 
     def apply_curtailment(self, snapshot: PlantSnapshot, *, active_power_limit_pct: int) -> PlantSnapshot:
@@ -130,8 +148,8 @@ class PlantSimulator:
                 "export_power_kw": total_power_kw,
             }
         )
-        active_alarm_codes = _replace_scenario_alarm_codes(
-            base_snapshot.active_alarm_codes,
+        alarms = _replace_scenario_alarms(
+            base_snapshot.alarms,
             "PLANT_CURTAILED" if active_power_limit_pct < 100 else None,
         )
         return _build_snapshot(
@@ -140,7 +158,7 @@ class PlantSimulator:
             power_plant_controller=power_plant_controller,
             inverter_blocks=inverter_blocks,
             revenue_meter=revenue_meter,
-            active_alarm_codes=active_alarm_codes,
+            alarms=alarms,
         )
 
     def open_breaker(self, snapshot: PlantSnapshot) -> PlantSnapshot:
@@ -170,14 +188,14 @@ class PlantSimulator:
                 "grid_acceptance_state": "unavailable",
             }
         )
-        active_alarm_codes = _replace_scenario_alarm_codes(base_snapshot.active_alarm_codes, "BREAKER_OPEN")
+        alarms = _replace_scenario_alarms(base_snapshot.alarms, "BREAKER_OPEN")
         return _build_snapshot(
             base_snapshot,
             site=site,
             inverter_blocks=inverter_blocks,
             revenue_meter=revenue_meter,
             grid_interconnect=grid_interconnect,
-            active_alarm_codes=active_alarm_codes,
+            alarms=alarms,
         )
 
     def lose_block_communications(self, snapshot: PlantSnapshot, *, asset_id: str) -> PlantSnapshot:
@@ -197,7 +215,7 @@ class PlantSimulator:
                     update={
                         "status": "degraded",
                         "communication_state": "lost",
-                        "quality": "stale",
+                        "quality": determine_data_quality(status="degraded", communication_state="lost"),
                     }
                 )
             )
@@ -211,16 +229,40 @@ class PlantSimulator:
                 "communications_health": "degraded",
             }
         )
-        active_alarm_codes = _replace_scenario_alarm_codes(
-            base_snapshot.active_alarm_codes,
+        alarms = _replace_scenario_alarms(
+            base_snapshot.alarms,
             "COMM_LOSS_INVERTER_BLOCK",
         )
         return _build_snapshot(
             base_snapshot,
             site=site,
             inverter_blocks=tuple(inverter_blocks),
-            active_alarm_codes=active_alarm_codes,
+            alarms=alarms,
         )
+
+    def acknowledge_alarm(self, snapshot: PlantSnapshot, *, code: str) -> PlantSnapshot:
+        """Quittiert einen aktiven Alarm, ohne ihn zu loeschen."""
+
+        updated_alarms = []
+        target_found = False
+        for alarm in snapshot.alarms:
+            if alarm.code != code:
+                updated_alarms.append(alarm)
+                continue
+
+            target_found = True
+            if alarm.state == "active_unacknowledged":
+                updated_alarms.append(alarm.model_copy(update={"state": "active_acknowledged"}))
+                continue
+            if alarm.state == "active_acknowledged":
+                updated_alarms.append(alarm)
+                continue
+            raise PlantSimulationError(f"Alarm '{code}' kann im Zustand '{alarm.state}' nicht quittiert werden")
+
+        if not target_found:
+            raise PlantSimulationError(f"unbekannter Alarm fuer Quittierung: {code}")
+
+        return _build_snapshot(snapshot, alarms=tuple(updated_alarms))
 
 
 def _with_rebalanced_block_power(snapshot: PlantSnapshot, total_power_kw: float) -> tuple:
@@ -230,7 +272,7 @@ def _with_rebalanced_block_power(snapshot: PlantSnapshot, total_power_kw: float)
             update={
                 "status": "online",
                 "communication_state": "healthy",
-                "quality": "good",
+                "quality": determine_data_quality(status="online", communication_state="healthy"),
                 "availability_pct": 100,
                 "block_power_kw": distribution[index],
             }
@@ -262,13 +304,39 @@ def _distribute_power_kw(blocks: tuple, total_power_kw: float) -> tuple[float, .
     return tuple(distribution)
 
 
-def _replace_scenario_alarm_codes(active_alarm_codes: tuple[str, ...], *new_alarm_codes: str | None) -> tuple[str, ...]:
-    remaining_codes = [code for code in active_alarm_codes if code not in SCENARIO_ALARM_CODES]
-    for code in new_alarm_codes:
-        if code is None or code in remaining_codes:
+def _replace_scenario_alarms(alarms: tuple[PlantAlarm, ...], *active_alarm_codes: str | None) -> tuple[PlantAlarm, ...]:
+    requested_active_codes = {code for code in active_alarm_codes if code is not None}
+    updated_alarms: list[PlantAlarm] = []
+    seen_scenario_codes: set[str] = set()
+
+    for alarm in alarms:
+        if alarm.code not in SCENARIO_ALARM_CODES:
+            updated_alarms.append(alarm)
             continue
-        remaining_codes.append(code)
-    return tuple(remaining_codes)
+
+        seen_scenario_codes.add(alarm.code)
+        if alarm.code in requested_active_codes:
+            next_state = alarm.state if alarm.state in ("active_unacknowledged", "active_acknowledged") else "active_unacknowledged"
+            updated_alarms.append(alarm.model_copy(update={"state": next_state}))
+            continue
+
+        if alarm.state in ("active_unacknowledged", "active_acknowledged"):
+            updated_alarms.append(alarm.model_copy(update={"state": "cleared"}))
+        else:
+            updated_alarms.append(alarm)
+
+    for code in requested_active_codes - seen_scenario_codes:
+        definition = SCENARIO_ALARM_DEFINITIONS[code]
+        updated_alarms.append(
+            PlantAlarm(
+                code=code,
+                category=definition["category"],
+                severity=definition["severity"],
+                state="active_unacknowledged",
+            )
+        )
+
+    return tuple(updated_alarms)
 
 
 def _build_snapshot(
@@ -279,21 +347,47 @@ def _build_snapshot(
     inverter_blocks=None,
     revenue_meter=None,
     grid_interconnect=None,
-    active_alarm_codes: tuple[str, ...] | None = None,
+    alarms: tuple[PlantAlarm, ...] | None = None,
 ) -> PlantSnapshot:
-    final_alarm_codes = snapshot.active_alarm_codes if active_alarm_codes is None else active_alarm_codes
+    final_alarms = snapshot.alarms if alarms is None else alarms
     base_site = snapshot.site if site is None else site
-    final_site = base_site.model_copy(update={"active_alarm_count": len(final_alarm_codes)})
+    final_site = base_site.model_copy(update={"active_alarm_count": len(_active_alarms(final_alarms))})
+    power_plant_controller_model = snapshot.power_plant_controller if power_plant_controller is None else power_plant_controller
+    final_revenue_meter = snapshot.revenue_meter if revenue_meter is None else revenue_meter
+    final_grid = snapshot.grid_interconnect if grid_interconnect is None else grid_interconnect
     return PlantSnapshot(
         fixture_name=snapshot.fixture_name,
         start_time=snapshot.start_time,
         site=final_site,
-        power_plant_controller=snapshot.power_plant_controller
-        if power_plant_controller is None
-        else power_plant_controller,
+        power_plant_controller=power_plant_controller_model.model_copy(
+            update={
+                "quality": determine_data_quality(
+                    status=power_plant_controller_model.status,
+                    communication_state=power_plant_controller_model.communication_state,
+                )
+            }
+        ),
         inverter_blocks=snapshot.inverter_blocks if inverter_blocks is None else inverter_blocks,
         weather_station=snapshot.weather_station,
-        revenue_meter=snapshot.revenue_meter if revenue_meter is None else revenue_meter,
-        grid_interconnect=snapshot.grid_interconnect if grid_interconnect is None else grid_interconnect,
-        active_alarm_codes=final_alarm_codes,
+        revenue_meter=final_revenue_meter.model_copy(
+            update={
+                "quality": determine_data_quality(
+                    status=final_revenue_meter.status,
+                    communication_state=final_revenue_meter.communication_state,
+                )
+            }
+        ),
+        grid_interconnect=final_grid.model_copy(
+            update={
+                "quality": determine_data_quality(
+                    status=final_grid.status,
+                    communication_state=final_grid.communication_state,
+                )
+            }
+        ),
+        alarms=final_alarms,
     )
+
+
+def _active_alarms(alarms: tuple[PlantAlarm, ...]) -> tuple[PlantAlarm, ...]:
+    return tuple(alarm for alarm in alarms if alarm.is_active)
