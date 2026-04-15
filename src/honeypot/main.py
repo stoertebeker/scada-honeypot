@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from honeypot.config_core import load_runtime_config
+
 MODULES: tuple[str, ...] = (
     "config_core",
     "asset_domain",
@@ -32,8 +34,9 @@ def bootstrap_runtime() -> RuntimeManifest:
 def main() -> int:
     """Minimal startbarer Prozesseinstieg fuer das Repo-Bootstrapping."""
 
+    config = load_runtime_config()
     manifest = bootstrap_runtime()
-    print(f"honeypot scaffold ready: {', '.join(manifest.components)}")
+    print(f"honeypot scaffold ready for {config.site_code}: {', '.join(manifest.components)}")
     return 0
 
 

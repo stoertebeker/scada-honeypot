@@ -13,4 +13,4 @@ def test_main_returns_success(capsys) -> None:
     assert main() == 0
 
     captured = capsys.readouterr()
-    assert "honeypot scaffold ready" in captured.out
+    assert "honeypot scaffold ready for site-01" in captured.out
