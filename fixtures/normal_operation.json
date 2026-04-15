@@ -1,0 +1,101 @@
+{
+  "fixture_name": "normal_operation",
+  "start_time": "2026-04-01T10:00:00Z",
+  "site_state": {
+    "operating_mode": "normal",
+    "availability_state": "available",
+    "plant_power_mw": 5.8,
+    "plant_power_limit_pct": 100,
+    "reactive_power_setpoint": 0.0,
+    "breaker_state": "closed",
+    "communications_health": "healthy",
+    "active_alarm_count": 0
+  },
+  "weather": {
+    "irradiance_w_m2": 840,
+    "module_temperature_c": 31.5,
+    "ambient_temperature_c": 22.0,
+    "wind_speed_m_s": 4.2
+  },
+  "assets": [
+    {
+      "asset_id": "ppc-01",
+      "asset_type": "power_plant_controller",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "active_power_limit_pct": 100,
+        "reactive_power_target": 0.0,
+        "control_authority": "remote_scada"
+      }
+    },
+    {
+      "asset_id": "invb-01",
+      "asset_type": "inverter_block",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "block_power_kw": 1935,
+        "availability_pct": 100
+      }
+    },
+    {
+      "asset_id": "invb-02",
+      "asset_type": "inverter_block",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "block_power_kw": 1920,
+        "availability_pct": 100
+      }
+    },
+    {
+      "asset_id": "invb-03",
+      "asset_type": "inverter_block",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "block_power_kw": 1945,
+        "availability_pct": 100
+      }
+    },
+    {
+      "asset_id": "wx-01",
+      "asset_type": "weather_station",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "irradiance_w_m2": 840,
+        "ambient_temperature_c": 22.0
+      }
+    },
+    {
+      "asset_id": "meter-01",
+      "asset_type": "revenue_meter",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "export_power_kw": 5790,
+        "power_factor": 0.99
+      }
+    },
+    {
+      "asset_id": "grid-01",
+      "asset_type": "grid_interconnect",
+      "status": "online",
+      "communication_state": "healthy",
+      "quality": "good",
+      "measurements": {
+        "breaker_state": "closed",
+        "grid_acceptance_state": "accepted"
+      }
+    }
+  ],
+  "active_alarms": []
+}

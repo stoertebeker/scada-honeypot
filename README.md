@@ -35,13 +35,13 @@ Vorhanden sind:
 - `uv`-basiertes Projektsetup mit `pyproject.toml` und `uv.lock`
 - `config_core` mit `.env`-/Umgebungs-Laden, generischen Defaults und frueher Validierung
 - erstes mitgeliefertes Locale-Paket unter `resources/locales/attacker-ui/en.json`
+- Fixture-System mit erstem ladbaren Startzustand `normal_operation`
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
 - erster Smoke-Test fuer Geruest und Einstiegspunkt
 
 Noch nicht vorhanden:
 - fachliche Anwendung jenseits des Scaffolds
 - Zeitabstraktion fuer deterministische Tests
-- ladbare Start-Fixtures
 - Modbus-Server
 - Web-HMI
 - Eventstore-Implementierung
@@ -95,8 +95,7 @@ Die Deckscrew ist jetzt in Phase A unterwegs. Der naechste konkrete Schlag
 sollte innerhalb der Roadmap-Reihenfolge sein:
 
 1. Testharness fuer Phase A weiter ausbauen
-2. erstes ladbares Fixture fuer Startzustaende anlegen
-3. Zeitabstraktion fuer deterministische Tests einbauen
+2. Zeitabstraktion fuer deterministische Tests einbauen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
