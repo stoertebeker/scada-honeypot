@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+.DS_Store
 .venv/
 .schrammns_workflow/
 __pycache__/
