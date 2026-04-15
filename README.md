@@ -39,13 +39,15 @@ Vorhanden sind:
 - typisiertes Fachmodell fuer Site, PPC, Inverter-Bloecke, Wetter, Meter und Grid
 - Fixture-zu-Domaenen-Mapping ueber `PlantSnapshot.from_fixture()`
 - deterministischer `plant_sim`-Kern fuer `normal`, `curtailed`, `breaker_open` und `comm_loss_single_block`
+- Alarmlebenszyklus fuer `inactive`, `active_unacknowledged`, `active_acknowledged` und `cleared`
+- fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern und Simulationsszenarien
+- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien und Alarm-/Qualitaetsuebergaenge
 
 Noch nicht vorhanden:
 - Eventstore-Implementierung
-- Rule-Engine und Alarmdynamik jenseits des Fixture-Snapshots
+- Rule-Engine und eventgetriebene Alarmableitung
 - Modbus-Server
 - Web-HMI
 - Exporter-Implementierung
@@ -97,7 +99,7 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt in Phase B unterwegs. Der naechste konkrete Schlag
 sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Alarmzustandslogik und Zustandsqualitaet auf den vorhandenen Simulationskern setzen
+1. Event-Core, Storage und Outbox auf den vorhandenen Fachkern setzen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

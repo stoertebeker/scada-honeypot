@@ -24,6 +24,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `6dc38a9` `feat: add alarm lifecycle to plant sim`
 - `a7f5954` `feat: add deterministic plant simulation scenarios`
 - `56e1f98` `feat: add typed asset domain snapshot`
 - `cd18d1b` `feat: add deterministic test clock`
@@ -152,6 +153,32 @@ Vorhanden:
   - `COMM_LOSS_INVERTER_BLOCK`
 - Unit-Tests fuer Ursache/Wirkung von Curtailment, Breaker offen und Kommunikationsverlust
 
+### 7. Alarmlebenszyklus und Datenqualitaet
+
+Dateien:
+
+- `src/honeypot/asset_domain/models.py`
+- `src/honeypot/plant_sim/core.py`
+- `src/honeypot/plant_sim/__init__.py`
+- `tests/unit/test_plant_sim.py`
+
+Vorhanden:
+
+- `PlantAlarm` als typisiertes Alarmobjekt im Fachmodell
+- `PlantSnapshot.alarms`, `active_alarms`, `active_alarm_codes` und `alarm_by_code()`
+- deterministische Alarmzustaende fuer:
+  - `inactive`
+  - `active_unacknowledged`
+  - `active_acknowledged`
+  - `cleared`
+- `PlantSimulator.acknowledge_alarm()` fuer Quittierung ohne Loeschung
+- fachliche Qualitaetsableitung ueber `determine_data_quality()` fuer:
+  - `good`
+  - `estimated`
+  - `stale`
+  - `invalid`
+- Unit-Tests fuer `acknowledged != cleared` und fuer alle vier Qualitaetszustaende
+
 ## Teststand
 
 Aktuell gruen:
@@ -160,7 +187,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `22 passed`
+- `24 passed`
 
 Abgedeckt sind bisher:
 
@@ -170,6 +197,7 @@ Abgedeckt sind bisher:
 - Zeitabstraktion und deterministische Uhr
 - typisiertes Asset-Domain-Snapshot aus `normal_operation`
 - deterministische Simulationsszenarien fuer Kernszenarien aus Phase B
+- Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 
 ## Sicherheitsplanken
 
@@ -193,8 +221,8 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Alarmzustandslogik jenseits des Fixture-Snapshots
 - Event-Core, Storage, Outbox
+- Rule-Engine und eventgetriebene Alarmableitung
 - Modbus-Server
 - HMI
 - Exporter-Implementierung
@@ -210,16 +238,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. Alarmzustandslogik und Zustandsqualitaet auf den vorhandenen Simulationskern setzen
+1. Event-Core, Storage und Outbox auf den vorhandenen Fachkern setzen
 2. zuerst weiter nur fachlich und testbar, noch ohne Modbus oder HMI
-3. danach Event-Core, Storage und Outbox anschliessen
+3. danach Modbus- und HMI-Slices anschliessen
 
 Empfohlener erster atomarer Fix in Phase B:
 
-- Alarmzustandswechsel fuer `inactive`, `active_unacknowledged`,
-  `active_acknowledged`, `cleared`
-- plus fachliche Regeln fuer `good/estimated/stale/invalid`
-- plus fokussierte Unit-Tests fuer Alarm- und Qualitaetsuebergaenge
+- kanonisches Event-Modell mit Pflichtfeldern und lokaler Normalisierung
+- plus Outbox-/Persistenz-Grundstruktur fuer `event_log`, `alert_log`, `outbox`
+- plus fokussierte Unit-Tests fuer Event-Konsistenz und Nicht-Blockierung
 
 Nicht als naechstes tun:
 
