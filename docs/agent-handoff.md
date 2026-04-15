@@ -1,33 +1,194 @@
 # Agent-Handoff
 
-Dieses Projekt bleibt bis auf weiteres in Dokumentations- und Planungsnaehe,
-aber die fachliche Richtung ist klar genug fuer eine erste Umsetzung.
+## Zwischenfazit
 
-- Ziel: interaktiver SCADA-Honeypot fuer einen fiktiven Solarpark im
-  einstelligen MW-Bereich
-- V1-Architektur: modularer Monolith
-- Primaere Aussenwirkung: `Modbus/TCP` plus schlanke Web-HMI
-- Fachmodell, Registerprofil, Logging, Teststrategie und Security-Gates sind
-  in `docs/` dokumentiert
-- Verbindlicher V1-Entscheidungsstand liegt in `docs/v1-decisions.md`
-- Angreifer-HMI ist pro Deployment lokalisierbar; Admin-Sicht und Logs bleiben
-  deutsch
-- Locale-Regel: `ll` oder `ll-RR`, Fallback `ll-RR -> ll -> ATTACKER_UI_FALLBACK_LOCALE`
-- Locale-Ablage: `resources/locales/attacker-ui/<locale>.json`
-- Default-Annahmen fuer V1: `Tracker` aus, `FC04` aus, `service/login` an,
-  kein sichtbarer Logout-Link
-- Exporter laufen in V1 im selben Prozess, aber nur ueber entkoppelte
-  Outbox-/Runner-Logik
-- Technischer Grundkurs fuer V1: `Python 3.12`, `uv`, `FastAPI`,
-  `pymodbus`, `SQLite`, `pytest`, `Playwright`
-- Keine OEM-Kopie, keine echten Orts-/Firmendaten, keine Shell, keine realen
-  Fernsteuerpfade
-- Logging ist Kernfunktion; jede sichtbare Fehlersituation braucht spaeter
-  einen Test
-- Vor Implementierung zuerst diese Karten lesen:
-  `docs/v1-decisions.md`, `docs/solarpark-honeypot-scope.md`,
-  `docs/architecture.md`,
-  `docs/domain-model.md`, `docs/protocol-profile.md`,
-  `docs/register-matrix.md`, `docs/hmi-concept.md`,
-  `docs/logging-and-events.md`, `docs/testing-strategy.md`,
-  `docs/security-operations.md`, `docs/implementation-roadmap.md`
+Das Repo ist nicht mehr nur in Dokumentationsnaehe. Die Deckscrew hat **Phase A
+praktisch abgeschlossen**:
+
+- Projektgeruest unter `src/`, `tests/`, `fixtures/`, `tools/` steht
+- `uv`-Setup mit `pyproject.toml`, `.python-version` und `uv.lock` steht
+- `config_core` laedt und validiert Runtime-Konfiguration aus `.env` und
+  Umgebungsvariablen
+- erstes mitgeliefertes Locale-Paket liegt unter
+  `resources/locales/attacker-ui/en.json`
+- erstes ladbares Start-Fixture `fixtures/normal_operation.json` ist vorhanden
+- Zeitabstraktion fuer deterministische Tests ist vorhanden
+- das Repo ist lokal startbar und die Unit-Tests laufen gruen
+
+Wichtiger Kurs:
+
+- **Nicht** mit Modbus oder HMI anfangen, bevor Phase B sauber steht
+- naechster echter Bauabschnitt ist `asset_domain` plus `plant_sim`
+- Ziel bleibt eine gemeinsame Wahrheit fuer Anlage, Zustaende, Setpoints und
+  Alarme
+
+## Letzte Commits
+
+- `cd18d1b` `feat: add deterministic test clock`
+- `1ac917e` `feat: add loadable plant fixture`
+- `2e294f1` `feat: add validated runtime config core`
+- `9d4de02` `chore: ignore finder metadata`
+- `80f4538` `docs: sync readme with phase-a scaffold`
+- `9a8c35b` `chore: bootstrap phase-a project scaffold`
+
+## Aktueller Implementierungsstand
+
+### 1. Tooling und Einstiegspunkt
+
+- `Python 3.12` und `uv` sind verdrahtet
+- zentrale Paketdefinition in `pyproject.toml`
+- minimaler Prozesseinstieg in `src/honeypot/main.py`
+- Startkommando funktioniert:
+  `uv run python -m honeypot.main`
+
+### 2. Konfiguration
+
+Dateien:
+
+- `src/honeypot/config_core/__init__.py`
+- `src/honeypot/config_core/settings.py`
+
+Vorhanden:
+
+- `RuntimeConfig`
+- `load_runtime_config()`
+- generische Defaults aus `.env.example`
+- Validierung fuer:
+  - Locale-Format `ll` oder `ll-RR`
+  - vorhandenes Fallback-Locale-Bundle
+  - Ports und numerische Schwellwerte
+  - exporter-bezogene Pflichtfelder nur bei aktivierten Exportern
+
+Wichtige Regel:
+
+- `ATTACKER_UI_FALLBACK_LOCALE` muss auf ein mitgeliefertes Locale-Paket
+  zeigen
+
+### 3. Fixture-System
+
+Dateien:
+
+- `src/honeypot/asset_domain/fixtures.py`
+- `fixtures/normal_operation.json`
+
+Vorhanden:
+
+- `PlantFixture` und Teilmodelle fuer Site, Weather, Assets und Alarme
+- `load_plant_fixture()`
+- `available_fixture_names()`
+- klarer Fehlerpfad ueber `FixtureLoadError`
+- erstes kanonisches Start-Fixture `normal_operation`
+
+Wichtige Regel:
+
+- Fixtures werden fachlich validiert und nicht stillschweigend akzeptiert
+
+### 4. Zeitabstraktion
+
+Datei:
+
+- `src/honeypot/time_core.py`
+
+Vorhanden:
+
+- `SystemClock`
+- `FrozenClock`
+- UTC-Normalisierung ueber `ensure_utc_datetime()`
+- ISO-Zeitstempel-Parsing ueber `parse_utc_timestamp()`
+- `PlantFixture.build_clock()` fuer deterministische Teststarts
+
+Wichtige Regel:
+
+- Zeitwerte muessen timezone-aware und auf UTC normalisierbar sein
+
+## Teststand
+
+Aktuell gruen:
+
+- `uv run pytest`
+
+Letzter bekannter Lauf:
+
+- `17 passed`
+
+Abgedeckt sind bisher:
+
+- Scaffold und Prozesseinstieg
+- Konfigurationsdefaults und Fehlkonfiguration
+- Fixture-Laden und Fehlerpfade
+- Zeitabstraktion und deterministische Uhr
+
+## Sicherheitsplanken
+
+Weiter verbindlich:
+
+- keine reale OEM-Kopie
+- keine echten Orts-, Firmen- oder Zugangsdaten
+- keine Shell- oder Host-Zugriffspfade
+- keine echte Fernsteuerung externer Systeme
+- Logging bleibt Kernfunktion
+- nur die angreiferzugewandte HMI ist lokalisierbar
+- Admin-Sicht und Logs bleiben deutsch
+
+Bereits implizit abgesichert:
+
+- Konfiguration weist ungueltige Locale- und Exporter-Einstellungen frueh ab
+- Fixtures weisen fachlich schiefe Startdaten frueh ab
+- Zeitwerte sind fuer Tests kontrollierbar und UTC-konsistent
+
+## Offene Luecken
+
+Noch **nicht** vorhanden:
+
+- echtes Fachmodell fuer Site, PPC, Inverter-Bloecke, Weather, Meter und Grid
+- Simulationskern fuer normale Erzeugung, Curtailment, Breaker offen,
+  Kommunikationsverlust
+- Alarmzustandslogik jenseits des Fixture-Snapshots
+- Event-Core, Storage, Outbox
+- Modbus-Server
+- HMI
+- Exporter-Implementierung
+
+Operative Hinweise:
+
+- Git-Remote ist derzeit nicht konfiguriert; `push` ist also nicht moeglich
+- Arbeitsbaum war beim letzten Handoff sauber
+
+## Naechster Schritt
+
+### Phase B beginnen
+
+Direkter Kurs fuer den naechsten Agenten:
+
+1. `asset_domain` als gemeinsame Wahrheit modellieren
+2. `plant_sim` fuer die Kernszenarien aufziehen
+3. zuerst nur fachlich und testbar, noch ohne Modbus oder HMI
+
+Empfohlener erster atomarer Fix in Phase B:
+
+- Grundmodelle fuer
+  - `site`
+  - `power_plant_controller`
+  - `inverter_block`
+  - `weather_station`
+  - `revenue_meter`
+  - `grid_interconnect`
+- plus ein kleiner fachlicher Test fuer `normal_operation`
+
+Nicht als naechstes tun:
+
+- keinen Modbus-Vertical-Slice vorziehen
+- keine HMI vorziehen
+- keine Storage- oder Exporter-Pfade anfassen, bevor das Fachmodell steht
+
+## Vor dem Weiterbauen lesen
+
+- `docs/v1-decisions.md`
+- `docs/implementation-roadmap.md`
+- `docs/domain-model.md`
+- `docs/protocol-profile.md`
+- `docs/register-matrix.md`
+- `docs/hmi-concept.md`
+- `docs/logging-and-events.md`
+- `docs/testing-strategy.md`
+- `docs/security-operations.md`
