@@ -16,7 +16,8 @@ Die Anlage soll:
 
 ## Aktueller Stand
 
-Das Projekt befindet sich aktuell in der **Dokumentations- und Planungsphase**.
+Das Projekt befindet sich aktuell im **fruehen Implementierungsstart von
+Phase A**.
 
 Vorhanden sind:
 - Scope
@@ -30,9 +31,16 @@ Vorhanden sind:
 - Implementierungs-Roadmap
 - Security-/Operations-Leitfaden
 - Beispielkonfiguration
+- Projektgeruest unter `src/`, `tests/`, `fixtures/` und `tools/`
+- `uv`-basiertes Projektsetup mit `pyproject.toml` und `uv.lock`
+- minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
+- erster Smoke-Test fuer Geruest und Einstiegspunkt
 
 Noch nicht vorhanden:
-- laufende Anwendung
+- fachliche Anwendung jenseits des Scaffolds
+- Konfigurationsladen mit Validierung
+- Zeitabstraktion fuer deterministische Tests
+- ladbare Start-Fixtures
 - Modbus-Server
 - Web-HMI
 - Eventstore-Implementierung
@@ -82,18 +90,24 @@ Die wichtigsten Dokumente:
 
 ## Empfohlener naechster Baukurs
 
-Wenn die Deckscrew von Dokumentation in Umsetzung wechselt, sollte die
-Reihenfolge laut Roadmap so sein:
+Die Deckscrew ist jetzt in Phase A unterwegs. Der naechste konkrete Schlag
+sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Grundgeruest und Testharness
-2. Fachmodell und Simulationskern
-3. Event-Core, Storage und Outbox
-4. erste read-only `Modbus/TCP`-Scheibe
-5. vollstaendige Registermatrix mit Write-Pfaden
-6. read-only HMI
-7. HMI-Servicepfade
-8. Alerts und Exporter
-9. Hardening und Anti-Fingerprint
+1. Konfigurationsladen mit Validierung
+2. Testharness fuer Phase A weiter ausbauen
+3. erstes ladbares Fixture fuer Startzustaende anlegen
+4. Zeitabstraktion fuer deterministische Tests einbauen
+
+Danach bleibt der weitere Baukurs laut Roadmap:
+
+1. Fachmodell und Simulationskern
+2. Event-Core, Storage und Outbox
+3. erste read-only `Modbus/TCP`-Scheibe
+4. vollstaendige Registermatrix mit Write-Pfaden
+5. read-only HMI
+6. HMI-Servicepfade
+7. Alerts und Exporter
+8. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 
