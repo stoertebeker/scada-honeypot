@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 
@@ -55,9 +56,11 @@ def test_load_normal_operation_fixture(monkeypatch, tmp_path: Path) -> None:
     fixture = load_plant_fixture("normal_operation")
 
     assert fixture.fixture_name == "normal_operation"
+    assert fixture.start_time == datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
     assert fixture.site_state.breaker_state == "closed"
     assert fixture.weather.irradiance_w_m2 == 840
     assert fixture.assets[0].measurements["block_power_kw"] == 1935
+    assert fixture.build_clock().now() == fixture.start_time
 
 
 def test_load_fixture_raises_for_missing_fixture(monkeypatch, tmp_path: Path) -> None:

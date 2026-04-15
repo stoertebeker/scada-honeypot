@@ -36,12 +36,12 @@ Vorhanden sind:
 - `config_core` mit `.env`-/Umgebungs-Laden, generischen Defaults und frueher Validierung
 - erstes mitgeliefertes Locale-Paket unter `resources/locales/attacker-ui/en.json`
 - Fixture-System mit erstem ladbaren Startzustand `normal_operation`
+- Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
 - erster Smoke-Test fuer Geruest und Einstiegspunkt
 
 Noch nicht vorhanden:
 - fachliche Anwendung jenseits des Scaffolds
-- Zeitabstraktion fuer deterministische Tests
 - Modbus-Server
 - Web-HMI
 - Eventstore-Implementierung
@@ -94,19 +94,17 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt in Phase A unterwegs. Der naechste konkrete Schlag
 sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Testharness fuer Phase A weiter ausbauen
-2. Zeitabstraktion fuer deterministische Tests einbauen
+1. Fachmodell und Simulationskern beginnen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. Fachmodell und Simulationskern
-2. Event-Core, Storage und Outbox
-3. erste read-only `Modbus/TCP`-Scheibe
-4. vollstaendige Registermatrix mit Write-Pfaden
-5. read-only HMI
-6. HMI-Servicepfade
-7. Alerts und Exporter
-8. Hardening und Anti-Fingerprint
+1. Event-Core, Storage und Outbox
+2. erste read-only `Modbus/TCP`-Scheibe
+3. vollstaendige Registermatrix mit Write-Pfaden
+4. read-only HMI
+5. HMI-Servicepfade
+6. Alerts und Exporter
+7. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

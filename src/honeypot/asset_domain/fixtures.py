@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import field_validator
+
+from honeypot.time_core import FrozenClock, ensure_utc_datetime
 
 FIXTURE_DIR = Path("fixtures")
 
@@ -78,11 +82,21 @@ class PlantFixture(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     fixture_name: str
-    start_time: str
+    start_time: datetime
     site_state: SiteStateFixture
     weather: WeatherFixture
     assets: list[AssetFixture]
     active_alarms: list[AlarmFixture]
+
+    @field_validator("start_time")
+    @classmethod
+    def validate_start_time(cls, value: datetime) -> datetime:
+        return ensure_utc_datetime(value)
+
+    def build_clock(self) -> FrozenClock:
+        """Erzeugt eine deterministische Test-Uhr fuer dieses Fixture."""
+
+        return FrozenClock(self.start_time)
 
 
 def available_fixture_names(*, fixture_dir: Path = FIXTURE_DIR) -> tuple[str, ...]:
