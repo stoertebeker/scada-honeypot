@@ -17,7 +17,7 @@ Die Anlage soll:
 ## Aktueller Stand
 
 Das Projekt befindet sich aktuell im **fruehen Implementierungsstart von
-Phase A**.
+Phase B**.
 
 Vorhanden sind:
 - Scope
@@ -36,15 +36,18 @@ Vorhanden sind:
 - `config_core` mit `.env`-/Umgebungs-Laden, generischen Defaults und frueher Validierung
 - erstes mitgeliefertes Locale-Paket unter `resources/locales/attacker-ui/en.json`
 - Fixture-System mit erstem ladbaren Startzustand `normal_operation`
+- typisiertes Fachmodell fuer Site, PPC, Inverter-Bloecke, Wetter, Meter und Grid
+- Fixture-zu-Domaenen-Mapping ueber `PlantSnapshot.from_fixture()`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- erster Smoke-Test fuer Geruest und Einstiegspunkt
+- Unit-Tests fuer Konfiguration, Fixtures, Zeitkern und Asset-Domain-Snapshot
 
 Noch nicht vorhanden:
-- fachliche Anwendung jenseits des Scaffolds
+- dynamischer Simulationskern fuer normale Erzeugung, Curtailment, Breaker offen und Kommunikationsverlust
+- Eventstore-Implementierung
+- Rule-Engine und Alarmdynamik jenseits des Fixture-Snapshots
 - Modbus-Server
 - Web-HMI
-- Eventstore-Implementierung
 - Exporter-Implementierung
 
 ## Leitplanken
@@ -91,10 +94,10 @@ Die wichtigsten Dokumente:
 
 ## Empfohlener naechster Baukurs
 
-Die Deckscrew ist jetzt in Phase A unterwegs. Der naechste konkrete Schlag
+Die Deckscrew ist jetzt in Phase B unterwegs. Der naechste konkrete Schlag
 sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Fachmodell und Simulationskern beginnen
+1. Simulationskern auf das vorhandene Fachmodell setzen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

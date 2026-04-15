@@ -24,6 +24,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `56e1f98` `feat: add typed asset domain snapshot`
 - `cd18d1b` `feat: add deterministic test clock`
 - `1ac917e` `feat: add loadable plant fixture`
 - `2e294f1` `feat: add validated runtime config core`
@@ -101,6 +102,32 @@ Wichtige Regel:
 
 - Zeitwerte muessen timezone-aware und auf UTC normalisierbar sein
 
+### 5. Fachmodell-Start fuer Phase B
+
+Dateien:
+
+- `src/honeypot/asset_domain/models.py`
+- `src/honeypot/asset_domain/__init__.py`
+- `tests/unit/test_asset_domain_models.py`
+
+Vorhanden:
+
+- typisierte Modelle fuer:
+  - `SiteState`
+  - `PowerPlantController`
+  - `InverterBlock`
+  - `WeatherStation`
+  - `RevenueMeter`
+  - `GridInterconnect`
+  - `PlantSnapshot`
+- Fixture-zu-Domaenen-Mapping ueber `PlantSnapshot.from_fixture()`
+- Konsistenzchecks fuer:
+  - Breaker-Zustand Site gegen Grid
+  - Power-Limit Site gegen PPC
+  - Blindleistungs-Setpoint Site gegen PPC
+  - aktive Alarmanzahl gegen aktive Alarmcodes
+- erster Unit-Test fuer `normal_operation`
+
 ## Teststand
 
 Aktuell gruen:
@@ -109,7 +136,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `17 passed`
+- `18 passed`
 
 Abgedeckt sind bisher:
 
@@ -117,6 +144,7 @@ Abgedeckt sind bisher:
 - Konfigurationsdefaults und Fehlkonfiguration
 - Fixture-Laden und Fehlerpfade
 - Zeitabstraktion und deterministische Uhr
+- typisiertes Asset-Domain-Snapshot aus `normal_operation`
 
 ## Sicherheitsplanken
 
@@ -140,7 +168,6 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- echtes Fachmodell fuer Site, PPC, Inverter-Bloecke, Weather, Meter und Grid
 - Simulationskern fuer normale Erzeugung, Curtailment, Breaker offen,
   Kommunikationsverlust
 - Alarmzustandslogik jenseits des Fixture-Snapshots
@@ -160,20 +187,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `asset_domain` als gemeinsame Wahrheit modellieren
-2. `plant_sim` fuer die Kernszenarien aufziehen
-3. zuerst nur fachlich und testbar, noch ohne Modbus oder HMI
+1. `plant_sim` fuer die Kernszenarien aufziehen
+2. zuerst nur fachlich und testbar, noch ohne Modbus oder HMI
+3. danach Event-Core, Storage und Outbox anschliessen
 
 Empfohlener erster atomarer Fix in Phase B:
 
-- Grundmodelle fuer
-  - `site`
-  - `power_plant_controller`
-  - `inverter_block`
-  - `weather_station`
-  - `revenue_meter`
-  - `grid_interconnect`
-- plus ein kleiner fachlicher Test fuer `normal_operation`
+- deterministische Simulationslogik fuer:
+  - `normal`
+  - `curtailed`
+  - `breaker_open`
+  - `comm_loss_single_block`
+- plus fokussierte Unit-Tests fuer Ursache/Wirkung im Fachmodell
 
 Nicht als naechstes tun:
 
