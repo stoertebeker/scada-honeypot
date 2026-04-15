@@ -38,12 +38,12 @@ Vorhanden sind:
 - Fixture-System mit erstem ladbaren Startzustand `normal_operation`
 - typisiertes Fachmodell fuer Site, PPC, Inverter-Bloecke, Wetter, Meter und Grid
 - Fixture-zu-Domaenen-Mapping ueber `PlantSnapshot.from_fixture()`
+- deterministischer `plant_sim`-Kern fuer `normal`, `curtailed`, `breaker_open` und `comm_loss_single_block`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit-Tests fuer Konfiguration, Fixtures, Zeitkern und Asset-Domain-Snapshot
+- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern und Simulationsszenarien
 
 Noch nicht vorhanden:
-- dynamischer Simulationskern fuer normale Erzeugung, Curtailment, Breaker offen und Kommunikationsverlust
 - Eventstore-Implementierung
 - Rule-Engine und Alarmdynamik jenseits des Fixture-Snapshots
 - Modbus-Server
@@ -97,7 +97,7 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt in Phase B unterwegs. Der naechste konkrete Schlag
 sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Simulationskern auf das vorhandene Fachmodell setzen
+1. Alarmzustandslogik und Zustandsqualitaet auf den vorhandenen Simulationskern setzen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

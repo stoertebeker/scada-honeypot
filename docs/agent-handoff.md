@@ -24,6 +24,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `a7f5954` `feat: add deterministic plant simulation scenarios`
 - `56e1f98` `feat: add typed asset domain snapshot`
 - `cd18d1b` `feat: add deterministic test clock`
 - `1ac917e` `feat: add loadable plant fixture`
@@ -128,6 +129,29 @@ Vorhanden:
   - aktive Alarmanzahl gegen aktive Alarmcodes
 - erster Unit-Test fuer `normal_operation`
 
+### 6. Deterministische Simulationsszenarien
+
+Dateien:
+
+- `src/honeypot/plant_sim/core.py`
+- `src/honeypot/plant_sim/__init__.py`
+- `tests/unit/test_plant_sim.py`
+
+Vorhanden:
+
+- `PlantSimulator.from_snapshot()` leitet eine nominale Parkleistung aus dem Referenzzustand ab
+- `estimate_available_power_kw()` skaliert Leistung plausibel mit der Einstrahlung
+- deterministische Szenariofunktionen fuer:
+  - `simulate_normal_operation()`
+  - `apply_curtailment()`
+  - `open_breaker()`
+  - `lose_block_communications()`
+- Szenario-spezifische Alarme:
+  - `PLANT_CURTAILED`
+  - `BREAKER_OPEN`
+  - `COMM_LOSS_INVERTER_BLOCK`
+- Unit-Tests fuer Ursache/Wirkung von Curtailment, Breaker offen und Kommunikationsverlust
+
 ## Teststand
 
 Aktuell gruen:
@@ -136,7 +160,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `18 passed`
+- `22 passed`
 
 Abgedeckt sind bisher:
 
@@ -145,6 +169,7 @@ Abgedeckt sind bisher:
 - Fixture-Laden und Fehlerpfade
 - Zeitabstraktion und deterministische Uhr
 - typisiertes Asset-Domain-Snapshot aus `normal_operation`
+- deterministische Simulationsszenarien fuer Kernszenarien aus Phase B
 
 ## Sicherheitsplanken
 
@@ -168,8 +193,6 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Simulationskern fuer normale Erzeugung, Curtailment, Breaker offen,
-  Kommunikationsverlust
 - Alarmzustandslogik jenseits des Fixture-Snapshots
 - Event-Core, Storage, Outbox
 - Modbus-Server
@@ -187,18 +210,16 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `plant_sim` fuer die Kernszenarien aufziehen
-2. zuerst nur fachlich und testbar, noch ohne Modbus oder HMI
+1. Alarmzustandslogik und Zustandsqualitaet auf den vorhandenen Simulationskern setzen
+2. zuerst weiter nur fachlich und testbar, noch ohne Modbus oder HMI
 3. danach Event-Core, Storage und Outbox anschliessen
 
 Empfohlener erster atomarer Fix in Phase B:
 
-- deterministische Simulationslogik fuer:
-  - `normal`
-  - `curtailed`
-  - `breaker_open`
-  - `comm_loss_single_block`
-- plus fokussierte Unit-Tests fuer Ursache/Wirkung im Fachmodell
+- Alarmzustandswechsel fuer `inactive`, `active_unacknowledged`,
+  `active_acknowledged`, `cleared`
+- plus fachliche Regeln fuer `good/estimated/stale/invalid`
+- plus fokussierte Unit-Tests fuer Alarm- und Qualitaetsuebergaenge
 
 Nicht als naechstes tun:
 
