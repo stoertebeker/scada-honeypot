@@ -39,17 +39,17 @@ Vorhanden sind:
 - typisiertes Fachmodell fuer Site, PPC, Inverter-Bloecke, Wetter, Meter und Grid
 - Fixture-zu-Domaenen-Mapping ueber `PlantSnapshot.from_fixture()`
 - deterministischer `plant_sim`-Kern fuer `normal`, `curtailed`, `breaker_open` und `comm_loss_single_block`
+- `plant_sim` schreibt fachliche Schreibwirkungen fuer Curtailment, Breaker und Kommunikationsverlust ueber `EventRecorder` in `event_log`, `current_state` und `alert_log`
 - Alarmlebenszyklus fuer `inactive`, `active_unacknowledged`, `active_acknowledged` und `cleared`
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge sowie Event-/Persistenzvertrag
+- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge sowie Event-/Persistenzvertrag inklusive `plant_sim`-Eventspur
 
 Noch nicht vorhanden:
 - JSONL-Archivpfad fuer Eventexport
-- Verdrahtung des Simulationskerns auf den Event-Core bei fachlichen Schreibwirkungen
 - Rule-Engine und eventgetriebene Alarmableitung
 - Modbus-Server
 - Web-HMI
@@ -102,18 +102,17 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt am Uebergang von Phase B zu Phase C unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. `plant_sim`-Schreibwirkungen ueber `EventRecorder` in `current_state` und `event_log` verdrahten
+1. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle auf den vorhandenen Eventstore setzen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. Simulationskern an `event_core` und Persistenz koppeln
-2. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
-3. erste read-only `Modbus/TCP`-Scheibe
-4. vollstaendige Registermatrix mit Write-Pfaden
-5. read-only HMI
-6. HMI-Servicepfade
-7. Alerts und Exporter
-8. Hardening und Anti-Fingerprint
+1. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
+2. erste read-only `Modbus/TCP`-Scheibe
+3. vollstaendige Registermatrix mit Write-Pfaden
+4. read-only HMI
+5. HMI-Servicepfade
+6. Alerts und Exporter
+7. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

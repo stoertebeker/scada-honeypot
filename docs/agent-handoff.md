@@ -25,6 +25,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `04ebab8` `feat: record plant sim state transitions`
 - `cd25146` `feat: add event recorder and sqlite store`
 - `6dc38a9` `feat: add alarm lifecycle to plant sim`
 - `a7f5954` `feat: add deterministic plant simulation scenarios`
@@ -221,6 +222,43 @@ Vorhanden:
   - Persistenz von Event, State, Alert und Outbox
   - lokale Wahrheit ohne erzwungene Outbox-Ziele
 
+### 9. Plant-Sim-Eventspur auf dem lokalen Wahrheitskern
+
+Dateien:
+
+- `src/honeypot/plant_sim/core.py`
+- `src/honeypot/plant_sim/__init__.py`
+- `src/honeypot/storage/sqlite_store.py`
+- `tests/unit/test_plant_sim.py`
+
+Vorhanden:
+
+- optionaler `EventRecorder` an `PlantSimulator.from_snapshot()`
+- `SimulationEventContext` fuer uebergebene Metadaten wie `source_ip`,
+  `actor_type`, `correlation_id`, `protocol` und `service`
+- Eventspur fuer fachliche Schreibpfade:
+  - `apply_curtailment()`
+  - `open_breaker()`
+  - `lose_block_communications()`
+  - `acknowledge_alarm()`
+- lokale Persistenz der resultierenden Wahrheit in:
+  - `event_log`
+  - `current_state`
+  - `alert_log`
+- fokussierte Eventtypen fuer:
+  - Curtailment
+  - Breaker-Zustandswechsel
+  - Kommunikationsverlust eines Inverter-Blocks
+- kleine Store-Lesehilfen fuer Tests:
+  - `fetch_events()`
+  - `fetch_alerts()`
+  - `fetch_current_state()`
+- Unit-Tests fuer:
+  - uebergebene `correlation_id` und Quellmetadaten
+  - Eventspur und Alert fuer Curtailment
+  - Eventspur und Null-Export bei offenem Breaker
+  - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
+
 ## Teststand
 
 Aktuell gruen:
@@ -229,7 +267,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `28 passed`
+- `31 passed`
 
 Abgedeckt sind bisher:
 
@@ -241,6 +279,7 @@ Abgedeckt sind bisher:
 - deterministische Simulationsszenarien fuer Kernszenarien aus Phase B
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
+- Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 
 ## Sicherheitsplanken
 
@@ -264,8 +303,6 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Verdrahtung des Simulationskerns auf `event_core` bei fachlichen
-  Schreibwirkungen
 - JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
 - Modbus-Server
@@ -283,18 +320,16 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `plant_sim`-Schreibpfade ueber `EventRecorder` auf `current_state`,
-   `event_log` und bei Bedarf `alert_log` verdrahten
+1. JSONL-Archivpfad aus dem bestehenden Eventstore schreiben
 2. zuerst weiter nur fachlich und testbar, noch ohne Modbus oder HMI
-3. danach JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nachziehen
+3. danach minimale Rule-Engine-Schnittstelle fuer Event-zu-Alert-Bewertung nachziehen
 4. erst dann Modbus- und HMI-Slices anschliessen
 
 Empfohlener naechster atomarer Fix in Phase C:
 
-- `PlantSimulator`-Schreiboperationen mit `EventRecorder` koppeln
-- pro fachlicher Wirkung `EventRecord` plus `current_state`-Update erzeugen
-- fokussierte Unit-Tests fuer Eventspur bei Curtailment, Breaker offen und
-  Kommunikationsverlust
+- taeglichen oder rotierten JSONL-Archivpfad aus `event_log` aufsetzen
+- Schalter und Pfad an bestehende Runtime-Konfiguration andocken
+- fokussierte Unit-Tests fuer JSONL-Ausgabe ohne Blockierung des Kernpfads
 
 Nicht als naechstes tun:
 
