@@ -16,8 +16,8 @@ Die Anlage soll:
 
 ## Aktueller Stand
 
-Das Projekt befindet sich aktuell im **fruehen Implementierungsstart von
-Phase B**.
+Das Projekt befindet sich aktuell im **fruehen Implementierungsstand von
+Phase C**.
 
 Vorhanden sind:
 - Scope
@@ -41,12 +41,15 @@ Vorhanden sind:
 - deterministischer `plant_sim`-Kern fuer `normal`, `curtailed`, `breaker_open` und `comm_loss_single_block`
 - Alarmlebenszyklus fuer `inactive`, `active_unacknowledged`, `active_acknowledged` und `cleared`
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
+- kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
+- lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien und Alarm-/Qualitaetsuebergaenge
+- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge sowie Event-/Persistenzvertrag
 
 Noch nicht vorhanden:
-- Eventstore-Implementierung
+- JSONL-Archivpfad fuer Eventexport
+- Verdrahtung des Simulationskerns auf den Event-Core bei fachlichen Schreibwirkungen
 - Rule-Engine und eventgetriebene Alarmableitung
 - Modbus-Server
 - Web-HMI
@@ -96,20 +99,21 @@ Die wichtigsten Dokumente:
 
 ## Empfohlener naechster Baukurs
 
-Die Deckscrew ist jetzt in Phase B unterwegs. Der naechste konkrete Schlag
-sollte innerhalb der Roadmap-Reihenfolge sein:
+Die Deckscrew ist jetzt am Uebergang von Phase B zu Phase C unterwegs. Der
+naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Event-Core, Storage und Outbox auf den vorhandenen Fachkern setzen
+1. `plant_sim`-Schreibwirkungen ueber `EventRecorder` in `current_state` und `event_log` verdrahten
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. Event-Core, Storage und Outbox
-2. erste read-only `Modbus/TCP`-Scheibe
-3. vollstaendige Registermatrix mit Write-Pfaden
-4. read-only HMI
-5. HMI-Servicepfade
-6. Alerts und Exporter
-7. Hardening und Anti-Fingerprint
+1. Simulationskern an `event_core` und Persistenz koppeln
+2. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
+3. erste read-only `Modbus/TCP`-Scheibe
+4. vollstaendige Registermatrix mit Write-Pfaden
+5. read-only HMI
+6. HMI-Servicepfade
+7. Alerts und Exporter
+8. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

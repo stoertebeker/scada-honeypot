@@ -18,12 +18,14 @@ praktisch abgeschlossen**:
 Wichtiger Kurs:
 
 - **Nicht** mit Modbus oder HMI anfangen, bevor Phase B sauber steht
-- naechster echter Bauabschnitt ist `asset_domain` plus `plant_sim`
-- Ziel bleibt eine gemeinsame Wahrheit fuer Anlage, Zustaende, Setpoints und
-  Alarme
+- `asset_domain`, `plant_sim` und der Start von `event_core` stehen jetzt als
+  gemeinsamer Fachkern
+- Ziel bleibt die lueckenlose Eventspur fuer jede fachliche Schreibwirkung,
+  bevor Modbus oder HMI drankommen
 
 ## Letzte Commits
 
+- `cd25146` `feat: add event recorder and sqlite store`
 - `6dc38a9` `feat: add alarm lifecycle to plant sim`
 - `a7f5954` `feat: add deterministic plant simulation scenarios`
 - `56e1f98` `feat: add typed asset domain snapshot`
@@ -179,6 +181,46 @@ Vorhanden:
   - `invalid`
 - Unit-Tests fuer `acknowledged != cleared` und fuer alle vier Qualitaetszustaende
 
+### 8. Event-Core, Storage und Outbox-Grundlage
+
+Dateien:
+
+- `src/honeypot/event_core/models.py`
+- `src/honeypot/event_core/recorder.py`
+- `src/honeypot/event_core/__init__.py`
+- `src/honeypot/storage/sqlite_store.py`
+- `src/honeypot/storage/__init__.py`
+- `tests/unit/test_event_core.py`
+
+Vorhanden:
+
+- kanonische Pydantic-Modelle fuer:
+  - `EventRecord`
+  - `AlertRecord`
+  - `OutboxEntry`
+  - `RecordedArtifacts`
+- strikte Normalisierung fuer Pflichtfelder, UTC-Zeitstempel und optionale
+  Metadaten
+- `EventRecorder.build_event()` mit generierten `event_id`- und
+  `correlation_id`-Ketten
+- `EventRecorder.build_alert()` zur Ableitung lokaler Alerts aus Kern-Events
+- `EventRecorder.record()` fuer:
+  - `event_log`
+  - `current_state`
+  - `alert_log`
+  - optionale Outbox-Auftraege fuer spaetere Exporter
+- `SQLiteEventStore` im `WAL`-Modus fuer:
+  - `current_state`
+  - `event_log`
+  - `alert_log`
+  - `outbox`
+- Guardrails gegen leere `state_key`- und `target_type`-Werte
+- Unit-Tests fuer:
+  - kanonische Feldnormalisierung
+  - Korrelation ueber `correlation_id` plus `causation_id`
+  - Persistenz von Event, State, Alert und Outbox
+  - lokale Wahrheit ohne erzwungene Outbox-Ziele
+
 ## Teststand
 
 Aktuell gruen:
@@ -187,7 +229,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `24 passed`
+- `28 passed`
 
 Abgedeckt sind bisher:
 
@@ -198,6 +240,7 @@ Abgedeckt sind bisher:
 - typisiertes Asset-Domain-Snapshot aus `normal_operation`
 - deterministische Simulationsszenarien fuer Kernszenarien aus Phase B
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
+- Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 
 ## Sicherheitsplanken
 
@@ -221,7 +264,9 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Event-Core, Storage, Outbox
+- Verdrahtung des Simulationskerns auf `event_core` bei fachlichen
+  Schreibwirkungen
+- JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
 - Modbus-Server
 - HMI
@@ -234,25 +279,29 @@ Operative Hinweise:
 
 ## Naechster Schritt
 
-### Phase B beginnen
+### Phase C fortsetzen
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. Event-Core, Storage und Outbox auf den vorhandenen Fachkern setzen
+1. `plant_sim`-Schreibpfade ueber `EventRecorder` auf `current_state`,
+   `event_log` und bei Bedarf `alert_log` verdrahten
 2. zuerst weiter nur fachlich und testbar, noch ohne Modbus oder HMI
-3. danach Modbus- und HMI-Slices anschliessen
+3. danach JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nachziehen
+4. erst dann Modbus- und HMI-Slices anschliessen
 
-Empfohlener erster atomarer Fix in Phase B:
+Empfohlener naechster atomarer Fix in Phase C:
 
-- kanonisches Event-Modell mit Pflichtfeldern und lokaler Normalisierung
-- plus Outbox-/Persistenz-Grundstruktur fuer `event_log`, `alert_log`, `outbox`
-- plus fokussierte Unit-Tests fuer Event-Konsistenz und Nicht-Blockierung
+- `PlantSimulator`-Schreiboperationen mit `EventRecorder` koppeln
+- pro fachlicher Wirkung `EventRecord` plus `current_state`-Update erzeugen
+- fokussierte Unit-Tests fuer Eventspur bei Curtailment, Breaker offen und
+  Kommunikationsverlust
 
 Nicht als naechstes tun:
 
 - keinen Modbus-Vertical-Slice vorziehen
 - keine HMI vorziehen
-- keine Storage- oder Exporter-Pfade anfassen, bevor das Fachmodell steht
+- keine Exporter oder externe Auslieferung vorziehen, bevor Eventspur und
+  JSONL/Rule-Engine-Basis sauber stehen
 
 ## Vor dem Weiterbauen lesen
 
