@@ -122,8 +122,13 @@ Wichtige Regeln:
 Der Standardport ist:
 - `502/tcp`
 
+Fuer den aktuellen `design-local`-Betrieb gilt zusaetzlich:
+- Default in `.env.example` und `RuntimeConfig`: `1502/tcp`
+- Grund: lokaler Start ohne privilegierte Ports
+- die fachliche Protokollwirkung bleibt dabei identisch
+
 Das Projekt soll spaeter konfigurierbar erlauben:
-- alternativen Port fuer Laborbetrieb
+- Rueckkehr auf `502/tcp` fuer bewusst freigegebene Deployments
 - weiterhin dieselbe fachliche Protokollwirkung
 
 Wichtige Sicherheitsvorgabe:

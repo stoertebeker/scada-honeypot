@@ -47,13 +47,14 @@ Vorhanden sind:
 - erster `Modbus/TCP`-Vertical-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, Setpoint-Block und erstem `FC06`-Write-Pfad fuer `40200 active_power_limit_pct_x10`
 - `FC06` auf `40200` koppelt jetzt Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
-- minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit- und Contract-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge, Event-/Persistenzvertrag sowie den ersten `FC03`/`FC06`-Modbus-Slice
+- lokaler Prozesseinstieg ueber `uv run python -m honeypot.main`, der `normal_operation`, `SQLiteEventStore` und den Modbus-Listener auf `127.0.0.1` bootstrapt
+- Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
+- lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
+- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den ersten `FC03`/`FC06`-Modbus-Slice und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
 - JSONL-Archivpfad fuer Eventexport
 - Rule-Engine und eventgetriebene Alarmableitung
-- Runtime-Orchestrierung, die den Modbus-Dienst ueber `honeypot.main` auf `127.0.0.1` startet
 - restliche Modbus-Write-Pfade fuer `FC16`, weitere Setpoints und weitere aktive Units
 - Web-HMI
 - Exporter-Implementierung
@@ -105,11 +106,11 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. den lokalen `Modbus/TCP`-Listener in `honeypot.main` verdrahten und den ersten `Unit 1`-Slice sauber auf `127.0.0.1` starten
+1. `FC16` fuer den PPC-Setpoint-Block auf `Unit 1` nachziehen und dabei die gleiche fachliche Wirkung und Eventspur wie bei `FC06` halten
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. `FC16`, restliche Registermatrix und weitere aktive Units fuer Modbus
+1. restliche Registermatrix und weitere aktive Units fuer Modbus
 2. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
 3. read-only HMI
 4. HMI-Servicepfade
@@ -158,6 +159,10 @@ Fuer lokale Entwicklung und Tests binden `MODBUS_BIND_HOST` und
 `HMI_BIND_HOST` standardmaessig an `127.0.0.1`. Eine Bindung an `0.0.0.0`
 oder andere Interfaces ist eine bewusste Deployment-Entscheidung und darf erst
 nach den Security-Gates erfolgen.
+
+Der Design-Local-Default fuer `MODBUS_PORT` liegt bei `1502`, damit der lokale
+Prozesseinstieg ohne privilegierte Ports laeuft. Fuer spaetere Lab-/Exposure-
+Deployments kann bewusst auf `502` gewechselt werden.
 
 - Logging und Events:
   - `EVENT_STORE_BACKEND`

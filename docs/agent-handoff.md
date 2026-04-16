@@ -25,6 +25,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `114c271` `feat: boot local modbus runtime`
 - `0be087b` `feat: add fc06 curtailment write path`
 - `9f0b0a3` `feat: add read-only modbus slice`
 - `04ebab8` `feat: record plant sim state transitions`
@@ -45,9 +46,21 @@ Wichtiger Kurs:
 
 - `Python 3.12` und `uv` sind verdrahtet
 - zentrale Paketdefinition in `pyproject.toml`
-- minimaler Prozesseinstieg in `src/honeypot/main.py`
+- lokaler Prozesseinstieg in `src/honeypot/main.py`
 - Startkommando funktioniert:
   `uv run python -m honeypot.main`
+- `build_local_runtime()` bootstrapt aktuell:
+  - `RuntimeConfig`
+  - `PlantSnapshot(normal_operation)`
+  - `SQLiteEventStore`
+  - `EventRecorder`
+  - `ReadOnlyRegisterMap`
+  - `ReadOnlyModbusTcpService`
+- `main()` startet den lokalen Modbus-Listener und bleibt bis `KeyboardInterrupt`
+  aktiv
+- Sicherheitsregel im Startpfad:
+  - `MODBUS_BIND_HOST` muss derzeit `127.0.0.1` bleiben
+  - Design-Local-Default fuer `MODBUS_PORT` ist `1502`
 
 ### 2. Konfiguration
 
@@ -322,7 +335,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `44 passed`
+- `46 passed`
 
 Abgedeckt sind bisher:
 
@@ -336,6 +349,7 @@ Abgedeckt sind bisher:
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`, Contract-Tests und korrelierter Eventspur
+- lokaler Runtime-Startpfad mit `build_local_runtime()` und Socket-Smoke-Test
 
 ## Sicherheitsplanken
 
@@ -361,8 +375,6 @@ Noch **nicht** vorhanden:
 
 - JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
-- Runtime-Orchestrierung, die den Modbus-Dienst ueber `honeypot.main` lokal
-  startet
 - restliche Modbus-Write-Pfade fuer `FC16`, weitere Setpoints und weitere
   aktive Units
 - HMI
@@ -379,20 +391,19 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. den lokalen `Modbus/TCP`-Listener in `honeypot.main` auf `127.0.0.1`
-   verdrahten
-2. dabei `normal_operation`, `EventRecorder` und den aktuellen `Unit 1`-Slice
-   sauber bootstrappen
-3. danach `FC16`, restliche Registermatrix und weitere Units erweitern
+1. `FC16` fuer den PPC-Setpoint-Block auf `Unit 1` nachziehen
+2. dabei dieselbe Fachwirkung wie `FC06` beibehalten:
+   `plant_sim.apply_curtailment()` plus korrelierte Eventspur
+3. danach restliche Registermatrix und weitere Units erweitern
 4. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nicht vergessen
 5. erst dann HMI-Slices anschliessen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `main.py` startet lokal einen `Modbus/TCP`-Listener auf `127.0.0.1`
-- Bootstrapping von `PlantSnapshot(normal_operation)` + `EventRecorder` +
-  `ReadOnlyRegisterMap`
-- fokussierter Smoke-Test fuer Prozessstart und lokalen TCP-Connect
+- `FC16` fuer `40200-40202` auf `Unit 1`
+- beim Einregister-Fall identische Wirkung wie `FC06`
+- fokussierte Contract-Tests fuer Mehrregister-Header, Wertvalidierung und
+  korrelierte Eventkette
 
 Nicht als naechstes tun:
 
