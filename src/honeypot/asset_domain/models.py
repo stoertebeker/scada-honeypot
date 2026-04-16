@@ -36,7 +36,7 @@ class SiteState(BaseModel):
     operating_mode: OperatingMode
     availability_state: AvailabilityState
     plant_power_mw: float = Field(ge=0)
-    plant_power_limit_pct: int = Field(ge=0, le=100)
+    plant_power_limit_pct: float = Field(ge=0, le=100, multiple_of=0.1)
     reactive_power_setpoint: float = Field(ge=-1.0, le=1.0)
     breaker_state: BreakerState
     communications_health: CommunicationState
@@ -57,7 +57,7 @@ class AssetBase(BaseModel):
 class PowerPlantController(AssetBase):
     """Zentrale Setpoint- und Betriebsinstanz des Parks."""
 
-    active_power_limit_pct: int = Field(ge=0, le=100)
+    active_power_limit_pct: float = Field(ge=0, le=100, multiple_of=0.1)
     reactive_power_target: float = Field(ge=-1.0, le=1.0)
     control_authority: ControlAuthority
 
@@ -137,7 +137,11 @@ class PlantSnapshot(BaseModel):
             raise ValueError("mindestens ein inverter_block ist erforderlich")
         if self.site.breaker_state != self.grid_interconnect.breaker_state:
             raise ValueError("site.breaker_state und grid_interconnect.breaker_state muessen uebereinstimmen")
-        if self.site.plant_power_limit_pct != self.power_plant_controller.active_power_limit_pct:
+        if not isclose(
+            self.site.plant_power_limit_pct,
+            self.power_plant_controller.active_power_limit_pct,
+            abs_tol=1e-9,
+        ):
             raise ValueError(
                 "site.plant_power_limit_pct und power_plant_controller.active_power_limit_pct muessen uebereinstimmen"
             )

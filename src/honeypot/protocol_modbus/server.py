@@ -1,4 +1,4 @@
-"""Kleiner read-only Modbus/TCP-Server fuer den ersten V1-Slice."""
+"""Kleiner Modbus/TCP-Server fuer den ersten V1-Slice."""
 
 from __future__ import annotations
 
@@ -8,11 +8,14 @@ from socketserver import BaseRequestHandler, ThreadingTCPServer
 from struct import pack, unpack
 from threading import Thread
 from typing import Any
+from uuid import uuid4
 
 from honeypot.event_core import EventRecorder
+from honeypot.plant_sim import SimulationEventContext
 from honeypot.protocol_modbus.registers import (
     ILLEGAL_DATA_ADDRESS,
     ILLEGAL_FUNCTION,
+    ILLEGAL_DATA_VALUE,
     ModbusRegisterError,
     READ_HOLDING_REGISTERS,
     READ_INPUT_REGISTERS,
@@ -37,7 +40,7 @@ class _ModbusThreadingServer(ThreadingTCPServer):
 
 @dataclass(slots=True)
 class ReadOnlyModbusTcpService:
-    """Verwaltet einen kleinen read-only Modbus/TCP-Server."""
+    """Verwaltet einen kleinen Modbus/TCP-Server fuer den aktuellen V1-Slice."""
 
     register_map: ReadOnlyRegisterMap
     bind_host: str
@@ -127,7 +130,16 @@ def _build_handler(
                         pdu=pdu,
                         source_ip=source_ip,
                     )
-                elif function_code in (WRITE_SINGLE_REGISTER, WRITE_MULTIPLE_REGISTERS):
+                elif function_code == WRITE_SINGLE_REGISTER:
+                    response = _handle_fc06_request(
+                        register_map,
+                        event_recorder,
+                        transaction_id=transaction_id,
+                        unit_id=unit_id,
+                        pdu=pdu,
+                        source_ip=source_ip,
+                    )
+                elif function_code == WRITE_MULTIPLE_REGISTERS:
                     response = _exception_response(
                         transaction_id=transaction_id,
                         unit_id=unit_id,
@@ -144,7 +156,7 @@ def _build_handler(
                         asset_id=_asset_id_for_unit(unit_id),
                         result="rejected",
                         error_code="modbus_exception_02",
-                        message="write auf read-only Slice ist nicht erlaubt",
+                        message="FC16 ist im aktuellen Slice noch nicht aktiv",
                     )
                 else:
                     response = _exception_response(
@@ -257,6 +269,98 @@ def _handle_fc03_request(
     return response
 
 
+def _handle_fc06_request(
+    register_map: ReadOnlyRegisterMap,
+    event_recorder: EventRecorder | None,
+    *,
+    transaction_id: int,
+    unit_id: int,
+    pdu: bytes,
+    source_ip: str,
+) -> bytes:
+    if len(pdu) != 5:
+        response = _exception_response(
+            transaction_id=transaction_id,
+            unit_id=unit_id,
+            function_code=WRITE_SINGLE_REGISTER,
+            exception_code=ILLEGAL_DATA_VALUE,
+        )
+        _log_request(
+            event_recorder,
+            source_ip=source_ip,
+            unit_id=unit_id,
+            function_code=WRITE_SINGLE_REGISTER,
+            register_start=None,
+            register_count=None,
+            asset_id=_asset_id_for_unit(unit_id),
+            result="rejected",
+            error_code="modbus_exception_03",
+            message="ungueltige FC06-PDU-Laenge",
+        )
+        return response
+
+    start_offset, value = unpack(">HH", pdu[1:])
+    correlation_id = f"corr_{uuid4().hex}"
+    try:
+        result = register_map.write_single_register(
+            unit_id=unit_id,
+            start_offset=start_offset,
+            value=value,
+            event_context=SimulationEventContext(
+                source_ip=source_ip,
+                actor_type="remote_client",
+                correlation_id=correlation_id,
+                protocol=DEFAULT_PROTOCOL,
+                service=DEFAULT_SERVICE,
+            ),
+        )
+    except ModbusRegisterError as exc:
+        response = _exception_response(
+            transaction_id=transaction_id,
+            unit_id=unit_id,
+            function_code=WRITE_SINGLE_REGISTER,
+            exception_code=exc.exception_code,
+        )
+        _log_request(
+            event_recorder,
+            source_ip=source_ip,
+            unit_id=unit_id,
+            function_code=WRITE_SINGLE_REGISTER,
+            register_start=human_register_address(start_offset),
+            register_count=1,
+            asset_id=_asset_id_for_unit(unit_id),
+            result="rejected",
+            requested_register_value=value,
+            error_code=f"modbus_exception_{exc.exception_code:02d}",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+        return response
+
+    response = _build_adu(
+        transaction_id=transaction_id,
+        unit_id=unit_id,
+        pdu=pack(">BHH", WRITE_SINGLE_REGISTER, start_offset, result.resulting_value),
+    )
+    _log_request(
+        event_recorder,
+        source_ip=source_ip,
+        unit_id=unit_id,
+        function_code=WRITE_SINGLE_REGISTER,
+        register_start=result.register_address,
+        register_count=1,
+        asset_id=result.asset_id,
+        result="accepted",
+        requested_register_value=result.requested_value,
+        previous_value=result.previous_value,
+        resulting_value=result.resulting_value,
+        resulting_state=result.resulting_state,
+        message="FC06 write accepted",
+        correlation_id=correlation_id,
+    )
+    return response
+
+
 def _build_adu(*, transaction_id: int, unit_id: int, pdu: bytes) -> bytes:
     return pack(">HHHB", transaction_id, 0, len(pdu) + 1, unit_id) + pdu
 
@@ -297,18 +401,37 @@ def _log_request(
     result: str,
     error_code: str | None = None,
     message: str | None = None,
-    resulting_value: list[int] | None = None,
+    requested_register_value: int | None = None,
+    previous_value: int | None = None,
+    resulting_value: Any | None = None,
+    resulting_state: dict[str, object] | None = None,
+    correlation_id: str | None = None,
 ) -> None:
     if recorder is None:
         return
 
-    action = "read_holding_registers" if function_code == READ_HOLDING_REGISTERS else f"fc{function_code:02d}"
+    if function_code == READ_HOLDING_REGISTERS:
+        event_type = "protocol.modbus.holding_registers_read"
+        action = "read_holding_registers"
+    elif function_code == WRITE_SINGLE_REGISTER and result == "accepted":
+        event_type = "protocol.modbus.single_register_write"
+        action = "write_single_register"
+    else:
+        event_type = "protocol.modbus.request_rejected"
+        action = f"fc{function_code:02d}"
+
+    requested_value = {
+        "unit_id": unit_id,
+        "function_code": function_code,
+        "register_start": register_start,
+        "register_count": register_count,
+        "value_encoding": "u16",
+    }
+    if requested_register_value is not None:
+        requested_value["register_value"] = requested_register_value
+
     event = recorder.build_event(
-        event_type=(
-            "protocol.modbus.holding_registers_read"
-            if function_code == READ_HOLDING_REGISTERS
-            else "protocol.modbus.request_rejected"
-        ),
+        event_type=event_type,
         category="protocol",
         severity="info" if result == "accepted" else "low",
         source_ip=source_ip,
@@ -317,6 +440,7 @@ def _log_request(
         asset_id=asset_id,
         action=action,
         result=result,
+        correlation_id=correlation_id,
         protocol=DEFAULT_PROTOCOL,
         service=DEFAULT_SERVICE,
         endpoint_or_register=(
@@ -324,14 +448,10 @@ def _log_request(
             if register_start is None or register_count is None
             else f"unit/{unit_id}/{register_start}-{register_start + register_count - 1}"
         ),
-        requested_value={
-            "unit_id": unit_id,
-            "function_code": function_code,
-            "register_start": register_start,
-            "register_count": register_count,
-            "value_encoding": "u16",
-        },
+        requested_value=requested_value,
+        previous_value=previous_value,
         resulting_value=resulting_value,
+        resulting_state=resulting_state,
         error_code=error_code,
         message=message,
         tags=("protocol", "modbus", f"fc{function_code:02d}"),

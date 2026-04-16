@@ -155,30 +155,31 @@ class PlantSimulator:
         self,
         snapshot: PlantSnapshot,
         *,
-        active_power_limit_pct: int,
+        active_power_limit_pct: float,
         event_context: SimulationEventContext | None = None,
     ) -> PlantSnapshot:
         """Reduziert die Parkleistung ueber den PPC-Wirkleistungsgrenzwert."""
 
         if not 0 <= active_power_limit_pct <= 100:
             raise PlantSimulationError("active_power_limit_pct muss im Bereich 0..100 liegen")
+        normalized_limit_pct = round(active_power_limit_pct, 1)
 
         base_snapshot = self.simulate_normal_operation(snapshot)
         total_power_kw = round(
-            self.estimate_available_power_kw(base_snapshot) * (active_power_limit_pct / 100),
+            self.estimate_available_power_kw(base_snapshot) * (normalized_limit_pct / 100),
             1,
         )
         inverter_blocks = _with_rebalanced_block_power(base_snapshot, total_power_kw)
         site = base_snapshot.site.model_copy(
             update={
-                "operating_mode": "normal" if active_power_limit_pct == 100 else "curtailed",
+                "operating_mode": "normal" if normalized_limit_pct == 100 else "curtailed",
                 "plant_power_mw": round(total_power_kw / 1000, 3),
-                "plant_power_limit_pct": active_power_limit_pct,
+                "plant_power_limit_pct": normalized_limit_pct,
             }
         )
         power_plant_controller = base_snapshot.power_plant_controller.model_copy(
             update={
-                "active_power_limit_pct": active_power_limit_pct,
+                "active_power_limit_pct": normalized_limit_pct,
             }
         )
         revenue_meter = base_snapshot.revenue_meter.model_copy(
@@ -188,7 +189,7 @@ class PlantSimulator:
         )
         alarms = _replace_scenario_alarms(
             base_snapshot.alarms,
-            "PLANT_CURTAILED" if active_power_limit_pct < 100 else None,
+            "PLANT_CURTAILED" if normalized_limit_pct < 100 else None,
         )
         resulting_snapshot = _build_snapshot(
             base_snapshot,
@@ -206,7 +207,7 @@ class PlantSimulator:
             severity="high",
             asset_id=resulting_snapshot.power_plant_controller.asset_id,
             action="set_active_power_limit",
-            requested_value=active_power_limit_pct,
+            requested_value=normalized_limit_pct,
             previous_value=snapshot.power_plant_controller.active_power_limit_pct,
             resulting_value=resulting_snapshot.power_plant_controller.active_power_limit_pct,
             resulting_state={
