@@ -140,23 +140,13 @@ def _build_handler(
                         source_ip=source_ip,
                     )
                 elif function_code == WRITE_MULTIPLE_REGISTERS:
-                    response = _exception_response(
+                    response = _handle_fc16_request(
+                        register_map,
+                        event_recorder,
                         transaction_id=transaction_id,
                         unit_id=unit_id,
-                        function_code=function_code,
-                        exception_code=ILLEGAL_DATA_ADDRESS,
-                    )
-                    _log_request(
-                        event_recorder,
+                        pdu=pdu,
                         source_ip=source_ip,
-                        unit_id=unit_id,
-                        function_code=function_code,
-                        register_start=None,
-                        register_count=None,
-                        asset_id=_asset_id_for_unit(unit_id),
-                        result="rejected",
-                        error_code="modbus_exception_02",
-                        message="FC16 ist im aktuellen Slice noch nicht aktiv",
                     )
                 else:
                     response = _exception_response(
@@ -361,6 +351,121 @@ def _handle_fc06_request(
     return response
 
 
+def _handle_fc16_request(
+    register_map: ReadOnlyRegisterMap,
+    event_recorder: EventRecorder | None,
+    *,
+    transaction_id: int,
+    unit_id: int,
+    pdu: bytes,
+    source_ip: str,
+) -> bytes:
+    if len(pdu) < 6:
+        response = _exception_response(
+            transaction_id=transaction_id,
+            unit_id=unit_id,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            exception_code=ILLEGAL_DATA_VALUE,
+        )
+        _log_request(
+            event_recorder,
+            source_ip=source_ip,
+            unit_id=unit_id,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            register_start=None,
+            register_count=None,
+            asset_id=_asset_id_for_unit(unit_id),
+            result="rejected",
+            error_code="modbus_exception_03",
+            message="ungueltige FC16-PDU-Laenge",
+        )
+        return response
+
+    start_offset, quantity, byte_count = unpack(">HHB", pdu[1:6])
+    expected_byte_count = quantity * 2
+    if quantity <= 0 or quantity > 123 or byte_count != expected_byte_count or len(pdu) != 6 + expected_byte_count:
+        response = _exception_response(
+            transaction_id=transaction_id,
+            unit_id=unit_id,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            exception_code=ILLEGAL_DATA_VALUE,
+        )
+        _log_request(
+            event_recorder,
+            source_ip=source_ip,
+            unit_id=unit_id,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            register_start=human_register_address(start_offset),
+            register_count=quantity,
+            asset_id=_asset_id_for_unit(unit_id),
+            result="rejected",
+            error_code="modbus_exception_03",
+            message="ungueltiger FC16-Header oder Byte Count",
+        )
+        return response
+
+    values = unpack(f">{quantity}H", pdu[6:])
+    correlation_id = f"corr_{uuid4().hex}"
+    try:
+        result = register_map.write_multiple_registers(
+            unit_id=unit_id,
+            start_offset=start_offset,
+            values=tuple(values),
+            event_context=SimulationEventContext(
+                source_ip=source_ip,
+                actor_type="remote_client",
+                correlation_id=correlation_id,
+                protocol=DEFAULT_PROTOCOL,
+                service=DEFAULT_SERVICE,
+            ),
+        )
+    except ModbusRegisterError as exc:
+        response = _exception_response(
+            transaction_id=transaction_id,
+            unit_id=unit_id,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            exception_code=exc.exception_code,
+        )
+        _log_request(
+            event_recorder,
+            source_ip=source_ip,
+            unit_id=unit_id,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            register_start=human_register_address(start_offset),
+            register_count=quantity,
+            asset_id=_asset_id_for_unit(unit_id),
+            result="rejected",
+            requested_register_value=list(values),
+            error_code=f"modbus_exception_{exc.exception_code:02d}",
+            message=str(exc),
+            correlation_id=correlation_id,
+        )
+        return response
+
+    response = _build_adu(
+        transaction_id=transaction_id,
+        unit_id=unit_id,
+        pdu=pack(">BHH", WRITE_MULTIPLE_REGISTERS, start_offset, result.quantity),
+    )
+    _log_request(
+        event_recorder,
+        source_ip=source_ip,
+        unit_id=unit_id,
+        function_code=WRITE_MULTIPLE_REGISTERS,
+        register_start=result.start_register_address,
+        register_count=result.quantity,
+        asset_id=result.asset_id,
+        result="accepted",
+        requested_register_value=list(result.requested_values),
+        previous_value=list(result.previous_values),
+        resulting_value=list(result.resulting_values),
+        resulting_state=result.resulting_state,
+        message="FC16 write accepted",
+        correlation_id=correlation_id,
+    )
+    return response
+
+
 def _build_adu(*, transaction_id: int, unit_id: int, pdu: bytes) -> bytes:
     return pack(">HHHB", transaction_id, 0, len(pdu) + 1, unit_id) + pdu
 
@@ -401,7 +506,7 @@ def _log_request(
     result: str,
     error_code: str | None = None,
     message: str | None = None,
-    requested_register_value: int | None = None,
+    requested_register_value: Any | None = None,
     previous_value: int | None = None,
     resulting_value: Any | None = None,
     resulting_state: dict[str, object] | None = None,
@@ -416,6 +521,9 @@ def _log_request(
     elif function_code == WRITE_SINGLE_REGISTER and result == "accepted":
         event_type = "protocol.modbus.single_register_write"
         action = "write_single_register"
+    elif function_code == WRITE_MULTIPLE_REGISTERS and result == "accepted":
+        event_type = "protocol.modbus.multiple_register_write"
+        action = "write_multiple_registers"
     else:
         event_type = "protocol.modbus.request_rejected"
         action = f"fc{function_code:02d}"
@@ -427,7 +535,9 @@ def _log_request(
         "register_count": register_count,
         "value_encoding": "u16",
     }
-    if requested_register_value is not None:
+    if isinstance(requested_register_value, (list, tuple)):
+        requested_value["register_values"] = list(requested_register_value)
+    elif requested_register_value is not None:
         requested_value["register_value"] = requested_register_value
 
     event = recorder.build_event(

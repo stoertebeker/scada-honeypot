@@ -16,6 +16,7 @@ from honeypot.protocol_modbus import (
     READ_INPUT_REGISTERS,
     ReadOnlyModbusTcpService,
     ReadOnlyRegisterMap,
+    WRITE_MULTIPLE_REGISTERS,
     WRITE_SINGLE_REGISTER,
 )
 from honeypot.storage import SQLiteEventStore
@@ -206,6 +207,108 @@ def test_fc06_rejects_values_outside_documented_range(running_service) -> None:
     assert rejected_event.error_code == "modbus_exception_03"
 
 
+def test_fc16_updates_ppc_setpoints_and_keeps_process_events_correlated(running_service) -> None:
+    service, store = running_service
+
+    write_response = send_request(
+        service.address,
+        transaction_id=11,
+        unit_id=1,
+        function_code=WRITE_MULTIPLE_REGISTERS,
+        body=fc16_body(199, 555, 250),
+    )
+    setpoint_response = send_request(
+        service.address,
+        transaction_id=12,
+        unit_id=1,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 199, 3),
+    )
+    reactive_status_response = send_request(
+        service.address,
+        transaction_id=13,
+        unit_id=1,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 109, 1),
+    )
+
+    _, _, _, write_pdu = parse_response(write_response)
+    _, _, _, setpoint_pdu = parse_response(setpoint_response)
+    _, _, _, reactive_status_pdu = parse_response(reactive_status_response)
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    ppc_state = store.fetch_current_state("power_plant_controller")
+    protocol_event = next(event for event in events if event.event_type == "protocol.modbus.multiple_register_write")
+    curtailment_event = next(event for event in events if event.event_type == "process.setpoint.curtailment_changed")
+    reactive_event = next(event for event in events if event.event_type == "process.setpoint.reactive_power_target_changed")
+
+    assert unpack(">BHH", write_pdu) == (WRITE_MULTIPLE_REGISTERS, 199, 2)
+    assert unpack(">3H", setpoint_pdu[2:]) == (555, 250, 1)
+    assert unpack(">H", reactive_status_pdu[2:])[0] == 250
+    assert protocol_event.requested_value["register_start"] == 40200
+    assert protocol_event.requested_value["register_values"] == [555, 250]
+    assert protocol_event.previous_value == [1000, 0]
+    assert protocol_event.resulting_value == [555, 250]
+    assert protocol_event.correlation_id == curtailment_event.correlation_id == reactive_event.correlation_id
+    assert ppc_state["active_power_limit_pct"] == pytest.approx(55.5)
+    assert ppc_state["reactive_power_target"] == pytest.approx(0.25)
+    assert len(alerts) == 1
+    assert alerts[0].alarm_code == "PLANT_CURTAILED"
+
+
+def test_fc16_can_latch_plant_mode_request_and_rejects_invalid_values(running_service) -> None:
+    service, store = running_service
+
+    accepted_response = send_request(
+        service.address,
+        transaction_id=14,
+        unit_id=1,
+        function_code=WRITE_MULTIPLE_REGISTERS,
+        body=fc16_body(201, 2),
+    )
+    readback_response = send_request(
+        service.address,
+        transaction_id=15,
+        unit_id=1,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 199, 3),
+    )
+    rejected_response = send_request(
+        service.address,
+        transaction_id=16,
+        unit_id=1,
+        function_code=WRITE_MULTIPLE_REGISTERS,
+        body=fc16_body(201, 3),
+    )
+
+    _, _, _, accepted_pdu = parse_response(accepted_response)
+    _, _, _, readback_pdu = parse_response(readback_response)
+    _, _, _, rejected_pdu = parse_response(rejected_response)
+
+    events = store.fetch_events()
+    protocol_event = next(
+        event
+        for event in events
+        if event.event_type == "protocol.modbus.multiple_register_write"
+        and event.requested_value["register_start"] == 40202
+    )
+    mode_request_event = next(event for event in events if event.event_type == "process.setpoint.plant_mode_request_changed")
+    rejected_event = next(
+        event
+        for event in events
+        if event.action == "fc16" and event.result == "rejected" and event.requested_value["register_values"] == [3]
+    )
+
+    assert unpack(">BHH", accepted_pdu) == (WRITE_MULTIPLE_REGISTERS, 201, 1)
+    assert unpack(">3H", readback_pdu[2:]) == (1000, 0, 2)
+    assert protocol_event.correlation_id == mode_request_event.correlation_id
+    assert mode_request_event.resulting_state["plant_mode_request"] == 2
+    assert mode_request_event.resulting_state["operating_mode"] == "normal"
+    assert rejected_pdu == bytes([WRITE_MULTIPLE_REGISTERS | 0x80, ILLEGAL_DATA_VALUE])
+    assert rejected_event.error_code == "modbus_exception_03"
+
+
 def send_request(
     address: tuple[str, int],
     *,
@@ -222,6 +325,10 @@ def send_request(
         _, _, length, _ = unpack(">HHHB", header)
         payload = recv_exact(connection, length - 1)
     return header + payload
+
+
+def fc16_body(start_offset: int, *values: int) -> bytes:
+    return pack(">HHB", start_offset, len(values), len(values) * 2) + b"".join(pack(">H", value) for value in values)
 
 
 def parse_response(response: bytes) -> tuple[int, int, int, bytes]:

@@ -221,6 +221,54 @@ class PlantSimulator:
         )
         return resulting_snapshot
 
+    def apply_reactive_power_target(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        reactive_power_target: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Aktualisiert das PPC-Blindleistungsziel ohne weitere Anlagenumschaltung."""
+
+        if not -1.0 <= reactive_power_target <= 1.0:
+            raise PlantSimulationError("reactive_power_target muss im Bereich -1.0..1.0 liegen")
+        normalized_target = round(reactive_power_target, 3)
+
+        resulting_snapshot = _build_snapshot(
+            snapshot,
+            site=snapshot.site.model_copy(
+                update={
+                    "reactive_power_setpoint": normalized_target,
+                }
+            ),
+            power_plant_controller=snapshot.power_plant_controller.model_copy(
+                update={
+                    "reactive_power_target": normalized_target,
+                }
+            ),
+        )
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.setpoint.reactive_power_target_changed",
+            category="process",
+            severity="medium",
+            asset_id=resulting_snapshot.power_plant_controller.asset_id,
+            action="set_reactive_power_target",
+            requested_value=normalized_target,
+            previous_value=snapshot.power_plant_controller.reactive_power_target,
+            resulting_value=resulting_snapshot.power_plant_controller.reactive_power_target,
+            resulting_state={
+                "reactive_power_target": resulting_snapshot.power_plant_controller.reactive_power_target,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=None,
+            tags=("control-path", "ppc", "reactive-power"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
     def open_breaker(
         self,
         snapshot: PlantSnapshot,

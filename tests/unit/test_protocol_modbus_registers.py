@@ -83,3 +83,45 @@ def test_fc06_rejects_values_above_documented_range() -> None:
         register_map.write_single_register(unit_id=1, start_offset=199, value=1500)
 
     assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE
+
+
+def test_fc16_updates_active_and_reactive_setpoints_across_the_ppc_block() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    write_result = register_map.write_multiple_registers(unit_id=1, start_offset=199, values=(555, 250))
+    setpoint_result = register_map.read_holding_registers(unit_id=1, start_offset=199, quantity=3)
+    status_result = register_map.read_holding_registers(unit_id=1, start_offset=109, quantity=1)
+
+    assert write_result.start_register_address == 40200
+    assert write_result.quantity == 2
+    assert write_result.previous_values == (1000, 0)
+    assert write_result.resulting_values == (555, 250)
+    assert write_result.resulting_state["plant_mode_request"] == 1
+    assert register_map.snapshot.power_plant_controller.active_power_limit_pct == pytest.approx(55.5)
+    assert register_map.snapshot.power_plant_controller.reactive_power_target == pytest.approx(0.25)
+    assert setpoint_result.values == (555, 250, 1)
+    assert status_result.values == (250,)
+
+
+def test_fc16_can_latch_plant_mode_request_without_forcing_actual_operating_mode() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    write_result = register_map.write_multiple_registers(unit_id=1, start_offset=201, values=(2,))
+    setpoint_result = register_map.read_holding_registers(unit_id=1, start_offset=199, quantity=3)
+    operating_mode_result = register_map.read_holding_registers(unit_id=1, start_offset=99, quantity=1)
+
+    assert write_result.previous_values == (0,)
+    assert write_result.resulting_values == (2,)
+    assert write_result.resulting_state["plant_mode_request"] == 2
+    assert write_result.resulting_state["operating_mode"] == "normal"
+    assert setpoint_result.values == (1000, 0, 2)
+    assert operating_mode_result.values == (0,)
+
+
+def test_fc16_rejects_invalid_plant_mode_request_values() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    with pytest.raises(ModbusRegisterError) as exc_info:
+        register_map.write_multiple_registers(unit_id=1, start_offset=201, values=(3,))
+
+    assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE

@@ -11,6 +11,7 @@ from honeypot.protocol_modbus.registers import (
     ModbusRegisterError,
     ReadOnlyRegisterMap,
     RegisterReadResult,
+    RegisterMultiWriteResult,
     RegisterWriteResult,
 )
 from honeypot.protocol_modbus.server import ReadOnlyModbusTcpService
@@ -26,6 +27,7 @@ __all__ = [
     "WRITE_SINGLE_REGISTER",
     "ReadOnlyModbusTcpService",
     "ReadOnlyRegisterMap",
+    "RegisterMultiWriteResult",
     "RegisterReadResult",
     "RegisterWriteResult",
 ]
