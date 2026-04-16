@@ -16,6 +16,7 @@ from honeypot.event_core.models import (
     EventSeverity,
     RecordedArtifacts,
 )
+from honeypot.rule_engine import DerivedAlert, RuleContext, RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import Clock, SystemClock
 
@@ -31,6 +32,7 @@ class EventRecorder:
     store: SQLiteEventStore
     clock: Clock = field(default_factory=SystemClock)
     archive: JsonlEventArchive | None = None
+    rule_engine: RuleEngine | None = None
 
     def build_event(
         self,
@@ -137,13 +139,51 @@ class EventRecorder:
             for state_key, state_payload in current_state_updates.items():
                 self.store.upsert_current_state(state_key, state_payload, updated_at=updated_at)
 
-        if alert is not None:
-            self.store.append_alert(alert)
-            outbox_entries = self.store.enqueue_alert_targets(
-                alert,
-                target_types=tuple(outbox_targets),
-                next_attempt_at=alert.created_at + timedelta(seconds=0),
+        alerts = (alert,) if alert is not None else self._derive_rule_alerts(
+            event,
+            current_state_updates=current_state_updates,
+        )
+        outbox_entries = []
+        for resolved_alert in alerts:
+            self.store.append_alert(resolved_alert)
+            outbox_entries.extend(
+                self.store.enqueue_alert_targets(
+                    resolved_alert,
+                    target_types=tuple(outbox_targets),
+                    next_attempt_at=resolved_alert.created_at + timedelta(seconds=0),
+                )
             )
-            return RecordedArtifacts(event=event, alert=alert, outbox_entries=outbox_entries)
+        if alerts:
+            return RecordedArtifacts(
+                event=event,
+                alert=alerts[0],
+                alerts=alerts,
+                outbox_entries=tuple(outbox_entries),
+            )
 
         return RecordedArtifacts(event=event)
+
+    def _derive_rule_alerts(
+        self,
+        event: EventRecord,
+        *,
+        current_state_updates: Mapping[str, Any] | None,
+    ) -> tuple[AlertRecord, ...]:
+        if self.rule_engine is None:
+            return ()
+
+        derived_alerts = self.rule_engine.evaluate(
+            event,
+            context=RuleContext(current_state={} if current_state_updates is None else dict(current_state_updates)),
+        )
+        return tuple(self._build_alert_from_rule(event, derived_alert) for derived_alert in derived_alerts)
+
+    def _build_alert_from_rule(self, event: EventRecord, derived_alert: DerivedAlert) -> AlertRecord:
+        return self.build_alert(
+            event=event,
+            alarm_code=derived_alert.alarm_code,
+            severity=derived_alert.severity,
+            state=derived_alert.state,
+            message=derived_alert.message,
+            created_at=event.timestamp,
+        )

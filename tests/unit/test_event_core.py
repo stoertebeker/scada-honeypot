@@ -2,15 +2,16 @@ import json
 from datetime import UTC, datetime
 
 from honeypot.event_core import EventRecorder
+from honeypot.rule_engine import RuleEngine, SETPOINT_ALERT_CODE
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
 
-def build_recorder(tmp_path, *, archive_path=None):
+def build_recorder(tmp_path, *, archive_path=None, rule_engine=None):
     clock = FrozenClock(datetime(2026, 4, 16, 9, 30, tzinfo=UTC))
     store = SQLiteEventStore(tmp_path / "tmp" / "honeypot-events.db")
     archive = None if archive_path is None else JsonlEventArchive(archive_path)
-    return EventRecorder(store=store, clock=clock, archive=archive)
+    return EventRecorder(store=store, clock=clock, archive=archive, rule_engine=rule_engine)
 
 
 def test_build_event_normalizes_required_contract_fields(tmp_path) -> None:
@@ -134,6 +135,36 @@ def test_record_without_outbox_targets_still_persists_local_truth(tmp_path) -> N
     assert recorder.store.count_rows("event_log") == 1
     assert recorder.store.count_rows("current_state") == 1
     assert recorder.store.count_rows("outbox") == 0
+
+
+def test_record_derives_rule_based_alert_and_outbox_when_configured(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    event = recorder.build_event(
+        event_type="process.setpoint.reactive_power_target_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="ppc-01",
+        action="set_reactive_power_target",
+        result="accepted",
+        resulting_state={"reactive_power_target": 0.25},
+        tags=("control-path", "ppc", "reactive-power"),
+    )
+
+    recorded = recorder.record(event, outbox_targets=("webhook",))
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert recorded.alert is not None
+    assert recorded.alerts == alerts
+    assert recorded.alert.alarm_code == SETPOINT_ALERT_CODE
+    assert recorded.alert.severity == "high"
+    assert recorded.alert.message == "Erfolgreiche Setpoint-Aenderung: set_reactive_power_target auf ppc-01"
+    assert len(alerts) == 1
+    assert len(outbox_entries) == 1
+    assert outbox_entries[0].target_type == "webhook"
 
 
 def test_record_writes_event_to_jsonl_archive_when_enabled(tmp_path) -> None:

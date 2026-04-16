@@ -7,6 +7,7 @@ from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
+from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import SystemClock
 
@@ -80,6 +81,7 @@ def build_local_runtime(
         store=event_store,
         clock=SystemClock(),
         archive=(JsonlEventArchive(config.jsonl_archive_path) if config.jsonl_archive_enabled else None),
+        rule_engine=RuleEngine.default_v1(min_severity=config.alert_min_severity),
     )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
     modbus_service = ReadOnlyModbusTcpService(

@@ -43,6 +43,8 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
 
     assert runtime.event_recorder.archive is not None
     assert runtime.event_recorder.archive.path == archive_path
+    assert runtime.event_recorder.rule_engine is not None
+    assert runtime.event_recorder.rule_engine.rule_ids == ("successful_setpoint_change",)
 
 
 def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:

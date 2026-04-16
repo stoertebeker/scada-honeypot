@@ -187,4 +187,5 @@ class RecordedArtifacts(BaseModel):
 
     event: EventRecord
     alert: AlertRecord | None = None
+    alerts: tuple[AlertRecord, ...] = ()
     outbox_entries: tuple[OutboxEntry, ...] = ()

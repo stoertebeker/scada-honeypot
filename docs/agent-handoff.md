@@ -205,9 +205,12 @@ Dateien:
 - `src/honeypot/event_core/models.py`
 - `src/honeypot/event_core/recorder.py`
 - `src/honeypot/event_core/__init__.py`
+- `src/honeypot/rule_engine/engine.py`
+- `src/honeypot/rule_engine/__init__.py`
 - `src/honeypot/storage/sqlite_store.py`
 - `src/honeypot/storage/__init__.py`
 - `tests/unit/test_event_core.py`
+- `tests/unit/test_rule_engine.py`
 
 Vorhanden:
 
@@ -224,6 +227,7 @@ Vorhanden:
 - `EventRecorder.record()` fuer:
   - `event_log`
   - optionales `JSONL`-Archiv
+  - optionale Rule-basierte Alert-Ableitung
   - `current_state`
   - `alert_log`
   - optionale Outbox-Auftraege fuer spaetere Exporter
@@ -233,6 +237,10 @@ Vorhanden:
   - `alert_log`
   - `outbox`
 - `JsonlEventArchive` als zeilenweiser Event-Sink an `JSONL_ARCHIVE_PATH`
+- `RuleEngine` mit:
+  - Registry fuer deterministische Regelreihenfolge
+  - Severity-Gate ueber `ALERT_MIN_SEVERITY`
+  - erstem V1-Rule-Slice fuer erfolgreiche Setpoint-Aenderungen
 - best-effort Verhalten fuer Archivfehler: `SQLite` bleibt Primärwahrheit und
   wird bei Archivproblemen nicht blockiert
 - Guardrails gegen leere `state_key`- und `target_type`-Werte
@@ -240,6 +248,8 @@ Vorhanden:
   - kanonische Feldnormalisierung
   - Korrelation ueber `correlation_id` plus `causation_id`
   - Persistenz von Event, State, Alert und Outbox
+  - Rule-Registrierung und Severity-Gate
+  - Rule-Ableitung fuer erfolgreiche Setpoint-Aenderung
   - JSONL-Schreibpfad
   - best-effort Verhalten bei JSONL-Archivfehlern
   - lokale Wahrheit ohne erzwungene Outbox-Ziele
@@ -369,7 +379,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `62 passed`
+- `67 passed`
 
 Abgedeckt sind bisher:
 
@@ -382,6 +392,8 @@ Abgedeckt sind bisher:
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - `JSONL`-Archivpfad fuer Eventanalyse
+- minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer erfolgreiche
+  Setpoint-Aenderungen
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
@@ -411,7 +423,7 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Rule-Engine und eventgetriebene Alarmableitung
+- weitere Rule-Engine-Regeln, Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - HMI
 - Exporter-Implementierung
@@ -422,20 +434,20 @@ Operative Hinweise:
 
 ## Naechster Schritt
 
-### Rest aus Phase C schliessen
+### Phase D/E fortsetzen
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. die minimale Rule-Engine-Schnittstelle aufsetzen
-2. erst dann restliche Registermatrix und weitere Units erweitern
+1. `Unit 31 revenue_meter` als naechsten read-only Modbus-Slice aufziehen
+2. danach weitere aktive Units der Registermatrix nachziehen
 3. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
 
-Empfohlener naechster atomarer Fix fuer den offenen Rest aus Phase C:
+Empfohlener naechster atomarer Fix in Phase D/E:
 
-- erste minimale Rule-Engine-Schnittstelle fuer lokale Event-zu-Alert-Regeln
-- fokussierte Tests fuer Regelregistrierung, deterministische Auswertung und
-  Nicht-Duplizierung
-- dabei keine Exporter oder HMI vorziehen
+- `Unit 31 revenue_meter` mit Identitaets-, Status- und Alarmblock
+- fokussierte Contract-Tests fuer `export_power_kw`, `export_energy_kwh_total`
+  und `export_path_available`
+- dabei read-only bleiben, keine neuen Write-Pfade oder HMI vorziehen
 
 Nicht als naechstes tun:
 

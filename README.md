@@ -45,6 +45,7 @@ Vorhanden sind:
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
+- minimale lokale `RuleEngine`, die aktuell erfolgreiche Setpoint-Aenderungen ohne bestehendes Anlagenalarmbild in Alerts ueberfuehrt
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
@@ -54,10 +55,10 @@ Vorhanden sind:
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main`, der `normal_operation`, `SQLiteEventStore` und den Modbus-Listener auf `127.0.0.1` bootstrapt
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
-- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
+- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den minimalen Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
-- Rule-Engine und eventgetriebene Alarmableitung
+- weitere Rule-Engine-Regeln, Dedupe/Suppression und echte Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - Web-HMI
 - Exporter-Implementierung
@@ -106,17 +107,17 @@ Die wichtigsten Dokumente:
 
 ## Empfohlener naechster Baukurs
 
-Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
-naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
+Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
+Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. die minimale Rule-Engine-Schnittstelle aufsetzen, damit Alerts nicht nur aus dem Simulationskern kommen
+1. `Unit 31 revenue_meter` als naechsten read-only Modbus-Slice aufziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. restliche Registermatrix und weitere aktive Units fuer Modbus
+1. weitere aktive Units der Registermatrix fuer Modbus
 2. read-only HMI
 3. HMI-Servicepfade
-4. Alerts und Exporter
+4. weitere Rule-Engine-Regeln, Alerts und Exporter
 5. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
