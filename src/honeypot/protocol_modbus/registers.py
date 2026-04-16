@@ -26,6 +26,8 @@ UNIT_1_ALARM_BLOCK = range(299, 305)
 UNIT_1_ACTIVE_POWER_LIMIT_OFFSET = 199
 UNIT_1_REACTIVE_POWER_TARGET_OFFSET = 200
 UNIT_1_PLANT_MODE_REQUEST_OFFSET = 201
+UNIT_21_STATUS_BLOCK = range(99, 107)
+UNIT_21_ALARM_BLOCK = range(299, 302)
 UNIT_31_STATUS_BLOCK = range(99, 110)
 UNIT_31_ALARM_BLOCK = range(299, 303)
 UNIT_41_STATUS_BLOCK = range(99, 104)
@@ -36,21 +38,25 @@ UNIT_41_BREAKER_CLOSE_REQUEST_OFFSET = 200
 
 DEVICE_CLASS_CODE = {
     1: 1001,
+    21: 1201,
     31: 1301,
     41: 1401,
 }
 ASSET_INSTANCE = {
     1: 0,
+    21: 0,
     31: 0,
     41: 0,
 }
 ASSET_TAG = {
     1: "ppc-01",
+    21: "wx-01",
     31: "meter-01",
     41: "grid-01",
 }
 ASSET_ID = {
     1: "ppc-01",
+    21: "wx-01",
     31: "meter-01",
     41: "grid-01",
 }
@@ -340,6 +346,8 @@ class ReadOnlyRegisterMap:
         offsets = tuple(range(start_offset, start_offset + len(values)))
         if unit_id == 1:
             return _validate_unit_1_write_sequence(offsets=offsets, values=values, allow_fc06=allow_fc06)
+        if unit_id == 21:
+            raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "weather_station ist in V1 read-only")
         if unit_id == 31:
             raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "revenue_meter ist in V1 read-only")
         if unit_id == 41:
@@ -444,6 +452,12 @@ def _is_supported_offset(unit_id: int, offset: int) -> bool:
             or offset in UNIT_1_SETPOINT_BLOCK
             or offset in UNIT_1_ALARM_BLOCK
         )
+    if unit_id == 21:
+        return (
+            offset in IDENTITY_BLOCK
+            or offset in UNIT_21_STATUS_BLOCK
+            or offset in UNIT_21_ALARM_BLOCK
+        )
     if unit_id == 31:
         return (
             offset in IDENTITY_BLOCK
@@ -468,6 +482,8 @@ def _build_registers_for_unit(
 ) -> dict[int, int]:
     if unit_id == 1:
         return _build_unit_1_registers(snapshot, plant_mode_request_override=plant_mode_request_override)
+    if unit_id == 21:
+        return _build_unit_21_registers(snapshot)
     if unit_id == 31:
         return _build_unit_31_registers(snapshot)
     if unit_id == 41:
@@ -534,6 +550,27 @@ def _build_unit_41_registers(snapshot: PlantSnapshot) -> dict[int, int]:
             300: 0 if grid_primary_alarm is None else SEVERITY_CODE[grid_primary_alarm.severity],
             301: _alarm_state_for_code(snapshot.alarms, "BREAKER_OPEN"),
             302: _grid_export_path_alarm_state(snapshot),
+        }
+    )
+    return registers
+
+
+def _build_unit_21_registers(snapshot: PlantSnapshot) -> dict[int, int]:
+    weather_primary_alarm = _primary_alarm_for_codes(snapshot)
+    registers = _build_identity_registers(21)
+    registers.update(
+        {
+            99: ASSET_STATUS[snapshot.weather_station.status],
+            100: COMMUNICATION_STATE[snapshot.weather_station.communication_state],
+            101: DATA_QUALITY[snapshot.weather_station.quality],
+            102: snapshot.weather_station.irradiance_w_m2,
+            103: encode_i16(round(snapshot.weather_station.module_temperature_c * 10)),
+            104: encode_i16(round(snapshot.weather_station.ambient_temperature_c * 10)),
+            105: round(snapshot.weather_station.wind_speed_m_s * 10),
+            106: _weather_confidence_pct_x10(snapshot),
+            299: 0 if weather_primary_alarm is None else ALARM_CODE.get(weather_primary_alarm.code, 0),
+            300: 0 if weather_primary_alarm is None else SEVERITY_CODE[weather_primary_alarm.severity],
+            301: _weather_comm_loss_alarm_state(snapshot),
         }
     )
     return registers
@@ -635,6 +672,22 @@ def _grid_export_path_alarm_state(snapshot: PlantSnapshot) -> int:
     if breaker_alarm_state != ALARM_STATE["inactive"]:
         return breaker_alarm_state
     return ALARM_STATE["active_unacknowledged"]
+
+
+def _weather_comm_loss_alarm_state(snapshot: PlantSnapshot) -> int:
+    if snapshot.weather_station.communication_state == "lost":
+        return ALARM_STATE["active_unacknowledged"]
+    return ALARM_STATE["inactive"]
+
+
+def _weather_confidence_pct_x10(snapshot: PlantSnapshot) -> int:
+    if snapshot.weather_station.quality == "good":
+        return 1000
+    if snapshot.weather_station.quality == "estimated":
+        return 750
+    if snapshot.weather_station.quality == "stale":
+        return 500
+    return 0
 
 
 def _meter_comm_loss_alarm_state(snapshot: PlantSnapshot) -> int:

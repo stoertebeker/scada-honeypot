@@ -293,7 +293,7 @@ Vorhanden:
   - Alarm-Clear und Wiederherstellung nach `close_breaker()`
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
-### 10. Modbus Vertical Slices fuer Unit 1, Unit 31 und Unit 41
+### 10. Modbus Vertical Slices fuer Unit 1, Unit 21, Unit 31 und Unit 41
 
 Dateien:
 
@@ -309,6 +309,7 @@ Vorhanden:
   - Identitaetsblock `40001-40049`
   - Unit-spezifische Status-, Setpoint- und Alarmbloecke
 - `Unit 1`-Sicht fuer `site / power_plant_controller`
+- `Unit 21`-Sicht fuer `weather_station`
 - `Unit 31`-Sicht fuer `revenue_meter`
 - `Unit 41`-Sicht fuer `grid_interconnect`
 - `ReadOnlyModbusTcpService` mit:
@@ -331,11 +332,18 @@ Vorhanden:
   - `export_energy_kwh_total` als `u32`
   - `export_path_available` als abgeleitete Breaker-Sicht
   - Alarmdiagnose `40300-40303`
+- `Unit 21` bildet zusaetzlich ab:
+  - Identitaetsblock mit `device_class_code = 1201`
+  - Status `40100-40107`
+  - Fallback der Wetterwerte auf `fixture.weather`, wenn Asset-Messwerte fehlen
+  - `weather_confidence_pct_x10` als abgeleitete Qualitaetssicht
+  - Alarmdiagnose `40300-40302`
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
   - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
   - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
   - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
+  - jeder Write auf `Unit 21 / 40200-40249` -> `02 Illegal Data Address`
   - jeder Write auf `Unit 31 / 40200-40249` -> `02 Illegal Data Address`
   - Wert ausserhalb `0..1` auf `Unit 41 / 40200-40201` -> `03 Illegal Data Value`
   - gleichzeitiges `breaker_open_request=1` und `breaker_close_request=1` in
@@ -352,6 +360,11 @@ Vorhanden:
   - `active_power_limit_pct_x10`
   - `reactive_power_target_pct_x10`
   - `plant_mode_request`
+  - `irradiance_w_m2`
+  - `module_temperature_c_x10`
+  - `ambient_temperature_c_x10`
+  - `wind_speed_m_s_x10`
+  - `weather_confidence_pct_x10`
   - `export_power_kw`
   - `export_energy_kwh_total`
   - `power_factor_x1000`
@@ -376,6 +389,8 @@ Vorhanden:
   - `FC06` mit sichtbarer Curtailment-Wirkung
   - `FC16` mit Mehrregister-Header, reaktiver Setpoint-Wirkung und latched
     `plant_mode_request`
+  - `Unit 21`-Identity/Status-Lesezugriffe
+  - read-only Ablehnung fuer `Unit 21 / FC06`
   - `Unit 31`-Identity/Status-Lesezugriffe
   - read-only Ablehnung fuer `Unit 31 / FC06`
   - konsistente `Unit 31`-Reaktion auf `Unit 41`-Breaker Open
@@ -395,7 +410,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `72 passed`
+- `76 passed`
 
 Abgedeckt sind bisher:
 
@@ -413,6 +428,8 @@ Abgedeckt sind bisher:
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
+- `weather_station`-Slice mit Fallback auf `fixture.weather`, abgeleiteter
+  Confidence-Sicht und strikt read-only Verhalten
 - `revenue_meter`-Slice mit read-only Verhalten, Export-/Qualitaetssicht und
   konsistenter Breaker-Ableitung
 - `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
@@ -456,17 +473,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `Unit 21 weather_station` als naechsten read-only Modbus-Slice aufziehen
+1. `Unit 11-13 inverter_block_*` als naechsten Modbus-Slice aufziehen
 2. danach weitere aktive Units der Registermatrix nachziehen
 3. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `Unit 21 weather_station` mit Identitaets-, Status- und Qualitaetsblock
-- fokussierte Contract-Tests fuer `irradiance_w_m2`,
-  `module_temperature_c_x10`, `ambient_temperature_c_x10` und
-  `wind_speed_m_s_x10`
-- dabei read-only bleiben, keine neuen Write-Pfade oder HMI vorziehen
+- `Unit 11-13 inverter_block_*` mit gemeinsamer read-only Status- und
+  Alarmmatrix aufziehen
+- fokussierte Contract-Tests fuer `availability_pct_x10`, `block_power_kw`,
+  `local_alarm_count` und den Unterschied der drei Unit-IDs
+- Write-Pfade der Inverter-Units noch nicht vorziehen, bis die reine
+  Beobachtungssicht sauber steht
 
 Nicht als naechstes tun:
 

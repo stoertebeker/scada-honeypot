@@ -491,6 +491,8 @@ def _recv_exact(sock: Any, length: int) -> bytes | None:
 def _asset_id_for_unit(unit_id: int) -> str:
     if unit_id == 1:
         return "ppc-01"
+    if unit_id == 21:
+        return "wx-01"
     if unit_id == 31:
         return "meter-01"
     if unit_id == 41:

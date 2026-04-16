@@ -309,19 +309,88 @@ def test_fc16_can_latch_plant_mode_request_and_rejects_invalid_values(running_se
     assert rejected_event.error_code == "modbus_exception_03"
 
 
-def test_unit_31_fc03_returns_revenue_meter_identity_and_status(running_service) -> None:
+def test_unit_21_fc03_returns_weather_station_identity_and_status(running_service) -> None:
     service, store = running_service
 
     identity_response = send_request(
         service.address,
         transaction_id=17,
-        unit_id=31,
+        unit_id=21,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 0, 8),
     )
     status_response = send_request(
         service.address,
         transaction_id=18,
+        unit_id=21,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 8),
+    )
+
+    identity_tx, identity_protocol, identity_unit, identity_pdu = parse_response(identity_response)
+    _, _, _, status_pdu = parse_response(status_response)
+    identity_registers = unpack(">8H", identity_pdu[2:])
+    status_registers = unpack(">8H", status_pdu[2:])
+    events = store.fetch_events()
+
+    assert identity_tx == 17
+    assert identity_protocol == 0
+    assert identity_unit == 21
+    assert identity_pdu[0] == READ_HOLDING_REGISTERS
+    assert identity_registers[:4] == (100, 1201, 21, 0)
+    assert status_registers == (0, 0, 0, 840, 315, 220, 42, 1000)
+    assert any(event.requested_value["register_start"] == 40001 for event in events)
+    assert any(event.requested_value["register_start"] == 40100 for event in events)
+
+
+def test_unit_21_fc06_rejects_write_to_read_only_slice(running_service) -> None:
+    service, store = running_service
+
+    rejected_response = send_request(
+        service.address,
+        transaction_id=19,
+        unit_id=21,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 199, 1),
+    )
+    readback_response = send_request(
+        service.address,
+        transaction_id=20,
+        unit_id=21,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 102, 5),
+    )
+
+    _, _, _, rejected_pdu = parse_response(rejected_response)
+    _, _, _, readback_pdu = parse_response(readback_response)
+    events = store.fetch_events()
+    rejected_event = next(
+        event
+        for event in events
+        if event.action == "fc06"
+        and event.result == "rejected"
+        and event.asset_id == "wx-01"
+        and event.requested_value["register_start"] == 40200
+    )
+
+    assert rejected_pdu == bytes([WRITE_SINGLE_REGISTER | 0x80, ILLEGAL_DATA_ADDRESS])
+    assert unpack(">5H", readback_pdu[2:]) == (840, 315, 220, 42, 1000)
+    assert rejected_event.error_code == "modbus_exception_02"
+
+
+def test_unit_31_fc03_returns_revenue_meter_identity_and_status(running_service) -> None:
+    service, store = running_service
+
+    identity_response = send_request(
+        service.address,
+        transaction_id=21,
+        unit_id=31,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 0, 8),
+    )
+    status_response = send_request(
+        service.address,
+        transaction_id=22,
         unit_id=31,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 99, 11),
@@ -333,7 +402,7 @@ def test_unit_31_fc03_returns_revenue_meter_identity_and_status(running_service)
     status_registers = unpack(">11H", status_pdu[2:])
     events = store.fetch_events()
 
-    assert identity_tx == 17
+    assert identity_tx == 21
     assert identity_protocol == 0
     assert identity_unit == 31
     assert identity_pdu[0] == READ_HOLDING_REGISTERS
@@ -348,14 +417,14 @@ def test_unit_31_fc06_rejects_write_to_read_only_slice(running_service) -> None:
 
     rejected_response = send_request(
         service.address,
-        transaction_id=19,
+        transaction_id=23,
         unit_id=31,
         function_code=WRITE_SINGLE_REGISTER,
         body=pack(">HH", 199, 1),
     )
     readback_response = send_request(
         service.address,
-        transaction_id=20,
+        transaction_id=24,
         unit_id=31,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 102, 8),
@@ -383,14 +452,14 @@ def test_unit_41_fc03_returns_grid_identity_and_status(running_service) -> None:
 
     identity_response = send_request(
         service.address,
-        transaction_id=17,
+        transaction_id=25,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 0, 8),
     )
     status_response = send_request(
         service.address,
-        transaction_id=18,
+        transaction_id=26,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 99, 5),
@@ -402,7 +471,7 @@ def test_unit_41_fc03_returns_grid_identity_and_status(running_service) -> None:
     status_registers = unpack(">5H", status_pdu[2:])
     events = store.fetch_events()
 
-    assert identity_tx == 17
+    assert identity_tx == 25
     assert identity_protocol == 0
     assert identity_unit == 41
     assert identity_pdu[0] == READ_HOLDING_REGISTERS
@@ -417,21 +486,21 @@ def test_unit_31_reflects_breaker_open_effects_triggered_by_unit_41(running_serv
 
     open_response = send_request(
         service.address,
-        transaction_id=21,
+        transaction_id=27,
         unit_id=41,
         function_code=WRITE_SINGLE_REGISTER,
         body=pack(">HH", 199, 1),
     )
     meter_status_response = send_request(
         service.address,
-        transaction_id=22,
+        transaction_id=28,
         unit_id=31,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 102, 8),
     )
     meter_alarm_response = send_request(
         service.address,
-        transaction_id=23,
+        transaction_id=29,
         unit_id=31,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 299, 4),
@@ -456,49 +525,49 @@ def test_unit_41_fc06_opens_and_closes_breaker_with_self_clearing_pulses(running
 
     open_response = send_request(
         service.address,
-        transaction_id=19,
+        transaction_id=30,
         unit_id=41,
         function_code=WRITE_SINGLE_REGISTER,
         body=pack(">HH", 199, 1),
     )
     open_status_response = send_request(
         service.address,
-        transaction_id=20,
+        transaction_id=31,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 101, 3),
     )
     open_alarm_response = send_request(
         service.address,
-        transaction_id=21,
+        transaction_id=32,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 299, 4),
     )
     pulse_readback_response = send_request(
         service.address,
-        transaction_id=22,
+        transaction_id=33,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 199, 2),
     )
     close_response = send_request(
         service.address,
-        transaction_id=23,
+        transaction_id=34,
         unit_id=41,
         function_code=WRITE_SINGLE_REGISTER,
         body=pack(">HH", 200, 1),
     )
     close_status_response = send_request(
         service.address,
-        transaction_id=24,
+        transaction_id=35,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 101, 3),
     )
     close_alarm_response = send_request(
         service.address,
-        transaction_id=25,
+        transaction_id=36,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 299, 4),
@@ -556,14 +625,14 @@ def test_unit_41_fc16_rejects_conflicting_breaker_pulses(running_service) -> Non
 
     rejected_response = send_request(
         service.address,
-        transaction_id=26,
+        transaction_id=37,
         unit_id=41,
         function_code=WRITE_MULTIPLE_REGISTERS,
         body=fc16_body(199, 1, 1),
     )
     status_response = send_request(
         service.address,
-        transaction_id=27,
+        transaction_id=38,
         unit_id=41,
         function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 101, 3),

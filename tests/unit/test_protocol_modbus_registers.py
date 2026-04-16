@@ -41,6 +41,19 @@ def test_unit_1_setpoint_block_maps_latched_runtime_values() -> None:
     assert result.values == (1000, 0, 0)
 
 
+def test_unit_21_identity_status_and_alarm_blocks_map_weather_station_values() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    identity_result = register_map.read_holding_registers(unit_id=21, start_offset=0, quantity=8)
+    status_result = register_map.read_holding_registers(unit_id=21, start_offset=99, quantity=8)
+    alarm_result = register_map.read_holding_registers(unit_id=21, start_offset=299, quantity=3)
+
+    assert identity_result.asset_id == "wx-01"
+    assert identity_result.values[:4] == (100, 1201, 21, 0)
+    assert status_result.values == (0, 0, 0, 840, 315, 220, 42, 1000)
+    assert alarm_result.values == (0, 0, 0)
+
+
 def test_unit_31_identity_status_and_alarm_blocks_map_revenue_meter_values() -> None:
     register_map = ReadOnlyRegisterMap(build_snapshot())
 
@@ -151,6 +164,18 @@ def test_fc16_rejects_invalid_plant_mode_request_values() -> None:
         register_map.write_multiple_registers(unit_id=1, start_offset=201, values=(3,))
 
     assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE
+
+
+def test_unit_21_rejects_any_write_in_read_only_slice() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    with pytest.raises(ModbusRegisterError) as fc06_exc:
+        register_map.write_single_register(unit_id=21, start_offset=199, value=1)
+    with pytest.raises(ModbusRegisterError) as fc16_exc:
+        register_map.write_multiple_registers(unit_id=21, start_offset=199, values=(1,))
+
+    assert fc06_exc.value.exception_code == ILLEGAL_DATA_ADDRESS
+    assert fc16_exc.value.exception_code == ILLEGAL_DATA_ADDRESS
 
 
 def test_unit_31_rejects_any_write_in_read_only_slice() -> None:
