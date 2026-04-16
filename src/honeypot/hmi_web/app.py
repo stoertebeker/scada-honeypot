@@ -114,6 +114,33 @@ class SingleLineViewModel:
     active_alarms: tuple[OverviewAlarm, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class InverterDetailRow:
+    asset_id: str
+    status_label: str
+    communication_label: str
+    quality_label: str
+    power_label: str
+    availability_label: str
+    dc_label: str
+    ac_label: str
+    temperature_label: str
+    local_alarm_count: int
+    tone: str
+
+
+@dataclass(frozen=True, slots=True)
+class InvertersViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    snapshot_time: str
+    metrics: tuple[OverviewMetric, ...]
+    rows: tuple[InverterDetailRow, ...]
+    active_alarms: tuple[OverviewAlarm, ...]
+
+
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
@@ -203,6 +230,43 @@ def create_hmi_app(
             },
             message="Single-line page rendered",
             tags=("read-only", "single-line", "web"),
+        )
+        return response
+
+    @app.get("/inverters", response_class=HTMLResponse, include_in_schema=False)
+    async def inverters(request: Request) -> HTMLResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        view_model = build_inverters_view_model(snapshot=snapshot, config=config, texts=texts)
+        response = templates.TemplateResponse(
+            request=request,
+            name="inverters.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+
+        _record_page_view(
+            request=request,
+            snapshot=snapshot,
+            session_id=session_id,
+            event_recorder=event_recorder,
+            event_type="hmi.page.inverters_viewed",
+            action="view_inverters",
+            asset_id=snapshot.power_plant_controller.asset_id,
+            resulting_state={
+                "block_count": len(snapshot.inverter_blocks),
+                "degraded_block_count": _count_degraded_blocks(snapshot),
+                "total_inverter_power_kw": snapshot.total_inverter_power_kw,
+                "active_alarm_count": snapshot.site.active_alarm_count,
+            },
+            message="Inverters page rendered",
+            tags=("read-only", "inverters", "web"),
         )
         return response
 
@@ -344,6 +408,62 @@ def build_single_line_view_model(
     )
 
 
+def build_inverters_view_model(
+    *,
+    snapshot: PlantSnapshot,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+) -> InvertersViewModel:
+    """Bereitet die sichtbaren Werte fuer die Inverter-Vergleichssicht auf."""
+
+    rows = tuple(
+        InverterDetailRow(
+            asset_id=block.asset_id,
+            status_label=_enum_text(texts, block.status),
+            communication_label=_enum_text(texts, block.communication_state),
+            quality_label=_enum_text(texts, block.quality),
+            power_label=_format_block_power_kw(block.block_power_kw),
+            availability_label=f"{block.availability_pct} %",
+            dc_label=_format_bus_values(block.block_dc_voltage_v, block.block_dc_current_a, texts),
+            ac_label=_format_bus_values(block.block_ac_voltage_v, block.block_ac_current_a, texts),
+            temperature_label=_format_temperature(block.internal_temperature_c, texts),
+            local_alarm_count=_inverter_local_alarm_count(block),
+            tone=_tone_for_block(block.status, block.communication_state),
+        )
+        for block in snapshot.inverter_blocks
+    )
+
+    metrics = (
+        OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
+        OverviewMetric(
+            "label.active_blocks",
+            f"{_count_active_blocks(snapshot)} / {len(snapshot.inverter_blocks)}",
+            "good" if _count_active_blocks(snapshot) == len(snapshot.inverter_blocks) else "warn",
+        ),
+        OverviewMetric(
+            "label.degraded_blocks",
+            str(_count_degraded_blocks(snapshot)),
+            "alarm" if _count_degraded_blocks(snapshot) else "good",
+        ),
+        OverviewMetric(
+            "label.power_limit",
+            f"{snapshot.power_plant_controller.active_power_limit_pct:.1f} %",
+            _tone_for_limit(snapshot),
+        ),
+    )
+
+    return InvertersViewModel(
+        page_title=texts["page.inverters.title"],
+        page_subtitle=texts["page.inverters.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        snapshot_time=_snapshot_time(snapshot),
+        metrics=metrics,
+        rows=rows,
+        active_alarms=_active_alarm_view_models(snapshot, texts),
+    )
+
+
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
     return tuple(
         OverviewAlarm(
@@ -362,7 +482,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -378,6 +498,7 @@ def _nav_items(current_path: str) -> tuple[NavItem, ...]:
     return (
         NavItem(href="/overview", label_key="nav.overview", is_current=current == "/overview"),
         NavItem(href="/single-line", label_key="nav.single_line", is_current=current == "/single-line"),
+        NavItem(href="/inverters", label_key="nav.inverters", is_current=current == "/inverters"),
     )
 
 
@@ -538,6 +659,38 @@ def _format_power_kw(value: float) -> str:
     if value >= 1000:
         return f"{value / 1000:.2f} MW"
     return f"{value:.0f} kW"
+
+
+def _format_block_power_kw(value: float) -> str:
+    return f"{value:.1f} kW"
+
+
+def _format_bus_values(voltage_v: float | None, current_a: float | None, texts: dict[str, str]) -> str:
+    if voltage_v is None and current_a is None:
+        return texts["state.unavailable"]
+    if voltage_v is None:
+        return f"-- V / {current_a:.1f} A"
+    if current_a is None:
+        return f"{voltage_v:.1f} V / -- A"
+    return f"{voltage_v:.1f} V / {current_a:.1f} A"
+
+
+def _format_temperature(value_c: float | None, texts: dict[str, str]) -> str:
+    if value_c is None:
+        return texts["state.unavailable"]
+    return f"{value_c:.1f} C"
+
+
+def _count_active_blocks(snapshot: PlantSnapshot) -> int:
+    return sum(1 for block in snapshot.inverter_blocks if block.status in {"online", "degraded"} and block.availability_pct > 0)
+
+
+def _count_degraded_blocks(snapshot: PlantSnapshot) -> int:
+    return sum(
+        1
+        for block in snapshot.inverter_blocks
+        if block.status != "online" or block.communication_state != "healthy" or block.quality != "good"
+    )
 
 
 def _single_line_flow(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:
