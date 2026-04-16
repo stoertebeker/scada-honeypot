@@ -156,12 +156,12 @@ TCP-Endpunkt.
 
 ### 7.3 Verhalten bei unbekannten Unit-IDs
 
-Empfohlener V1-Kurs:
-- nur die definierten Unit-IDs liefern fachliche Daten
-- unbekannte Unit-IDs fuehren zu kontrollierter Nicht-Unterstuetzung
+Aktueller V1-Kurs:
+- nur aktive Unit-IDs liefern fachliche Daten
+- unbekannte oder im aktuellen Slice noch nicht aktive Unit-IDs fuehren zu
+  `02 Illegal Data Address`
 
-Die exakte technische Behandlung soll spaeter in Tests festgezurrt werden.
-Wichtig ist nur:
+Wichtig ist:
 - konsistent
 - keine internen Fehler
 - kein zufaellig wechselndes Verhalten

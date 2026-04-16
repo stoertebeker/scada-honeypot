@@ -17,7 +17,7 @@ Die Anlage soll:
 ## Aktueller Stand
 
 Das Projekt befindet sich aktuell im **fruehen Implementierungsstand von
-Phase C**.
+Phase D bei offenem Rest aus Phase C**.
 
 Vorhanden sind:
 - Scope
@@ -44,14 +44,15 @@ Vorhanden sind:
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
+- erster read-only `Modbus/TCP`-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, Identitaetsblock, Kernregistern und Event-Logging fuer Lesezugriffe
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge sowie Event-/Persistenzvertrag inklusive `plant_sim`-Eventspur
+- Unit- und Contract-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge, Event-/Persistenzvertrag sowie den read-only-Modbus-Slice
 
 Noch nicht vorhanden:
 - JSONL-Archivpfad fuer Eventexport
 - Rule-Engine und eventgetriebene Alarmableitung
-- Modbus-Server
+- Modbus-Write-Pfade fuer `FC06` und `FC16`
 - Web-HMI
 - Exporter-Implementierung
 
@@ -99,20 +100,19 @@ Die wichtigsten Dokumente:
 
 ## Empfohlener naechster Baukurs
 
-Die Deckscrew ist jetzt am Uebergang von Phase B zu Phase C unterwegs. Der
+Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle auf den vorhandenen Eventstore setzen
+1. ersten `FC06`-Write-Pfad fuer `active_power_limit_pct_x10` auf `Unit 1` setzen und mit sichtbarer Prozesswirkung absichern
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
-2. erste read-only `Modbus/TCP`-Scheibe
-3. vollstaendige Registermatrix mit Write-Pfaden
-4. read-only HMI
-5. HMI-Servicepfade
-6. Alerts und Exporter
-7. Hardening und Anti-Fingerprint
+1. `FC06`/`FC16` und restliche Registermatrix fuer Modbus
+2. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
+3. read-only HMI
+4. HMI-Servicepfade
+5. Alerts und Exporter
+6. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

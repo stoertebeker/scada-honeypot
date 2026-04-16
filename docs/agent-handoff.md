@@ -17,14 +17,15 @@ praktisch abgeschlossen**:
 
 Wichtiger Kurs:
 
-- **Nicht** mit Modbus oder HMI anfangen, bevor Phase B sauber steht
-- `asset_domain`, `plant_sim` und der Start von `event_core` stehen jetzt als
-  gemeinsamer Fachkern
-- Ziel bleibt die lueckenlose Eventspur fuer jede fachliche Schreibwirkung,
-  bevor Modbus oder HMI drankommen
+- `asset_domain`, `plant_sim`, `event_core` und der erste read-only
+  `protocol_modbus`-Slice stehen jetzt als gemeinsamer Fachkern
+- HMI bleibt weiterhin nachgezogen; keine zweite Wahrheit neben Modbus bauen
+- Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
+  Modbus-Lesezugriffe
 
 ## Letzte Commits
 
+- `9f0b0a3` `feat: add read-only modbus slice`
 - `04ebab8` `feat: record plant sim state transitions`
 - `cd25146` `feat: add event recorder and sqlite store`
 - `6dc38a9` `feat: add alarm lifecycle to plant sim`
@@ -259,6 +260,48 @@ Vorhanden:
   - Eventspur und Null-Export bei offenem Breaker
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
+### 10. Read-only Modbus Vertical Slice fuer Unit 1
+
+Dateien:
+
+- `src/honeypot/protocol_modbus/registers.py`
+- `src/honeypot/protocol_modbus/server.py`
+- `src/honeypot/protocol_modbus/__init__.py`
+- `tests/unit/test_protocol_modbus_registers.py`
+- `tests/contract/test_protocol_modbus_read_only.py`
+
+Vorhanden:
+
+- `ReadOnlyRegisterMap` fuer:
+  - Identitaetsblock `40001-40049`
+  - Statusblock `40100-40111`
+  - Alarmblock `40300-40305`
+- read-only `Unit 1`-Sicht fuer `site / power_plant_controller`
+- `ReadOnlyModbusTcpService` mit:
+  - stabilem MBAP-Header
+  - `Transaction ID`-Echo
+  - `Protocol Identifier = 0`
+  - `FC03` fuer Holding Registers
+- dokumentiertes Fehlerverhalten im Slice:
+  - `FC04` -> `01 Illegal Function`
+  - Write auf read-only Slice -> `02 Illegal Data Address`
+  - Bereich ausserhalb aktiver Bloecke -> `02 Illegal Data Address`
+- Event-Logging fuer Modbus-Lesezugriffe und abgelehnte Requests in den
+  bestehenden `SQLite`-Eventstore
+- erste fachliche Registerabbildung fuer:
+  - `operating_mode`
+  - `communications_health`
+  - `plant_power_kw`
+  - `breaker_state`
+  - `active_alarm_count`
+  - primaere Alarmdiagnose
+- Contract-Tests auf echter Socket-Ebene fuer:
+  - MBAP
+  - `FC03`
+  - `reserved -> 0x0000`
+  - `FC04 -> 01`
+  - Adressfehler -> `02`
+
 ## Teststand
 
 Aktuell gruen:
@@ -267,7 +310,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `31 passed`
+- `39 passed`
 
 Abgedeckt sind bisher:
 
@@ -280,6 +323,7 @@ Abgedeckt sind bisher:
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
+- read-only Modbus-Slice mit Contract-Tests und Eventspur fuer Lesezugriffe
 
 ## Sicherheitsplanken
 
@@ -305,7 +349,7 @@ Noch **nicht** vorhanden:
 
 - JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
-- Modbus-Server
+- Modbus-Write-Pfade fuer `FC06`/`FC16` und weitere aktive Units
 - HMI
 - Exporter-Implementierung
 
@@ -316,27 +360,29 @@ Operative Hinweise:
 
 ## Naechster Schritt
 
-### Phase C fortsetzen
+### Phase D/E fortsetzen
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. JSONL-Archivpfad aus dem bestehenden Eventstore schreiben
-2. zuerst weiter nur fachlich und testbar, noch ohne Modbus oder HMI
-3. danach minimale Rule-Engine-Schnittstelle fuer Event-zu-Alert-Bewertung nachziehen
-4. erst dann Modbus- und HMI-Slices anschliessen
+1. ersten `FC06`-Write-Pfad fuer `40200 active_power_limit_pct_x10` auf
+   `Unit 1` implementieren
+2. sichtbare Prozesswirkung und Eventspur fuer Curtailment mit Modbus koppeln
+3. danach `FC16`, restliche Registermatrix und weitere Units erweitern
+4. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nicht vergessen
+5. erst dann HMI-Slices anschliessen
 
-Empfohlener naechster atomarer Fix in Phase C:
+Empfohlener naechster atomarer Fix in Phase D/E:
 
-- taeglichen oder rotierten JSONL-Archivpfad aus `event_log` aufsetzen
-- Schalter und Pfad an bestehende Runtime-Konfiguration andocken
-- fokussierte Unit-Tests fuer JSONL-Ausgabe ohne Blockierung des Kernpfads
+- `FC06` fuer `40200 active_power_limit_pct_x10` auf `Unit 1`
+- Modbus-Write -> `plant_sim.apply_curtailment()` -> Registerwirkung -> Eventspur
+- fokussierte Contract- und Integrations-Tests fuer gueltigen Write plus
+  sichtbaren Leistungsabfall
 
 Nicht als naechstes tun:
 
-- keinen Modbus-Vertical-Slice vorziehen
 - keine HMI vorziehen
-- keine Exporter oder externe Auslieferung vorziehen, bevor Eventspur und
-  JSONL/Rule-Engine-Basis sauber stehen
+- keine Exporter oder externe Auslieferung vorziehen, bevor Eventspur,
+  JSONL-Basis und Rule-Engine-Grundlage stehen
 
 ## Vor dem Weiterbauen lesen
 
