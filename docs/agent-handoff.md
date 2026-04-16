@@ -25,6 +25,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `9d4c92a` `feat: add fc16 ppc setpoint writes`
 - `114c271` `feat: boot local modbus runtime`
 - `0be087b` `feat: add fc06 curtailment write path`
 - `9f0b0a3` `feat: add read-only modbus slice`
@@ -274,7 +275,7 @@ Vorhanden:
   - Eventspur und Null-Export bei offenem Breaker
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
-### 10. Modbus Vertical Slice fuer Unit 1 mit erstem FC06-Pfad
+### 10. Modbus Vertical Slice fuer Unit 1 mit FC06- und FC16-Pfaden
 
 Dateien:
 
@@ -299,12 +300,14 @@ Vorhanden:
   - `Protocol Identifier = 0`
   - `FC03` fuer Holding Registers
   - `FC06` fuer `40200 active_power_limit_pct_x10`
+  - `FC16` fuer den PPC-Setpoint-Block `40200-40202`
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
-  - `FC16` im aktuellen Slice -> `02 Illegal Data Address`
   - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
+  - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
+  - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
   - Bereich ausserhalb aktiver Bloecke -> `02 Illegal Data Address`
-- Event-Logging fuer Modbus-Lesezugriffe, akzeptierte `FC06`-Writes und
+- Event-Logging fuer Modbus-Lesezugriffe, akzeptierte `FC06`-/`FC16`-Writes und
   abgelehnte Requests in den bestehenden `SQLite`-Eventstore
 - gemeinsame `correlation_id` ueber Modbus-Write und nachgelagerte
   `plant_sim`-Prozesswirkung
@@ -313,19 +316,28 @@ Vorhanden:
   - `communications_health`
   - `plant_power_kw`
   - `active_power_limit_pct_x10`
+  - `reactive_power_target_pct_x10`
+  - `plant_mode_request`
   - `breaker_state`
   - `active_alarm_count`
   - primaere Alarmdiagnose
 - `active_power_limit_pct` hat im Fachkern jetzt `x10`-Granularitaet bis auf
   Zehntel-Prozent
+- `reactive_power_target` wird im Fachkern ueber `FC16` jetzt fachlich in
+  Site und PPC synchron gehalten
+- `plant_mode_request` ist im aktuellen Slice als latched Bedienwunsch
+  sichtbar, ohne dem eigentlichen `operating_mode` eine zweite Wahrheit
+  aufzuzwingen
 - Contract-Tests auf echter Socket-Ebene fuer:
   - MBAP
   - `FC03`
   - `FC06` mit sichtbarer Curtailment-Wirkung
+  - `FC16` mit Mehrregister-Header, reaktiver Setpoint-Wirkung und latched
+    `plant_mode_request`
   - `reserved -> 0x0000`
   - `FC04 -> 01`
   - Adressfehler -> `02`
-  - ungueltiger `FC06`-Wert -> `03`
+  - ungueltige `FC06`-/`FC16`-Werte -> `03`
 
 ## Teststand
 
@@ -335,7 +347,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `46 passed`
+- `51 passed`
 
 Abgedeckt sind bisher:
 
@@ -348,7 +360,8 @@ Abgedeckt sind bisher:
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
-- Modbus-Slice mit `FC03`/`FC06`, Contract-Tests und korrelierter Eventspur
+- Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
+  Eventspur
 - lokaler Runtime-Startpfad mit `build_local_runtime()` und Socket-Smoke-Test
 
 ## Sicherheitsplanken
@@ -375,14 +388,12 @@ Noch **nicht** vorhanden:
 
 - JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
-- restliche Modbus-Write-Pfade fuer `FC16`, weitere Setpoints und weitere
-  aktive Units
+- restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - HMI
 - Exporter-Implementierung
 
 Operative Hinweise:
 
-- Git-Remote ist derzeit nicht konfiguriert; `push` ist also nicht moeglich
 - Arbeitsbaum war beim letzten Handoff sauber
 
 ## Naechster Schritt
@@ -391,18 +402,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `FC16` fuer den PPC-Setpoint-Block auf `Unit 1` nachziehen
-2. dabei dieselbe Fachwirkung wie `FC06` beibehalten:
-   `plant_sim.apply_curtailment()` plus korrelierte Eventspur
+1. den ersten `grid_interconnect`-Slice fuer `Unit 41` aufziehen
+2. dabei `breaker_open_request` und `breaker_close_request` als naechste
+   sichtbare Steuerpfade mit Eventspur absichern
 3. danach restliche Registermatrix und weitere Units erweitern
 4. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nicht vergessen
 5. erst dann HMI-Slices anschliessen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `FC16` fuer `40200-40202` auf `Unit 1`
-- beim Einregister-Fall identische Wirkung wie `FC06`
-- fokussierte Contract-Tests fuer Mehrregister-Header, Wertvalidierung und
+- `Unit 41` mit erstem Status-/Setpoint-Slice
+- `FC06` fuer `breaker_open_request` und danach `breaker_close_request`
+- fokussierte Contract-Tests fuer Breaker-Zustandswirkung, Exportverlust und
   korrelierte Eventkette
 
 Nicht als naechstes tun:

@@ -44,8 +44,9 @@ Vorhanden sind:
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
-- erster `Modbus/TCP`-Vertical-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, Setpoint-Block und erstem `FC06`-Write-Pfad fuer `40200 active_power_limit_pct_x10`
-- `FC06` auf `40200` koppelt jetzt Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
+- erster `Modbus/TCP`-Vertical-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, `FC06` und `FC16` fuer den PPC-Setpoint-Block `40200-40202`
+- `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
+- `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main`, der `normal_operation`, `SQLiteEventStore` und den Modbus-Listener auf `127.0.0.1` bootstrapt
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
@@ -55,7 +56,7 @@ Vorhanden sind:
 Noch nicht vorhanden:
 - JSONL-Archivpfad fuer Eventexport
 - Rule-Engine und eventgetriebene Alarmableitung
-- restliche Modbus-Write-Pfade fuer `FC16`, weitere Setpoints und weitere aktive Units
+- restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - Web-HMI
 - Exporter-Implementierung
 
@@ -106,7 +107,7 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. `FC16` fuer den PPC-Setpoint-Block auf `Unit 1` nachziehen und dabei die gleiche fachliche Wirkung und Eventspur wie bei `FC06` halten
+1. den ersten `grid_interconnect`-Slice fuer `Unit 41` aufziehen und `breaker_open_request`/`breaker_close_request` als naechsten sichtbaren Steuerpfad absichern
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
