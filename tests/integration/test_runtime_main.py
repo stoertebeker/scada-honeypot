@@ -4,11 +4,13 @@ import socket
 from pathlib import Path
 from struct import pack, unpack
 
+import httpx
+
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
 
 
-def test_build_local_runtime_starts_local_modbus_listener_and_serves_fixture(tmp_path: Path) -> None:
+def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
     env_file.write_text(
@@ -22,16 +24,24 @@ def test_build_local_runtime_starts_local_modbus_listener_and_serves_fixture(tmp
         encoding="utf-8",
     )
 
-    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0)
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    modbus_address: tuple[str, int] | None = None
+    hmi_address: tuple[str, int] | None = None
     try:
         runtime.start()
-        host, port = runtime.modbus_service.address
+        modbus_address = runtime.modbus_service.address
+        hmi_address = runtime.hmi_service.address
         response = send_request(
-            (host, port),
+            modbus_address,
             transaction_id=0x4321,
             unit_id=1,
             function_code=READ_HOLDING_REGISTERS,
             body=pack(">HH", 0, 8),
+        )
+        overview_response = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
         )
     finally:
         runtime.stop()
@@ -47,9 +57,22 @@ def test_build_local_runtime_starts_local_modbus_listener_and_serves_fixture(tmp
     assert protocol_id == 0
     assert unit_id == 1
     assert registers == (100, 1001, 1, 0, 28784, 25389, 12337, 8224)
-    assert len(events) == 1
+    assert overview_response.status_code == 200
+    assert "Plant Overview" in overview_response.text
+    assert "5.80 MW" in overview_response.text
+    assert len(events) == 2
     assert events[0].event_type == "protocol.modbus.holding_registers_read"
     assert events[0].requested_value["register_start"] == 40001
+    assert events[1].event_type == "hmi.page.overview_viewed"
+    assert events[1].service == "web-hmi"
+    assert events[1].endpoint_or_register == "/overview"
+    assert events[1].requested_value == {"http_method": "GET", "http_path": "/overview"}
+    assert events[1].resulting_value == {"http_status": 200}
+    assert events[1].session_id is not None
+    assert modbus_address is not None
+    assert hmi_address is not None
+    assert_port_closed(modbus_address)
+    assert_port_closed(hmi_address)
 
 
 def send_request(
@@ -84,3 +107,11 @@ def recv_exact(connection: socket.socket, size: int) -> bytes:
             raise RuntimeError("Socket geschlossen, bevor die Antwort komplett war")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+def assert_port_closed(address: tuple[str, int]) -> None:
+    try:
+        with socket.create_connection(address, timeout=0.5):
+            raise AssertionError(f"Port {address[0]}:{address[1]} ist nach runtime.stop() noch offen")
+    except OSError:
+        return

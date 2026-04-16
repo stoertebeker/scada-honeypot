@@ -58,11 +58,14 @@ Wichtiger Kurs:
   - `EventRecorder`
   - `ReadOnlyRegisterMap`
   - `ReadOnlyModbusTcpService`
-- `main()` startet den lokalen Modbus-Listener und bleibt bis `KeyboardInterrupt`
-  aktiv
+- `LocalHmiHttpService`
+- `main()` startet jetzt lokalen Modbus-Listener und lokalen HMI-HTTP-Dienst
+  und bleibt bis `KeyboardInterrupt` aktiv
 - Sicherheitsregel im Startpfad:
   - `MODBUS_BIND_HOST` muss derzeit `127.0.0.1` bleiben
+  - `HMI_BIND_HOST` muss derzeit `127.0.0.1` bleiben
   - Design-Local-Default fuer `MODBUS_PORT` ist `1502`
+  - Design-Local-Default fuer `HMI_PORT` ist `8080`
 
 ### 2. Konfiguration
 
@@ -425,10 +428,12 @@ Dateien:
 
 - `src/honeypot/hmi_web/app.py`
 - `src/honeypot/hmi_web/__init__.py`
+- `src/honeypot/hmi_web/server.py`
 - `src/honeypot/hmi_web/templates/overview.html`
 - `resources/locales/attacker-ui/en.json`
 - `src/honeypot/main.py`
 - `tests/integration/test_hmi_web_overview.py`
+- `tests/integration/test_runtime_main.py`
 - `tests/unit/test_runtime_bootstrap.py`
 
 Vorhanden:
@@ -436,10 +441,14 @@ Vorhanden:
 - `create_hmi_app()` erzeugt eine erste `FastAPI`-/`Jinja2`-App fuer:
   - `/`
   - `/overview`
+- `LocalHmiHttpService` startet diese App als echten lokalen HTTP-Dienst auf
+  `HMI_BIND_HOST/HMI_PORT`
 - die HMI liest pro Request dieselbe Snapshot-Wahrheit wie Modbus ueber einen
   `snapshot_provider`
 - `build_local_runtime()` verdrahtet die HMI intern bereits an
   `register_map.snapshot`
+- `runtime.start()` bootstrapt jetzt Modbus und HMI gemeinsam; `runtime.stop()`
+  stoppt beide Pfade sauber
 - `overview` zeigt sichtbar:
   - Parkleistung
   - aktuelle Leistungsbegrenzung
@@ -465,10 +474,15 @@ Vorhanden:
   - `session_id`
 - Anti-Fingerprint-Minimum:
   - `FastAPI`-Docs/OpenAPI sind deaktiviert
+  - `uvicorn`-`Server`- und `Date`-Header sind im lokalen HMI-Dienst
+    deaktiviert
+- lokaler Runtime-Smoke-Test prueft jetzt:
+  - echter `GET /overview` auf localhost
+  - HTTP-Eventspur aus dem Runtime-Pfad
+  - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- lokaler HTTP-Dienststart fuer die HMI auf `127.0.0.1`
 - weitere Seiten wie `single-line`, `inverters`, `weather`, `meter`, `alarms`
 - Service-Login oder schreibende HMI-Pfade
 - eigene HMI-Fehlerseiten fuer `404/500`
@@ -481,7 +495,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `85 passed`
+- `86 passed`
 
 Abgedeckt sind bisher:
 
@@ -509,7 +523,8 @@ Abgedeckt sind bisher:
   Wiederherstellung und Alarm-Clear
 - erste read-only HMI fuer `/overview`, HTTP-Eventspur und Shared-Truth-Test
   gegen Modbus-Curtailment
-- lokaler Runtime-Startpfad mit `build_local_runtime()` und Socket-Smoke-Test
+- lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
+  echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
 ## Sicherheitsplanken
 
@@ -535,7 +550,6 @@ Noch **nicht** vorhanden:
 
 - weitere Rule-Engine-Regeln, Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- lokaler HTTP-Dienststart fuer die HMI
 - weitere HMI-Seiten und HMI-Fehlerseiten
 - Exporter-Implementierung
 
@@ -549,17 +563,16 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. lokalen HMI-HTTP-Dienst fuer die vorhandene `overview`-App auf
-   `127.0.0.1` bootstrappen
-2. danach weitere read-only HMI-Seiten und erst dann HMI-Servicepfade
-3. restliche Modbus-Write-Pfade sowie Rule-Engine/Exporter nachziehen
+1. jetzt weitere read-only HMI-Seiten auf dieselbe Snapshot-Wahrheit setzen
+2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
+3. Rule-Engine/Exporter entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- kleinen lokalen HTTP-Dienst fuer `runtime.hmi_app` auf
-  `HMI_BIND_HOST/HMI_PORT` aufziehen
-- fokussierte Tests fuer echten `GET /overview` auf localhost,
-  Eventspur und sauberes Stoppen zusammen mit dem Runtime-Pfad
+- naechste read-only HMI-Seite auf dieselbe Snapshot-Wahrheit setzen,
+  bevorzugt `single-line` oder `inverters`
+- fokussierte Tests fuer sichtbare Zustandskonsistenz zu Modbus und
+  fehlerarme lokale Renderpfade
 - keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI
   beobachtend lokal sauber erreichbar ist
 

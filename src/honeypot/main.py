@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
-from honeypot.hmi_web import create_hmi_app
+from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
@@ -45,6 +45,7 @@ class LocalRuntime:
     event_store: SQLiteEventStore
     event_recorder: EventRecorder
     hmi_app: FastAPI
+    hmi_service: LocalHmiHttpService
     modbus_service: ReadOnlyModbusTcpService
 
     def start(self) -> "LocalRuntime":
@@ -55,10 +56,24 @@ class LocalRuntime:
                 "Modbus-Listener konnte nicht gebunden werden; fuer design-local einen unprivilegierten "
                 "MODBUS_PORT wie 1502 verwenden"
             ) from exc
+        try:
+            self.hmi_service.start_in_thread()
+        except PermissionError as exc:
+            self.modbus_service.stop()
+            raise RuntimeError(
+                "HMI-HTTP-Dienst konnte nicht gebunden werden; fuer design-local einen unprivilegierten "
+                "HMI_PORT wie 8080 verwenden"
+            ) from exc
+        except Exception:
+            self.modbus_service.stop()
+            raise
         return self
 
     def stop(self) -> None:
-        self.modbus_service.stop()
+        try:
+            self.hmi_service.stop()
+        finally:
+            self.modbus_service.stop()
 
 
 def bootstrap_runtime() -> RuntimeManifest:
@@ -71,12 +86,15 @@ def build_local_runtime(
     *,
     env_file: str | None = ".env",
     modbus_port: int | None = None,
+    hmi_port: int | None = None,
 ) -> LocalRuntime:
-    """Verdrahtet den aktuellen lokalen Runtime-Slice mit Fixture, Store und Modbus."""
+    """Verdrahtet den aktuellen lokalen Runtime-Slice mit Fixture, Store, Modbus und HMI."""
 
     config = load_runtime_config(env_file=env_file)
     if config.modbus_bind_host != "127.0.0.1":
         raise RuntimeError("MODBUS_BIND_HOST muss im aktuellen V1-Laborbetrieb auf 127.0.0.1 bleiben")
+    if config.hmi_bind_host != "127.0.0.1":
+        raise RuntimeError("HMI_BIND_HOST muss im aktuellen V1-Laborbetrieb auf 127.0.0.1 bleiben")
 
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
@@ -99,6 +117,12 @@ def build_local_runtime(
         port=config.modbus_port if modbus_port is None else modbus_port,
         event_recorder=event_recorder,
     )
+    hmi_service = LocalHmiHttpService(
+        app=hmi_app,
+        bind_host=config.hmi_bind_host,
+        port=config.hmi_port if hmi_port is None else hmi_port,
+        log_level=config.log_level,
+    )
     return LocalRuntime(
         config=config,
         manifest=manifest,
@@ -106,15 +130,19 @@ def build_local_runtime(
         event_store=event_store,
         event_recorder=event_recorder,
         hmi_app=hmi_app,
+        hmi_service=hmi_service,
         modbus_service=modbus_service,
     )
 
 
 def _runtime_banner(runtime: LocalRuntime) -> str:
-    host, port = runtime.modbus_service.address
+    modbus_host, modbus_port = runtime.modbus_service.address
+    hmi_host, hmi_port = runtime.hmi_service.address
     return (
         f"honeypot runtime ready for {runtime.config.site_code}: "
-        f"modbus://{host}:{port} fixture={runtime.snapshot.fixture_name} "
+        f"modbus://{modbus_host}:{modbus_port} "
+        f"http://{hmi_host}:{hmi_port}/overview "
+        f"fixture={runtime.snapshot.fixture_name} "
         f"components={', '.join(runtime.manifest.components)}"
     )
 
@@ -130,7 +158,7 @@ def _run_until_stopped(runtime: LocalRuntime) -> None:
 
 
 def main(*, env_file: str | None = ".env") -> int:
-    """Startet den aktuellen lokalen Runtime-Slice fuer Modbus auf localhost."""
+    """Startet den aktuellen lokalen Runtime-Slice fuer Modbus und HMI auf localhost."""
 
     runtime = build_local_runtime(env_file=env_file).start()
     print(_runtime_banner(runtime))

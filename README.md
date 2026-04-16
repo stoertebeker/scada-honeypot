@@ -54,6 +54,8 @@ Vorhanden sind:
 - erste read-only HMI fuer `/` und `/overview` steht als `FastAPI`-/`Jinja2`-App auf derselben Snapshot-Wahrheit wie Modbus
 - `overview` zeigt Parkleistung, Leistungsbegrenzung, Blindleistungsziel, Breaker-Zustand, Kommunikationslage, Blockstatus, Wetterwerte und die wichtigsten aktiven Alarme
 - HMI-Aufrufe schreiben jetzt eine saubere HTTP-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
+- lokaler Prozesseinstieg ueber `uv run python -m honeypot.main` bootstrapt jetzt `normal_operation`, `SQLiteEventStore`, den Modbus-Listener auf `127.0.0.1:1502` und die HMI auf `127.0.0.1:8080`
+- der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview` ist damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
 - `Unit 21` bleibt strikt read-only; Setpoint-Zugriffe auf `40200-40249` werden sauber als `02 Illegal Data Address` abgewiesen
 - `Unit 31` bildet jetzt `revenue_meter` mit eigenem Identitaetsblock, Status-/Alarmregistern und read-only Ablehnung fuer Setpoint-Schreibzugriffe ab
@@ -61,16 +63,15 @@ Vorhanden sind:
 - `Unit 41` bildet jetzt `grid_interconnect` mit eigenem Identitaetsblock, Status-/Alarmregistern sowie `breaker_open_request` und `breaker_close_request` als self-clearing Puls-Schreibpfaden ab
 - `plant_sim.close_breaker()` stellt Export und Normalzustand nach einem offenen Breaker wieder her und schreibt die Alarm-Clear-Spur fuer `BREAKER_OPEN`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
-- lokaler Prozesseinstieg ueber `uv run python -m honeypot.main`, der `normal_operation`, `SQLiteEventStore` und den Modbus-Listener auf `127.0.0.1` bootstrapt
-- Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
+- Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den minimalen Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
 - weitere Rule-Engine-Regeln, Dedupe/Suppression und echte Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- lokaler HTTP-Dienststart fuer die HMI auf `127.0.0.1`
 - weitere HMI-Seiten jenseits von `overview`
+- eigene HMI-Fehlerseiten fuer `404/500`
 - Exporter-Implementierung
 
 ## Leitplanken
@@ -120,15 +121,14 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. lokalen HMI-HTTP-Dienst fuer die vorhandene `overview`-App auf `127.0.0.1` bootstrappen
+1. weitere read-only HMI-Seiten auf die jetzt laufende lokale HMI setzen, zuerst `single-line` oder `inverters`
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. weitere read-only HMI-Seiten
-2. HMI-Servicepfade
-3. restliche Modbus-Write-Pfade
-4. weitere Rule-Engine-Regeln, Alerts und Exporter
-5. Hardening und Anti-Fingerprint
+1. HMI-Servicepfade
+2. restliche Modbus-Write-Pfade
+3. weitere Rule-Engine-Regeln, Alerts und Exporter
+4. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 
