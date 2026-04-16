@@ -58,7 +58,7 @@ class RuntimeConfig(BaseSettings):
     alarm_threshold_low_output_pct: int = Field(default=35, ge=0, le=100)
 
     modbus_bind_host: str = "127.0.0.1"
-    modbus_port: int = Field(default=502, ge=1, le=65535)
+    modbus_port: int = Field(default=1502, ge=1, le=65535)
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
     enable_service_login: bool = True

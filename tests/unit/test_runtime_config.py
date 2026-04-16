@@ -21,6 +21,7 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.site_name == "Solar Field A"
     assert config.enable_service_login is True
     assert config.enable_tracker is False
+    assert config.modbus_port == 1502
     assert config.attacker_ui_locale_resolution_chain == ("en",)
     assert config.event_store_backend == "sqlite"
 
