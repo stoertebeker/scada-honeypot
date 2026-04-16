@@ -46,9 +46,11 @@ Vorhanden sind:
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
 - minimale lokale `RuleEngine`, die aktuell erfolgreiche Setpoint-Aenderungen ohne bestehendes Anlagenalarmbild in Alerts ueberfuehrt
-- `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
+- `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 11-13`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
+- `Unit 11-13` bilden jetzt die drei `inverter_block_*` als gemeinsame read-only Status-/Alarmmatrix mit korrekten Unit-IDs, Asset-Tags, `block_power_kw`, `availability_pct_x10` und lokaler Alarmdiagnose ab
+- `Unit 12` spiegelt einen Kommunikationsverlust jetzt sichtbar in `communication_state`, `data_quality`, `local_alarm_count` und `alarm_comm_loss_state`; Inverter-Write-Pfade bleiben in diesem Slice bewusst noch aus
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
 - `Unit 21` bleibt strikt read-only; Setpoint-Zugriffe auf `40200-40249` werden sauber als `02 Illegal Data Address` abgewiesen
 - `Unit 31` bildet jetzt `revenue_meter` mit eigenem Identitaetsblock, Status-/Alarmregistern und read-only Ablehnung fuer Setpoint-Schreibzugriffe ab
@@ -114,14 +116,13 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. `Unit 11-13 inverter_block_*` als naechsten Modbus-Slice aufziehen
+1. read-only HMI fuer die jetzt vollstaendige Beobachtungssicht aufziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. weitere aktive Units der Registermatrix fuer Modbus
-2. read-only HMI
-3. HMI-Servicepfade
-4. weitere Rule-Engine-Regeln, Alerts und Exporter
+1. HMI-Servicepfade
+2. restliche Modbus-Write-Pfade
+3. weitere Rule-Engine-Regeln, Alerts und Exporter
 5. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration

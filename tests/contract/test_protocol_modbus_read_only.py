@@ -8,6 +8,7 @@ import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.event_core import EventRecorder
+from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import (
     ILLEGAL_DATA_ADDRESS,
     ILLEGAL_DATA_VALUE,
@@ -307,6 +308,139 @@ def test_fc16_can_latch_plant_mode_request_and_rejects_invalid_values(running_se
     assert mode_request_event.resulting_state["operating_mode"] == "normal"
     assert rejected_pdu == bytes([WRITE_MULTIPLE_REGISTERS | 0x80, ILLEGAL_DATA_VALUE])
     assert rejected_event.error_code == "modbus_exception_03"
+
+
+def test_unit_11_and_13_fc03_return_distinct_inverter_identity_and_status(running_service) -> None:
+    service, store = running_service
+
+    unit_11_identity_response = send_request(
+        service.address,
+        transaction_id=39,
+        unit_id=11,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 0, 8),
+    )
+    unit_11_status_response = send_request(
+        service.address,
+        transaction_id=40,
+        unit_id=11,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 12),
+    )
+    unit_13_identity_response = send_request(
+        service.address,
+        transaction_id=41,
+        unit_id=13,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 0, 8),
+    )
+    unit_13_status_response = send_request(
+        service.address,
+        transaction_id=42,
+        unit_id=13,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 12),
+    )
+
+    unit_11_tx, unit_11_protocol, unit_11_unit, unit_11_identity_pdu = parse_response(unit_11_identity_response)
+    _, _, _, unit_11_status_pdu = parse_response(unit_11_status_response)
+    unit_13_tx, unit_13_protocol, unit_13_unit, unit_13_identity_pdu = parse_response(unit_13_identity_response)
+    _, _, _, unit_13_status_pdu = parse_response(unit_13_status_response)
+    events = store.fetch_events()
+
+    assert unit_11_tx == 39
+    assert unit_11_protocol == 0
+    assert unit_11_unit == 11
+    assert unpack(">8H", unit_11_identity_pdu[2:])[:4] == (100, 1101, 11, 1)
+    assert unpack(">12H", unit_11_status_pdu[2:]) == (0, 0, 0, 1000, 0, 1935, 0, 0, 0, 0, 0, 0)
+    assert unit_13_tx == 41
+    assert unit_13_protocol == 0
+    assert unit_13_unit == 13
+    assert unpack(">8H", unit_13_identity_pdu[2:])[:4] == (100, 1101, 13, 3)
+    assert unpack(">12H", unit_13_status_pdu[2:]) == (0, 0, 0, 1000, 0, 1945, 0, 0, 0, 0, 0, 0)
+    assert any(event.asset_id == "invb-01" and event.requested_value["register_start"] == 40001 for event in events)
+    assert any(event.asset_id == "invb-03" and event.requested_value["register_start"] == 40100 for event in events)
+
+
+def test_unit_12_fc06_rejects_write_to_current_read_only_slice(running_service) -> None:
+    service, store = running_service
+
+    rejected_response = send_request(
+        service.address,
+        transaction_id=43,
+        unit_id=12,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 199, 1),
+    )
+    readback_response = send_request(
+        service.address,
+        transaction_id=44,
+        unit_id=12,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 12),
+    )
+
+    _, _, _, rejected_pdu = parse_response(rejected_response)
+    _, _, _, readback_pdu = parse_response(readback_response)
+    events = store.fetch_events()
+    rejected_event = next(
+        event
+        for event in events
+        if event.action == "fc06"
+        and event.result == "rejected"
+        and event.asset_id == "invb-02"
+        and event.requested_value["register_start"] == 40200
+    )
+
+    assert rejected_pdu == bytes([WRITE_SINGLE_REGISTER | 0x80, ILLEGAL_DATA_ADDRESS])
+    assert unpack(">12H", readback_pdu[2:]) == (0, 0, 0, 1000, 0, 1920, 0, 0, 0, 0, 0, 0)
+    assert rejected_event.error_code == "modbus_exception_02"
+
+
+def test_unit_12_reflects_comm_loss_in_status_and_alarm_block(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
+    store = SQLiteEventStore(tmp_path / "tmp" / "inverter-comm-loss.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(comm_loss_snapshot.start_time))
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(comm_loss_snapshot, event_recorder=recorder),
+        bind_host="127.0.0.1",
+        port=0,
+        event_recorder=recorder,
+    ).start_in_thread()
+
+    try:
+        status_response = send_request(
+            service.address,
+            transaction_id=45,
+            unit_id=12,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 99, 12),
+        )
+        alarm_response = send_request(
+            service.address,
+            transaction_id=46,
+            unit_id=12,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 299, 6),
+        )
+        unaffected_alarm_response = send_request(
+            service.address,
+            transaction_id=47,
+            unit_id=11,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 299, 6),
+        )
+    finally:
+        service.stop()
+
+    _, _, _, status_pdu = parse_response(status_response)
+    _, _, _, alarm_pdu = parse_response(alarm_response)
+    _, _, _, unaffected_alarm_pdu = parse_response(unaffected_alarm_response)
+
+    assert unpack(">12H", status_pdu[2:]) == (2, 2, 2, 1000, 0, 1920, 0, 0, 0, 0, 0, 1)
+    assert unpack(">6H", alarm_pdu[2:]) == (100, 2, 1, 0, 0, 0)
+    assert unpack(">6H", unaffected_alarm_pdu[2:]) == (0, 0, 0, 0, 0, 0)
 
 
 def test_unit_21_fc03_returns_weather_station_identity_and_status(running_service) -> None:

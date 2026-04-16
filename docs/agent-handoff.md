@@ -293,7 +293,7 @@ Vorhanden:
   - Alarm-Clear und Wiederherstellung nach `close_breaker()`
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
-### 10. Modbus Vertical Slices fuer Unit 1, Unit 21, Unit 31 und Unit 41
+### 10. Modbus Vertical Slices fuer Unit 1, Unit 11-13, Unit 21, Unit 31 und Unit 41
 
 Dateien:
 
@@ -309,6 +309,7 @@ Vorhanden:
   - Identitaetsblock `40001-40049`
   - Unit-spezifische Status-, Setpoint- und Alarmbloecke
 - `Unit 1`-Sicht fuer `site / power_plant_controller`
+- `Unit 11-13`-Sicht fuer `inverter_block_*`
 - `Unit 21`-Sicht fuer `weather_station`
 - `Unit 31`-Sicht fuer `revenue_meter`
 - `Unit 41`-Sicht fuer `grid_interconnect`
@@ -338,11 +339,20 @@ Vorhanden:
   - Fallback der Wetterwerte auf `fixture.weather`, wenn Asset-Messwerte fehlen
   - `weather_confidence_pct_x10` als abgeleitete Qualitaetssicht
   - Alarmdiagnose `40300-40302`
+- `Unit 11-13` bilden zusaetzlich ab:
+  - Identitaetsbloecke mit `device_class_code = 1101`
+  - Status `40100-40111`
+  - saubere Differenzierung ueber `unit_id_echo`, `asset_instance` und
+    `asset_tag_ascii`
+  - `block_power_kw` als `s32` und `availability_pct_x10`
+  - lokale Alarmdiagnose `40300-40305`
+  - bewusst noch keine verdrahteten Inverter-Write-Pfade
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
   - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
   - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
   - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
+  - jeder Write auf `Unit 11-13 / 40200-40249` -> `02 Illegal Data Address`
   - jeder Write auf `Unit 21 / 40200-40249` -> `02 Illegal Data Address`
   - jeder Write auf `Unit 31 / 40200-40249` -> `02 Illegal Data Address`
   - Wert ausserhalb `0..1` auf `Unit 41 / 40200-40201` -> `03 Illegal Data Value`
@@ -360,6 +370,9 @@ Vorhanden:
   - `active_power_limit_pct_x10`
   - `reactive_power_target_pct_x10`
   - `plant_mode_request`
+  - `block_power_kw`
+  - `availability_pct_x10`
+  - `local_alarm_count`
   - `irradiance_w_m2`
   - `module_temperature_c_x10`
   - `ambient_temperature_c_x10`
@@ -389,6 +402,9 @@ Vorhanden:
   - `FC06` mit sichtbarer Curtailment-Wirkung
   - `FC16` mit Mehrregister-Header, reaktiver Setpoint-Wirkung und latched
     `plant_mode_request`
+  - `Unit 11`- und `Unit 13`-Identity/Status-Lesezugriffe
+  - read-only Ablehnung fuer `Unit 12 / FC06`
+  - `Unit 12`-Kommunikationsverlust mit lokaler Alarmdiagnose
   - `Unit 21`-Identity/Status-Lesezugriffe
   - read-only Ablehnung fuer `Unit 21 / FC06`
   - `Unit 31`-Identity/Status-Lesezugriffe
@@ -410,7 +426,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `76 passed`
+- `82 passed`
 
 Abgedeckt sind bisher:
 
@@ -428,6 +444,8 @@ Abgedeckt sind bisher:
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
+- `inverter_block`-Slices mit gemeinsamer read-only Status-/Alarmmatrix,
+  korrekter Unit-Differenzierung und lokaler Comm-Loss-Sicht
 - `weather_station`-Slice mit Fallback auf `fixture.weather`, abgeleiteter
   Confidence-Sicht und strikt read-only Verhalten
 - `revenue_meter`-Slice mit read-only Verhalten, Export-/Qualitaetssicht und
@@ -473,18 +491,19 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `Unit 11-13 inverter_block_*` als naechsten Modbus-Slice aufziehen
-2. danach weitere aktive Units der Registermatrix nachziehen
-3. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
+1. read-only HMI auf die jetzt vollstaendige Beobachtungssicht setzen
+2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
+3. Rule-Engine und Exporter auf die sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `Unit 11-13 inverter_block_*` mit gemeinsamer read-only Status- und
-  Alarmmatrix aufziehen
-- fokussierte Contract-Tests fuer `availability_pct_x10`, `block_power_kw`,
-  `local_alarm_count` und den Unterschied der drei Unit-IDs
-- Write-Pfade der Inverter-Units noch nicht vorziehen, bis die reine
-  Beobachtungssicht sauber steht
+- erste read-only HMI-Seite fuer `/overview` oder `/plant` auf die bestehende
+  gemeinsame Wahrheit aufsetzen
+- fokussierte Tests fuer HTTP-Status, Grundrendering und sichtbare Werte aus
+  `site`, `inverter_blocks`, `weather_station`, `revenue_meter`,
+  `grid_interconnect`
+- keine Service-Login- oder Schreibpfade vorziehen, bevor die reine
+  Beobachtungssicht im Browser sauber steht
 
 Nicht als naechstes tun:
 

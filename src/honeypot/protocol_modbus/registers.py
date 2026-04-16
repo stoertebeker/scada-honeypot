@@ -26,6 +26,8 @@ UNIT_1_ALARM_BLOCK = range(299, 305)
 UNIT_1_ACTIVE_POWER_LIMIT_OFFSET = 199
 UNIT_1_REACTIVE_POWER_TARGET_OFFSET = 200
 UNIT_1_PLANT_MODE_REQUEST_OFFSET = 201
+UNIT_11_13_STATUS_BLOCK = range(99, 111)
+UNIT_11_13_ALARM_BLOCK = range(299, 305)
 UNIT_21_STATUS_BLOCK = range(99, 107)
 UNIT_21_ALARM_BLOCK = range(299, 302)
 UNIT_31_STATUS_BLOCK = range(99, 110)
@@ -38,24 +40,36 @@ UNIT_41_BREAKER_CLOSE_REQUEST_OFFSET = 200
 
 DEVICE_CLASS_CODE = {
     1: 1001,
+    11: 1101,
+    12: 1101,
+    13: 1101,
     21: 1201,
     31: 1301,
     41: 1401,
 }
 ASSET_INSTANCE = {
     1: 0,
+    11: 1,
+    12: 2,
+    13: 3,
     21: 0,
     31: 0,
     41: 0,
 }
 ASSET_TAG = {
     1: "ppc-01",
+    11: "invb-01",
+    12: "invb-02",
+    13: "invb-03",
     21: "wx-01",
     31: "meter-01",
     41: "grid-01",
 }
 ASSET_ID = {
     1: "ppc-01",
+    11: "invb-01",
+    12: "invb-02",
+    13: "invb-03",
     21: "wx-01",
     31: "meter-01",
     41: "grid-01",
@@ -346,6 +360,8 @@ class ReadOnlyRegisterMap:
         offsets = tuple(range(start_offset, start_offset + len(values)))
         if unit_id == 1:
             return _validate_unit_1_write_sequence(offsets=offsets, values=values, allow_fc06=allow_fc06)
+        if unit_id in (11, 12, 13):
+            raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "inverter_block ist im aktuellen Slice read-only")
         if unit_id == 21:
             raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "weather_station ist in V1 read-only")
         if unit_id == 31:
@@ -452,6 +468,12 @@ def _is_supported_offset(unit_id: int, offset: int) -> bool:
             or offset in UNIT_1_SETPOINT_BLOCK
             or offset in UNIT_1_ALARM_BLOCK
         )
+    if unit_id in (11, 12, 13):
+        return (
+            offset in IDENTITY_BLOCK
+            or offset in UNIT_11_13_STATUS_BLOCK
+            or offset in UNIT_11_13_ALARM_BLOCK
+        )
     if unit_id == 21:
         return (
             offset in IDENTITY_BLOCK
@@ -482,6 +504,8 @@ def _build_registers_for_unit(
 ) -> dict[int, int]:
     if unit_id == 1:
         return _build_unit_1_registers(snapshot, plant_mode_request_override=plant_mode_request_override)
+    if unit_id in (11, 12, 13):
+        return _build_unit_11_13_registers(snapshot, unit_id=unit_id)
     if unit_id == 21:
         return _build_unit_21_registers(snapshot)
     if unit_id == 31:
@@ -552,6 +576,47 @@ def _build_unit_41_registers(snapshot: PlantSnapshot) -> dict[int, int]:
             302: _grid_export_path_alarm_state(snapshot),
         }
     )
+    return registers
+
+
+def _build_unit_11_13_registers(snapshot: PlantSnapshot, *, unit_id: int) -> dict[int, int]:
+    block = _inverter_block_for_unit(snapshot, unit_id)
+    comm_loss_state = _inverter_comm_loss_alarm_state(block)
+    block_fault_state = _inverter_block_fault_alarm_state(block)
+    block_unavailable_state = _inverter_block_unavailable_alarm_state(block)
+    overtemp_state = ALARM_STATE["inactive"]
+    primary_alarm_code, primary_alarm_severity = _inverter_primary_alarm(
+        comm_loss_state=comm_loss_state,
+        overtemp_state=overtemp_state,
+    )
+
+    registers = _build_identity_registers(unit_id)
+    registers.update(
+        {
+            99: ASSET_STATUS[block.status],
+            100: COMMUNICATION_STATE[block.communication_state],
+            101: DATA_QUALITY[block.quality],
+            102: block.availability_pct * 10,
+            105: round((block.block_dc_voltage_v or 0) * 10),
+            106: round((block.block_dc_current_a or 0) * 10),
+            107: round((block.block_ac_voltage_v or 0) * 10),
+            108: round((block.block_ac_current_a or 0) * 10),
+            109: encode_i16(round((block.internal_temperature_c or 0) * 10)),
+            110: _active_alarm_count(
+                comm_loss_state,
+                block_fault_state,
+                block_unavailable_state,
+                overtemp_state,
+            ),
+            299: primary_alarm_code,
+            300: primary_alarm_severity,
+            301: comm_loss_state,
+            302: block_fault_state,
+            303: block_unavailable_state,
+            304: overtemp_state,
+        }
+    )
+    registers.update(_i32_registers(103, round(block.block_power_kw)))
     return registers
 
 
@@ -672,6 +737,43 @@ def _grid_export_path_alarm_state(snapshot: PlantSnapshot) -> int:
     if breaker_alarm_state != ALARM_STATE["inactive"]:
         return breaker_alarm_state
     return ALARM_STATE["active_unacknowledged"]
+
+
+def _inverter_block_for_unit(snapshot: PlantSnapshot, unit_id: int):
+    index = unit_id - 11
+    if index < 0 or index >= len(snapshot.inverter_blocks):
+        raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"unit_id {unit_id} ist im aktuellen Snapshot nicht verfuegbar")
+    return snapshot.inverter_blocks[index]
+
+
+def _inverter_comm_loss_alarm_state(block) -> int:
+    if block.communication_state == "lost":
+        return ALARM_STATE["active_unacknowledged"]
+    return ALARM_STATE["inactive"]
+
+
+def _inverter_block_fault_alarm_state(block) -> int:
+    if block.status == "faulted":
+        return ALARM_STATE["active_unacknowledged"]
+    return ALARM_STATE["inactive"]
+
+
+def _inverter_block_unavailable_alarm_state(block) -> int:
+    if block.status == "offline" or block.availability_pct == 0:
+        return ALARM_STATE["active_unacknowledged"]
+    return ALARM_STATE["inactive"]
+
+
+def _inverter_primary_alarm(*, comm_loss_state: int, overtemp_state: int) -> tuple[int, int]:
+    if comm_loss_state != ALARM_STATE["inactive"]:
+        return ALARM_CODE["COMM_LOSS_INVERTER_BLOCK"], SEVERITY_CODE["medium"]
+    if overtemp_state != ALARM_STATE["inactive"]:
+        return ALARM_CODE["BLOCK_OVERTEMP"], SEVERITY_CODE["high"]
+    return 0, 0
+
+
+def _active_alarm_count(*alarm_states: int) -> int:
+    return sum(1 for state in alarm_states if state != ALARM_STATE["inactive"])
 
 
 def _weather_comm_loss_alarm_state(snapshot: PlantSnapshot) -> int:

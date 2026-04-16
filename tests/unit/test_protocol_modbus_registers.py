@@ -1,6 +1,7 @@
 import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
+from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ILLEGAL_DATA_ADDRESS, ILLEGAL_DATA_VALUE, ModbusRegisterError, ReadOnlyRegisterMap
 
 
@@ -39,6 +40,37 @@ def test_unit_1_setpoint_block_maps_latched_runtime_values() -> None:
     result = register_map.read_holding_registers(unit_id=1, start_offset=199, quantity=3)
 
     assert result.values == (1000, 0, 0)
+
+
+def test_unit_11_and_13_identity_and_status_blocks_distinguish_inverter_blocks() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    unit_11_identity = register_map.read_holding_registers(unit_id=11, start_offset=0, quantity=8)
+    unit_11_status = register_map.read_holding_registers(unit_id=11, start_offset=99, quantity=12)
+    unit_13_identity = register_map.read_holding_registers(unit_id=13, start_offset=0, quantity=8)
+    unit_13_status = register_map.read_holding_registers(unit_id=13, start_offset=99, quantity=12)
+
+    assert unit_11_identity.asset_id == "invb-01"
+    assert unit_11_identity.values[:4] == (100, 1101, 11, 1)
+    assert unit_11_status.values == (0, 0, 0, 1000, 0, 1935, 0, 0, 0, 0, 0, 0)
+    assert unit_13_identity.asset_id == "invb-03"
+    assert unit_13_identity.values[:4] == (100, 1101, 13, 3)
+    assert unit_13_status.values == (0, 0, 0, 1000, 0, 1945, 0, 0, 0, 0, 0, 0)
+
+
+def test_unit_12_comm_loss_sets_local_alarm_count_and_alarm_block() -> None:
+    snapshot = build_snapshot()
+    comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
+    register_map = ReadOnlyRegisterMap(comm_loss_snapshot)
+
+    affected_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    affected_alarm = register_map.read_holding_registers(unit_id=12, start_offset=299, quantity=6)
+    unaffected_alarm = register_map.read_holding_registers(unit_id=11, start_offset=299, quantity=6)
+
+    assert affected_status.values[0:4] == (2, 2, 2, 1000)
+    assert affected_status.values[11] == 1
+    assert affected_alarm.values == (100, 2, 1, 0, 0, 0)
+    assert unaffected_alarm.values == (0, 0, 0, 0, 0, 0)
 
 
 def test_unit_21_identity_status_and_alarm_blocks_map_weather_station_values() -> None:
@@ -164,6 +196,18 @@ def test_fc16_rejects_invalid_plant_mode_request_values() -> None:
         register_map.write_multiple_registers(unit_id=1, start_offset=201, values=(3,))
 
     assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE
+
+
+def test_unit_12_rejects_any_write_in_current_read_only_slice() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    with pytest.raises(ModbusRegisterError) as fc06_exc:
+        register_map.write_single_register(unit_id=12, start_offset=199, value=1)
+    with pytest.raises(ModbusRegisterError) as fc16_exc:
+        register_map.write_multiple_registers(unit_id=12, start_offset=199, values=(1,))
+
+    assert fc06_exc.value.exception_code == ILLEGAL_DATA_ADDRESS
+    assert fc16_exc.value.exception_code == ILLEGAL_DATA_ADDRESS
 
 
 def test_unit_21_rejects_any_write_in_read_only_slice() -> None:
