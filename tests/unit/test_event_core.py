@@ -1,14 +1,16 @@
+import json
 from datetime import UTC, datetime
 
 from honeypot.event_core import EventRecorder
-from honeypot.storage import SQLiteEventStore
+from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
 
-def build_recorder(tmp_path):
+def build_recorder(tmp_path, *, archive_path=None):
     clock = FrozenClock(datetime(2026, 4, 16, 9, 30, tzinfo=UTC))
     store = SQLiteEventStore(tmp_path / "tmp" / "honeypot-events.db")
-    return EventRecorder(store=store, clock=clock)
+    archive = None if archive_path is None else JsonlEventArchive(archive_path)
+    return EventRecorder(store=store, clock=clock, archive=archive)
 
 
 def test_build_event_normalizes_required_contract_fields(tmp_path) -> None:
@@ -132,3 +134,55 @@ def test_record_without_outbox_targets_still_persists_local_truth(tmp_path) -> N
     assert recorder.store.count_rows("event_log") == 1
     assert recorder.store.count_rows("current_state") == 1
     assert recorder.store.count_rows("outbox") == 0
+
+
+def test_record_writes_event_to_jsonl_archive_when_enabled(tmp_path) -> None:
+    archive_path = tmp_path / "logs" / "events.jsonl"
+    recorder = build_recorder(tmp_path, archive_path=archive_path)
+    event = recorder.build_event(
+        event_type="protocol.modbus.holding_registers_read",
+        category="protocol",
+        severity="info",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="protocol-modbus",
+        asset_id="ppc-01",
+        action="read_holding_registers",
+        result="accepted",
+        requested_value={"register_start": 40001, "register_count": 8},
+    )
+
+    recorder.record(event)
+
+    archive_lines = archive_path.read_text(encoding="utf-8").splitlines()
+    archived_event = json.loads(archive_lines[0])
+
+    assert len(archive_lines) == 1
+    assert archived_event["event_id"] == event.event_id
+    assert archived_event["correlation_id"] == event.correlation_id
+    assert archived_event["event_type"] == "protocol.modbus.holding_registers_read"
+    assert archived_event["requested_value"] == {"register_count": 8, "register_start": 40001}
+    assert recorder.store.count_rows("event_log") == 1
+
+
+def test_archive_write_failure_does_not_block_sqlite_truth(tmp_path) -> None:
+    archive_dir = tmp_path / "logs"
+    archive_dir.mkdir(parents=True)
+    recorder = build_recorder(tmp_path, archive_path=archive_dir)
+    event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+    )
+
+    recorder.record(event)
+
+    assert recorder.store.count_rows("event_log") == 1
+    assert recorder.archive is not None
+    assert recorder.archive.last_error is not None

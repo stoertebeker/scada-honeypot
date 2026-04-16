@@ -44,6 +44,7 @@ Vorhanden sind:
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
+- optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
@@ -56,7 +57,6 @@ Vorhanden sind:
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
-- JSONL-Archivpfad fuer Eventexport
 - Rule-Engine und eventgetriebene Alarmableitung
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - Web-HMI
@@ -109,8 +109,7 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. den noch offenen `JSONL`-Archivpfad fuer Events einziehen und direkt an den lokalen Eventstore ankoppeln
-2. danach die minimale Rule-Engine-Schnittstelle aufsetzen, damit Alerts nicht nur aus dem Simulationskern kommen
+1. die minimale Rule-Engine-Schnittstelle aufsetzen, damit Alerts nicht nur aus dem Simulationskern kommen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

@@ -223,6 +223,7 @@ Vorhanden:
 - `EventRecorder.build_alert()` zur Ableitung lokaler Alerts aus Kern-Events
 - `EventRecorder.record()` fuer:
   - `event_log`
+  - optionales `JSONL`-Archiv
   - `current_state`
   - `alert_log`
   - optionale Outbox-Auftraege fuer spaetere Exporter
@@ -231,11 +232,16 @@ Vorhanden:
   - `event_log`
   - `alert_log`
   - `outbox`
+- `JsonlEventArchive` als zeilenweiser Event-Sink an `JSONL_ARCHIVE_PATH`
+- best-effort Verhalten fuer Archivfehler: `SQLite` bleibt Primärwahrheit und
+  wird bei Archivproblemen nicht blockiert
 - Guardrails gegen leere `state_key`- und `target_type`-Werte
 - Unit-Tests fuer:
   - kanonische Feldnormalisierung
   - Korrelation ueber `correlation_id` plus `causation_id`
   - Persistenz von Event, State, Alert und Outbox
+  - JSONL-Schreibpfad
+  - best-effort Verhalten bei JSONL-Archivfehlern
   - lokale Wahrheit ohne erzwungene Outbox-Ziele
 
 ### 9. Plant-Sim-Eventspur auf dem lokalen Wahrheitskern
@@ -363,7 +369,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `59 passed`
+- `62 passed`
 
 Abgedeckt sind bisher:
 
@@ -375,6 +381,7 @@ Abgedeckt sind bisher:
 - deterministische Simulationsszenarien fuer Kernszenarien aus Phase B
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
+- `JSONL`-Archivpfad fuer Eventanalyse
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
@@ -404,7 +411,6 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - HMI
@@ -420,22 +426,22 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. den `JSONL`-Archivpfad fuer Events sauber an den lokalen Store haengen
-2. direkt danach die minimale Rule-Engine-Schnittstelle aufsetzen
-3. erst dann restliche Registermatrix und weitere Units erweitern
-4. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
+1. die minimale Rule-Engine-Schnittstelle aufsetzen
+2. erst dann restliche Registermatrix und weitere Units erweitern
+3. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
 
 Empfohlener naechster atomarer Fix fuer den offenen Rest aus Phase C:
 
-- `JSONL`-Archivschreiber an `SQLiteEventStore`/`EventRecorder` anbinden
-- fokussierte Tests fuer Event-Duplikation, Dateiformat und lokale Rotation
-- dabei keine neuen Netzwerkpfade oder Exporter vorziehen
+- erste minimale Rule-Engine-Schnittstelle fuer lokale Event-zu-Alert-Regeln
+- fokussierte Tests fuer Regelregistrierung, deterministische Auswertung und
+  Nicht-Duplizierung
+- dabei keine Exporter oder HMI vorziehen
 
 Nicht als naechstes tun:
 
 - keine HMI vorziehen
-- keine Exporter oder externe Auslieferung vorziehen, bevor `JSONL`-Basis und
-  Rule-Engine-Grundlage stehen
+- keine Exporter oder externe Auslieferung vorziehen, bevor die
+  Rule-Engine-Grundlage steht
 
 ## Vor dem Weiterbauen lesen
 

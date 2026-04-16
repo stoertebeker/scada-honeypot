@@ -26,6 +26,25 @@ def test_build_local_runtime_rejects_nonlocal_modbus_bind_host(tmp_path: Path) -
         build_local_runtime(env_file=str(env_file))
 
 
+def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    archive_path = tmp_path / "logs" / "events.jsonl"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "JSONL_ARCHIVE_ENABLED=1\n"
+            f"JSONL_ARCHIVE_PATH={archive_path}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0)
+
+    assert runtime.event_recorder.archive is not None
+    assert runtime.event_recorder.archive.path == archive_path
+
+
 def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     del tmp_path
     fake_runtime = _FakeRuntime()

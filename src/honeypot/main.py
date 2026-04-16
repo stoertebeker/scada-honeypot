@@ -7,7 +7,7 @@ from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
-from honeypot.storage import SQLiteEventStore
+from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import SystemClock
 
 MODULES: tuple[str, ...] = (
@@ -76,7 +76,11 @@ def build_local_runtime(
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
     event_store = SQLiteEventStore(config.event_store_path)
-    event_recorder = EventRecorder(store=event_store, clock=SystemClock())
+    event_recorder = EventRecorder(
+        store=event_store,
+        clock=SystemClock(),
+        archive=(JsonlEventArchive(config.jsonl_archive_path) if config.jsonl_archive_enabled else None),
+    )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
     modbus_service = ReadOnlyModbusTcpService(
         register_map=register_map,

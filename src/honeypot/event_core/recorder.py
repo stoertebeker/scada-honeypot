@@ -16,7 +16,7 @@ from honeypot.event_core.models import (
     EventSeverity,
     RecordedArtifacts,
 )
-from honeypot.storage import SQLiteEventStore
+from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import Clock, SystemClock
 
 
@@ -30,6 +30,7 @@ class EventRecorder:
 
     store: SQLiteEventStore
     clock: Clock = field(default_factory=SystemClock)
+    archive: JsonlEventArchive | None = None
 
     def build_event(
         self,
@@ -128,6 +129,9 @@ class EventRecorder:
         """Persistiert Event, optional State-Updates, Alert und Outbox-Auftraege."""
 
         self.store.append_event(event)
+        if self.archive is not None:
+            # Das JSONL-Archiv bleibt ein best-effort Analyseartefakt; SQLite ist die Primärwahrheit.
+            self.archive.append_event(event)
         if current_state_updates:
             updated_at = event.timestamp
             for state_key, state_payload in current_state_updates.items():
