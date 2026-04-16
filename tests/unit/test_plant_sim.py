@@ -1,11 +1,21 @@
 import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
-from honeypot.plant_sim import PlantSimulator, determine_data_quality
+from honeypot.event_core import EventRecorder
+from honeypot.plant_sim import PlantSimulator, SimulationEventContext, determine_data_quality
+from honeypot.storage import SQLiteEventStore
+from honeypot.time_core import FrozenClock
 
 
 def build_snapshot() -> PlantSnapshot:
     return PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
+
+
+def build_recording_simulator(snapshot: PlantSnapshot, tmp_path) -> tuple[PlantSimulator, SQLiteEventStore]:
+    store = SQLiteEventStore(tmp_path / "tmp" / "plant-sim-events.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    simulator = PlantSimulator.from_snapshot(snapshot, event_recorder=recorder)
+    return simulator, store
 
 
 def test_estimate_available_power_scales_with_irradiance() -> None:
@@ -85,3 +95,90 @@ def test_determine_data_quality_covers_all_v1_quality_states() -> None:
     assert determine_data_quality(status="degraded", communication_state="degraded") == "estimated"
     assert determine_data_quality(status="degraded", communication_state="lost") == "stale"
     assert determine_data_quality(status="offline", communication_state="lost") == "invalid"
+
+
+def test_apply_curtailment_records_event_state_and_alert(tmp_path) -> None:
+    snapshot = build_snapshot()
+    simulator, store = build_recording_simulator(snapshot, tmp_path)
+
+    simulator.apply_curtailment(
+        snapshot,
+        active_power_limit_pct=60,
+        event_context=SimulationEventContext(
+            source_ip="203.0.113.24",
+            actor_type="remote_client",
+            correlation_id="corr_fixed_curtailment",
+            protocol="modbus-tcp",
+            service="holding-registers",
+            session_id="sess_curtailment",
+        ),
+    )
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    site_state = store.fetch_current_state("site")
+
+    assert len(events) == 1
+    assert len(alerts) == 1
+    assert events[0].event_type == "process.setpoint.curtailment_changed"
+    assert events[0].correlation_id == "corr_fixed_curtailment"
+    assert events[0].source_ip == "203.0.113.24"
+    assert events[0].actor_type == "remote_client"
+    assert events[0].asset_id == "ppc-01"
+    assert events[0].requested_value == 60
+    assert events[0].previous_value == 100
+    assert events[0].resulting_value == 60
+    assert events[0].resulting_state["plant_power_mw"] == pytest.approx(3.48)
+    assert events[0].alarm_code == "PLANT_CURTAILED"
+    assert site_state["plant_power_limit_pct"] == 60
+    assert site_state["active_alarm_count"] == 1
+    assert alerts[0].alarm_code == "PLANT_CURTAILED"
+    assert alerts[0].state == "active_unacknowledged"
+
+
+def test_open_breaker_records_fault_event_and_zeroed_state(tmp_path) -> None:
+    snapshot = build_snapshot()
+    simulator, store = build_recording_simulator(snapshot, tmp_path)
+
+    simulator.open_breaker(snapshot)
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    grid_state = store.fetch_current_state("grid_interconnect")
+
+    assert len(events) == 1
+    assert len(alerts) == 1
+    assert events[0].event_type == "process.breaker.state_changed"
+    assert events[0].asset_id == "grid-01"
+    assert events[0].previous_value == "closed"
+    assert events[0].resulting_value == "open"
+    assert events[0].alarm_code == "BREAKER_OPEN"
+    assert grid_state["breaker_state"] == "open"
+    assert grid_state["export_path_available"] is False
+    assert alerts[0].alarm_code == "BREAKER_OPEN"
+    assert alerts[0].state == "active_unacknowledged"
+
+
+def test_comm_loss_records_system_event_and_degraded_block_state(tmp_path) -> None:
+    snapshot = build_snapshot()
+    simulator, store = build_recording_simulator(snapshot, tmp_path)
+
+    simulator.lose_block_communications(snapshot, asset_id="invb-02")
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    site_state = store.fetch_current_state("site")
+    inverter_states = store.fetch_current_state("inverter_blocks")
+    degraded_block = next(block for block in inverter_states if block["asset_id"] == "invb-02")
+
+    assert len(events) == 1
+    assert len(alerts) == 1
+    assert events[0].event_type == "system.communication.inverter_block_lost"
+    assert events[0].asset_id == "invb-02"
+    assert events[0].actor_type == "system"
+    assert events[0].resulting_state["communication_state"] == "lost"
+    assert degraded_block["communication_state"] == "lost"
+    assert degraded_block["quality"] == "stale"
+    assert site_state["communications_health"] == "degraded"
+    assert alerts[0].alarm_code == "COMM_LOSS_INVERTER_BLOCK"
+    assert alerts[0].state == "active_unacknowledged"

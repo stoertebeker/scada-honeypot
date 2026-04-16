@@ -23,6 +23,10 @@ def _iso_timestamp(value: datetime) -> str:
     return ensure_utc_datetime(value).isoformat().replace("+00:00", "Z")
 
 
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _json_blob(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True)
 
@@ -255,6 +259,61 @@ class SQLiteEventStore:
             row = connection.execute(f"SELECT COUNT(*) AS row_count FROM {table_name}").fetchone()
         return int(row["row_count"])
 
+    def fetch_events(self) -> tuple[EventRecord, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT raw_event_json
+                FROM event_log
+                ORDER BY timestamp, event_id
+                """
+            ).fetchall()
+
+        return tuple(EventRecord.model_validate(json.loads(str(row["raw_event_json"]))) for row in rows)
+
+    def fetch_alerts(self) -> tuple[AlertRecord, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT alert_id, event_id, correlation_id, alarm_code, severity, state,
+                       component, asset_id, message, created_at
+                FROM alert_log
+                ORDER BY created_at, alert_id
+                """
+            ).fetchall()
+
+        return tuple(
+            AlertRecord(
+                alert_id=str(row["alert_id"]),
+                event_id=str(row["event_id"]),
+                correlation_id=str(row["correlation_id"]),
+                alarm_code=str(row["alarm_code"]),
+                severity=row["severity"],
+                state=row["state"],
+                component=str(row["component"]),
+                asset_id=str(row["asset_id"]),
+                message=row["message"],
+                created_at=_parse_timestamp(str(row["created_at"])),
+            )
+            for row in rows
+        )
+
+    def fetch_current_state(self, state_key: str) -> Any | None:
+        normalized_state_key = _normalize_required_text(state_key, field_name="state_key")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT state_json
+                FROM current_state
+                WHERE state_key = ?
+                """,
+                (normalized_state_key,),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return json.loads(str(row["state_json"]))
+
     def fetch_outbox_entries(self) -> tuple[OutboxEntry, ...]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -274,9 +333,9 @@ class SQLiteEventStore:
                 payload_ref=str(row["payload_ref"]),
                 status=row["status"],
                 retry_count=int(row["retry_count"]),
-                next_attempt_at=datetime.fromisoformat(str(row["next_attempt_at"]).replace("Z", "+00:00")),
+                next_attempt_at=_parse_timestamp(str(row["next_attempt_at"])),
                 last_error=row["last_error"],
-                created_at=datetime.fromisoformat(str(row["created_at"]).replace("Z", "+00:00")),
+                created_at=_parse_timestamp(str(row["created_at"])),
             )
             for row in rows
         )

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from honeypot.asset_domain import PlantAlarm, PlantSnapshot
 from honeypot.asset_domain.models import AssetStatus, CommunicationState, DataQuality
+from honeypot.event_core import EventRecorder
 
 SCENARIO_ALARM_CODES = frozenset(
     {
@@ -19,10 +21,26 @@ SCENARIO_ALARM_DEFINITIONS = {
     "BREAKER_OPEN": {"category": "site", "severity": "high"},
     "COMM_LOSS_INVERTER_BLOCK": {"category": "communication", "severity": "medium"},
 }
+PLANT_SIM_COMPONENT = "plant-sim"
+PLANT_SIM_PROTOCOL = "internal-sim"
+PLANT_SIM_SERVICE = "plant-core"
 
 
 class PlantSimulationError(ValueError):
     """Signalisiert ungueltige Simulationskommandos oder Startzustaende."""
+
+
+@dataclass(frozen=True, slots=True)
+class SimulationEventContext:
+    """Metadaten fuer die Eventspur von `plant_sim`-Schreibpfaden."""
+
+    source_ip: str = "127.0.0.1"
+    actor_type: str = "system"
+    session_id: str | None = None
+    correlation_id: str | None = None
+    causation_id: str | None = None
+    protocol: str | None = PLANT_SIM_PROTOCOL
+    service: str | None = PLANT_SIM_SERVICE
 
 
 def determine_data_quality(*, status: AssetStatus, communication_state: CommunicationState) -> DataQuality:
@@ -42,9 +60,17 @@ class PlantSimulator:
     """Leitet aus einem Referenzzustand deterministische Szenarien ab."""
 
     nominal_capacity_kw: float
+    event_recorder: EventRecorder | None = None
+    default_event_context: SimulationEventContext = field(default_factory=SimulationEventContext)
 
     @classmethod
-    def from_snapshot(cls, snapshot: PlantSnapshot) -> "PlantSimulator":
+    def from_snapshot(
+        cls,
+        snapshot: PlantSnapshot,
+        *,
+        event_recorder: EventRecorder | None = None,
+        default_event_context: SimulationEventContext | None = None,
+    ) -> "PlantSimulator":
         """Leitet eine nominale Parkleistung aus dem Referenzzustand ab."""
 
         baseline_irradiance_factor = min(snapshot.weather_station.irradiance_w_m2, 1000) / 1000
@@ -59,7 +85,13 @@ class PlantSimulator:
         if baseline_output_kw <= 0:
             raise PlantSimulationError("ein Referenzzustand mit positiver Leistung ist erforderlich")
 
-        return cls(nominal_capacity_kw=baseline_output_kw / baseline_irradiance_factor)
+        return cls(
+            nominal_capacity_kw=baseline_output_kw / baseline_irradiance_factor,
+            event_recorder=event_recorder,
+            default_event_context=(
+                SimulationEventContext() if default_event_context is None else default_event_context
+            ),
+        )
 
     def estimate_available_power_kw(
         self,
@@ -119,7 +151,13 @@ class PlantSimulator:
             alarms=alarms,
         )
 
-    def apply_curtailment(self, snapshot: PlantSnapshot, *, active_power_limit_pct: int) -> PlantSnapshot:
+    def apply_curtailment(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        active_power_limit_pct: int,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
         """Reduziert die Parkleistung ueber den PPC-Wirkleistungsgrenzwert."""
 
         if not 0 <= active_power_limit_pct <= 100:
@@ -152,7 +190,7 @@ class PlantSimulator:
             base_snapshot.alarms,
             "PLANT_CURTAILED" if active_power_limit_pct < 100 else None,
         )
-        return _build_snapshot(
+        resulting_snapshot = _build_snapshot(
             base_snapshot,
             site=site,
             power_plant_controller=power_plant_controller,
@@ -160,8 +198,34 @@ class PlantSimulator:
             revenue_meter=revenue_meter,
             alarms=alarms,
         )
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.setpoint.curtailment_changed",
+            category="process",
+            severity="high",
+            asset_id=resulting_snapshot.power_plant_controller.asset_id,
+            action="set_active_power_limit",
+            requested_value=active_power_limit_pct,
+            previous_value=snapshot.power_plant_controller.active_power_limit_pct,
+            resulting_value=resulting_snapshot.power_plant_controller.active_power_limit_pct,
+            resulting_state={
+                "active_power_limit_pct": resulting_snapshot.power_plant_controller.active_power_limit_pct,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=_present_alarm_code(resulting_snapshot, "PLANT_CURTAILED"),
+            tags=("control-path", "ppc", "curtailment"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
 
-    def open_breaker(self, snapshot: PlantSnapshot) -> PlantSnapshot:
+    def open_breaker(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
         """Simuliert einen offenen Netzuebergabebreaker mit Exportverlust."""
 
         base_snapshot = self.simulate_normal_operation(snapshot)
@@ -189,7 +253,7 @@ class PlantSimulator:
             }
         )
         alarms = _replace_scenario_alarms(base_snapshot.alarms, "BREAKER_OPEN")
-        return _build_snapshot(
+        resulting_snapshot = _build_snapshot(
             base_snapshot,
             site=site,
             inverter_blocks=inverter_blocks,
@@ -197,8 +261,36 @@ class PlantSimulator:
             grid_interconnect=grid_interconnect,
             alarms=alarms,
         )
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.breaker.state_changed",
+            category="process",
+            severity="high",
+            asset_id=resulting_snapshot.grid_interconnect.asset_id,
+            action="breaker_open_request",
+            requested_value="open",
+            previous_value=snapshot.grid_interconnect.breaker_state,
+            resulting_value=resulting_snapshot.grid_interconnect.breaker_state,
+            resulting_state={
+                "breaker_state": resulting_snapshot.grid_interconnect.breaker_state,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "export_power_kw": resulting_snapshot.revenue_meter.export_power_kw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=_present_alarm_code(resulting_snapshot, "BREAKER_OPEN"),
+            tags=("control-path", "grid", "breaker"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
 
-    def lose_block_communications(self, snapshot: PlantSnapshot, *, asset_id: str) -> PlantSnapshot:
+    def lose_block_communications(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        asset_id: str,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
         """Markiert einen Inverter-Block als Kommunikationsverlust ohne Anlagen-Trip."""
 
         base_snapshot = self.simulate_normal_operation(snapshot)
@@ -233,14 +325,44 @@ class PlantSimulator:
             base_snapshot.alarms,
             "COMM_LOSS_INVERTER_BLOCK",
         )
-        return _build_snapshot(
+        resulting_snapshot = _build_snapshot(
             base_snapshot,
             site=site,
             inverter_blocks=tuple(inverter_blocks),
             alarms=alarms,
         )
+        degraded_block = next(block for block in resulting_snapshot.inverter_blocks if block.asset_id == asset_id)
+        previous_block = next(block for block in snapshot.inverter_blocks if block.asset_id == asset_id)
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="system.communication.inverter_block_lost",
+            category="system",
+            severity="medium",
+            asset_id=asset_id,
+            action="simulate_comm_loss",
+            requested_value="lost",
+            previous_value=previous_block.communication_state,
+            resulting_value=degraded_block.communication_state,
+            resulting_state={
+                "communication_state": degraded_block.communication_state,
+                "quality": degraded_block.quality,
+                "site_communications_health": resulting_snapshot.site.communications_health,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=_present_alarm_code(resulting_snapshot, "COMM_LOSS_INVERTER_BLOCK"),
+            tags=("fault-path", "communications", "inverter-block"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
 
-    def acknowledge_alarm(self, snapshot: PlantSnapshot, *, code: str) -> PlantSnapshot:
+    def acknowledge_alarm(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        code: str,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
         """Quittiert einen aktiven Alarm, ohne ihn zu loeschen."""
 
         updated_alarms = []
@@ -262,7 +384,89 @@ class PlantSimulator:
         if not target_found:
             raise PlantSimulationError(f"unbekannter Alarm fuer Quittierung: {code}")
 
-        return _build_snapshot(snapshot, alarms=tuple(updated_alarms))
+        resulting_snapshot = _build_snapshot(snapshot, alarms=tuple(updated_alarms))
+        updated_alarm = resulting_snapshot.alarm_by_code(code)
+        if updated_alarm is None:
+            raise PlantSimulationError(f"Alarm '{code}' ist nach Quittierung nicht mehr auffindbar")
+
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="alert.alarm_acknowledged",
+            category="alert",
+            severity=updated_alarm.severity,
+            asset_id=_asset_id_for_alarm(resulting_snapshot, code),
+            action="acknowledge_alarm",
+            requested_value="acknowledge",
+            previous_value=snapshot.alarm_by_code(code).state,
+            resulting_value=updated_alarm.state,
+            resulting_state={
+                "alarm_code": updated_alarm.code,
+                "alarm_state": updated_alarm.state,
+                "active_alarm_count": resulting_snapshot.site.active_alarm_count,
+            },
+            alarm_code=updated_alarm.code,
+            tags=("control-path", "alarm", "acknowledgement"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
+    def _record_snapshot_transition(
+        self,
+        previous_snapshot: PlantSnapshot,
+        resulting_snapshot: PlantSnapshot,
+        *,
+        event_type: str,
+        category,
+        severity,
+        asset_id: str,
+        action: str,
+        requested_value: Any | None,
+        previous_value: Any | None,
+        resulting_value: Any | None,
+        resulting_state: dict[str, Any],
+        alarm_code: str | None,
+        tags: tuple[str, ...],
+        event_context: SimulationEventContext | None,
+    ) -> None:
+        if self.event_recorder is None:
+            return
+
+        context = self.default_event_context if event_context is None else event_context
+        event = self.event_recorder.build_event(
+            event_type=event_type,
+            category=category,
+            severity=severity,
+            source_ip=context.source_ip,
+            actor_type=context.actor_type,
+            component=PLANT_SIM_COMPONENT,
+            asset_id=asset_id,
+            action=action,
+            result="accepted",
+            correlation_id=context.correlation_id,
+            session_id=context.session_id,
+            causation_id=context.causation_id,
+            protocol=context.protocol,
+            service=context.service,
+            requested_value=requested_value,
+            previous_value=previous_value,
+            resulting_value=resulting_value,
+            resulting_state=resulting_state,
+            alarm_code=alarm_code,
+            tags=tags,
+        )
+        alert = _build_alert_for_snapshot(
+            self.event_recorder,
+            event=event,
+            previous_snapshot=previous_snapshot,
+            resulting_snapshot=resulting_snapshot,
+            alarm_code=alarm_code,
+        )
+        self.event_recorder.record(
+            event,
+            current_state_updates=_snapshot_state_updates(resulting_snapshot),
+            alert=alert,
+        )
 
 
 def _with_rebalanced_block_power(snapshot: PlantSnapshot, total_power_kw: float) -> tuple:
@@ -391,3 +595,62 @@ def _build_snapshot(
 
 def _active_alarms(alarms: tuple[PlantAlarm, ...]) -> tuple[PlantAlarm, ...]:
     return tuple(alarm for alarm in alarms if alarm.is_active)
+
+
+def _present_alarm_code(snapshot: PlantSnapshot, code: str) -> str | None:
+    return code if snapshot.alarm_by_code(code) is not None else None
+
+
+def _build_alert_for_snapshot(
+    recorder: EventRecorder,
+    *,
+    event,
+    previous_snapshot: PlantSnapshot,
+    resulting_snapshot: PlantSnapshot,
+    alarm_code: str | None,
+):
+    if alarm_code is None:
+        return None
+
+    alarm = resulting_snapshot.alarm_by_code(alarm_code)
+    if alarm is None:
+        return None
+
+    previous_alarm_state = None
+    previous_alarm = previous_snapshot.alarm_by_code(alarm_code)
+    if previous_alarm is not None:
+        previous_alarm_state = previous_alarm.state
+
+    return recorder.build_alert(
+        event=event,
+        alarm_code=alarm.code,
+        severity=alarm.severity,
+        state=alarm.state,
+        message=(
+            f"Alarm {alarm.code} wechselte von {previous_alarm_state or 'missing'} auf {alarm.state}"
+        ),
+    )
+
+
+def _snapshot_state_updates(snapshot: PlantSnapshot) -> dict[str, Any]:
+    return {
+        "site": snapshot.site.model_dump(mode="json"),
+        "power_plant_controller": snapshot.power_plant_controller.model_dump(mode="json"),
+        "inverter_blocks": [block.model_dump(mode="json") for block in snapshot.inverter_blocks],
+        "weather_station": snapshot.weather_station.model_dump(mode="json"),
+        "revenue_meter": snapshot.revenue_meter.model_dump(mode="json"),
+        "grid_interconnect": snapshot.grid_interconnect.model_dump(mode="json"),
+        "alarms": [alarm.model_dump(mode="json") for alarm in snapshot.alarms],
+    }
+
+
+def _asset_id_for_alarm(snapshot: PlantSnapshot, code: str) -> str:
+    if code == "PLANT_CURTAILED":
+        return snapshot.power_plant_controller.asset_id
+    if code == "BREAKER_OPEN":
+        return snapshot.grid_interconnect.asset_id
+    if code == "COMM_LOSS_INVERTER_BLOCK":
+        for block in snapshot.inverter_blocks:
+            if block.communication_state == "lost":
+                return block.asset_id
+    return snapshot.power_plant_controller.asset_id
