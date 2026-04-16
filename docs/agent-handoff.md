@@ -293,7 +293,7 @@ Vorhanden:
   - Alarm-Clear und Wiederherstellung nach `close_breaker()`
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
-### 10. Modbus Vertical Slices fuer Unit 1 und Unit 41
+### 10. Modbus Vertical Slices fuer Unit 1, Unit 31 und Unit 41
 
 Dateien:
 
@@ -309,6 +309,7 @@ Vorhanden:
   - Identitaetsblock `40001-40049`
   - Unit-spezifische Status-, Setpoint- und Alarmbloecke
 - `Unit 1`-Sicht fuer `site / power_plant_controller`
+- `Unit 31`-Sicht fuer `revenue_meter`
 - `Unit 41`-Sicht fuer `grid_interconnect`
 - `ReadOnlyModbusTcpService` mit:
   - stabilem MBAP-Header
@@ -323,11 +324,19 @@ Vorhanden:
   - self-clearing Pulsregister `40200 breaker_open_request` und
     `40201 breaker_close_request`
   - Alarmdiagnose `40300-40303`
+- `Unit 31` bildet zusaetzlich ab:
+  - Identitaetsblock mit `device_class_code = 1301`
+  - Status `40100-40110`
+  - `export_power_kw` als `s32`
+  - `export_energy_kwh_total` als `u32`
+  - `export_path_available` als abgeleitete Breaker-Sicht
+  - Alarmdiagnose `40300-40303`
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
   - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
   - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
   - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
+  - jeder Write auf `Unit 31 / 40200-40249` -> `02 Illegal Data Address`
   - Wert ausserhalb `0..1` auf `Unit 41 / 40200-40201` -> `03 Illegal Data Value`
   - gleichzeitiges `breaker_open_request=1` und `breaker_close_request=1` in
     derselben `FC16`-Anfrage -> `03 Illegal Data Value`
@@ -343,6 +352,10 @@ Vorhanden:
   - `active_power_limit_pct_x10`
   - `reactive_power_target_pct_x10`
   - `plant_mode_request`
+  - `export_power_kw`
+  - `export_energy_kwh_total`
+  - `power_factor_x1000`
+  - `export_path_available`
   - `breaker_state`
   - `active_alarm_count`
   - primaere Alarmdiagnose
@@ -363,6 +376,9 @@ Vorhanden:
   - `FC06` mit sichtbarer Curtailment-Wirkung
   - `FC16` mit Mehrregister-Header, reaktiver Setpoint-Wirkung und latched
     `plant_mode_request`
+  - `Unit 31`-Identity/Status-Lesezugriffe
+  - read-only Ablehnung fuer `Unit 31 / FC06`
+  - konsistente `Unit 31`-Reaktion auf `Unit 41`-Breaker Open
   - `Unit 41`-Identity/Status-Lesezugriffe
   - `Unit 41`-Breaker Open/Close mit selbstloeschenden Pulsregistern
   - Konfliktablehnung fuer `Unit 41 / FC16`
@@ -379,7 +395,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `67 passed`
+- `72 passed`
 
 Abgedeckt sind bisher:
 
@@ -397,6 +413,8 @@ Abgedeckt sind bisher:
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
+- `revenue_meter`-Slice mit read-only Verhalten, Export-/Qualitaetssicht und
+  konsistenter Breaker-Ableitung
 - `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
   Wiederherstellung und Alarm-Clear
 - lokaler Runtime-Startpfad mit `build_local_runtime()` und Socket-Smoke-Test
@@ -438,15 +456,16 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. `Unit 31 revenue_meter` als naechsten read-only Modbus-Slice aufziehen
+1. `Unit 21 weather_station` als naechsten read-only Modbus-Slice aufziehen
 2. danach weitere aktive Units der Registermatrix nachziehen
 3. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `Unit 31 revenue_meter` mit Identitaets-, Status- und Alarmblock
-- fokussierte Contract-Tests fuer `export_power_kw`, `export_energy_kwh_total`
-  und `export_path_available`
+- `Unit 21 weather_station` mit Identitaets-, Status- und Qualitaetsblock
+- fokussierte Contract-Tests fuer `irradiance_w_m2`,
+  `module_temperature_c_x10`, `ambient_temperature_c_x10` und
+  `wind_speed_m_s_x10`
 - dabei read-only bleiben, keine neuen Write-Pfade oder HMI vorziehen
 
 Nicht als naechstes tun:

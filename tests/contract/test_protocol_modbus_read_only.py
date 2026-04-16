@@ -309,6 +309,75 @@ def test_fc16_can_latch_plant_mode_request_and_rejects_invalid_values(running_se
     assert rejected_event.error_code == "modbus_exception_03"
 
 
+def test_unit_31_fc03_returns_revenue_meter_identity_and_status(running_service) -> None:
+    service, store = running_service
+
+    identity_response = send_request(
+        service.address,
+        transaction_id=17,
+        unit_id=31,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 0, 8),
+    )
+    status_response = send_request(
+        service.address,
+        transaction_id=18,
+        unit_id=31,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 11),
+    )
+
+    identity_tx, identity_protocol, identity_unit, identity_pdu = parse_response(identity_response)
+    _, _, _, status_pdu = parse_response(status_response)
+    identity_registers = unpack(">8H", identity_pdu[2:])
+    status_registers = unpack(">11H", status_pdu[2:])
+    events = store.fetch_events()
+
+    assert identity_tx == 17
+    assert identity_protocol == 0
+    assert identity_unit == 31
+    assert identity_pdu[0] == READ_HOLDING_REGISTERS
+    assert identity_registers[:4] == (100, 1301, 31, 0)
+    assert status_registers == (0, 0, 0, 0, 5790, 0, 0, 0, 0, 990, 1)
+    assert any(event.requested_value["register_start"] == 40001 for event in events)
+    assert any(event.requested_value["register_start"] == 40100 for event in events)
+
+
+def test_unit_31_fc06_rejects_write_to_read_only_slice(running_service) -> None:
+    service, store = running_service
+
+    rejected_response = send_request(
+        service.address,
+        transaction_id=19,
+        unit_id=31,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 199, 1),
+    )
+    readback_response = send_request(
+        service.address,
+        transaction_id=20,
+        unit_id=31,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 102, 8),
+    )
+
+    _, _, _, rejected_pdu = parse_response(rejected_response)
+    _, _, _, readback_pdu = parse_response(readback_response)
+    events = store.fetch_events()
+    rejected_event = next(
+        event
+        for event in events
+        if event.action == "fc06"
+        and event.result == "rejected"
+        and event.asset_id == "meter-01"
+        and event.requested_value["register_start"] == 40200
+    )
+
+    assert rejected_pdu == bytes([WRITE_SINGLE_REGISTER | 0x80, ILLEGAL_DATA_ADDRESS])
+    assert unpack(">8H", readback_pdu[2:]) == (0, 5790, 0, 0, 0, 0, 990, 1)
+    assert rejected_event.error_code == "modbus_exception_02"
+
+
 def test_unit_41_fc03_returns_grid_identity_and_status(running_service) -> None:
     service, store = running_service
 
@@ -341,6 +410,45 @@ def test_unit_41_fc03_returns_grid_identity_and_status(running_service) -> None:
     assert status_registers == (0, 0, 0, 1, 0)
     assert any(event.requested_value["register_start"] == 40001 for event in events)
     assert any(event.requested_value["register_start"] == 40100 for event in events)
+
+
+def test_unit_31_reflects_breaker_open_effects_triggered_by_unit_41(running_service) -> None:
+    service, store = running_service
+
+    open_response = send_request(
+        service.address,
+        transaction_id=21,
+        unit_id=41,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 199, 1),
+    )
+    meter_status_response = send_request(
+        service.address,
+        transaction_id=22,
+        unit_id=31,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 102, 8),
+    )
+    meter_alarm_response = send_request(
+        service.address,
+        transaction_id=23,
+        unit_id=31,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 299, 4),
+    )
+
+    _, _, _, open_pdu = parse_response(open_response)
+    _, _, _, meter_status_pdu = parse_response(meter_status_response)
+    _, _, _, meter_alarm_pdu = parse_response(meter_alarm_response)
+    alerts = store.fetch_alerts()
+    breaker_alert = next(
+        alert for alert in alerts if alert.alarm_code == "BREAKER_OPEN" and alert.state == "active_unacknowledged"
+    )
+
+    assert unpack(">BHH", open_pdu) == (WRITE_SINGLE_REGISTER, 199, 1)
+    assert unpack(">8H", meter_status_pdu[2:]) == (0, 0, 0, 0, 0, 0, 990, 0)
+    assert unpack(">4H", meter_alarm_pdu[2:]) == (120, 3, 1, 0)
+    assert breaker_alert.asset_id == "grid-01"
 
 
 def test_unit_41_fc06_opens_and_closes_breaker_with_self_clearing_pulses(running_service) -> None:

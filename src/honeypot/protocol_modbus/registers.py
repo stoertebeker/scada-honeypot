@@ -26,6 +26,8 @@ UNIT_1_ALARM_BLOCK = range(299, 305)
 UNIT_1_ACTIVE_POWER_LIMIT_OFFSET = 199
 UNIT_1_REACTIVE_POWER_TARGET_OFFSET = 200
 UNIT_1_PLANT_MODE_REQUEST_OFFSET = 201
+UNIT_31_STATUS_BLOCK = range(99, 110)
+UNIT_31_ALARM_BLOCK = range(299, 303)
 UNIT_41_STATUS_BLOCK = range(99, 104)
 UNIT_41_SETPOINT_BLOCK = range(199, 249)
 UNIT_41_ALARM_BLOCK = range(299, 303)
@@ -34,18 +36,22 @@ UNIT_41_BREAKER_CLOSE_REQUEST_OFFSET = 200
 
 DEVICE_CLASS_CODE = {
     1: 1001,
+    31: 1301,
     41: 1401,
 }
 ASSET_INSTANCE = {
     1: 0,
+    31: 0,
     41: 0,
 }
 ASSET_TAG = {
     1: "ppc-01",
+    31: "meter-01",
     41: "grid-01",
 }
 ASSET_ID = {
     1: "ppc-01",
+    31: "meter-01",
     41: "grid-01",
 }
 
@@ -53,6 +59,7 @@ ASSET_STATUS = {"online": 0, "offline": 1, "degraded": 2, "faulted": 3}
 OPERATING_MODE = {"normal": 0, "curtailed": 1, "maintenance": 2, "faulted": 3}
 AVAILABILITY_STATE = {"available": 0, "partially_available": 1, "unavailable": 2}
 COMMUNICATION_STATE = {"healthy": 0, "degraded": 1, "lost": 2}
+DATA_QUALITY = {"good": 0, "estimated": 1, "stale": 2, "invalid": 3}
 BREAKER_STATE = {"closed": 0, "open": 1, "transitioning": 2}
 GRID_ACCEPTANCE_STATE = {"accepted": 0, "limited": 1, "unavailable": 2}
 ALARM_STATE = {
@@ -333,6 +340,8 @@ class ReadOnlyRegisterMap:
         offsets = tuple(range(start_offset, start_offset + len(values)))
         if unit_id == 1:
             return _validate_unit_1_write_sequence(offsets=offsets, values=values, allow_fc06=allow_fc06)
+        if unit_id == 31:
+            raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "revenue_meter ist in V1 read-only")
         if unit_id == 41:
             return _validate_unit_41_write_sequence(offsets=offsets, values=values, allow_fc06=allow_fc06)
         raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"unit_id {unit_id} ist in V1 noch nicht aktiv")
@@ -435,6 +444,12 @@ def _is_supported_offset(unit_id: int, offset: int) -> bool:
             or offset in UNIT_1_SETPOINT_BLOCK
             or offset in UNIT_1_ALARM_BLOCK
         )
+    if unit_id == 31:
+        return (
+            offset in IDENTITY_BLOCK
+            or offset in UNIT_31_STATUS_BLOCK
+            or offset in UNIT_31_ALARM_BLOCK
+        )
     if unit_id == 41:
         return (
             offset in IDENTITY_BLOCK
@@ -453,6 +468,8 @@ def _build_registers_for_unit(
 ) -> dict[int, int]:
     if unit_id == 1:
         return _build_unit_1_registers(snapshot, plant_mode_request_override=plant_mode_request_override)
+    if unit_id == 31:
+        return _build_unit_31_registers(snapshot)
     if unit_id == 41:
         return _build_unit_41_registers(snapshot)
     raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"unit_id {unit_id} ist in V1 noch nicht aktiv")
@@ -519,6 +536,29 @@ def _build_unit_41_registers(snapshot: PlantSnapshot) -> dict[int, int]:
             302: _grid_export_path_alarm_state(snapshot),
         }
     )
+    return registers
+
+
+def _build_unit_31_registers(snapshot: PlantSnapshot) -> dict[int, int]:
+    meter_primary_alarm = _primary_alarm_for_codes(snapshot, "BREAKER_OPEN")
+    registers = _build_identity_registers(31)
+    registers.update(
+        {
+            99: ASSET_STATUS[snapshot.revenue_meter.status],
+            100: COMMUNICATION_STATE[snapshot.revenue_meter.communication_state],
+            101: DATA_QUALITY[snapshot.revenue_meter.quality],
+            106: round((snapshot.revenue_meter.grid_voltage_v or 0) * 10),
+            107: round((snapshot.revenue_meter.grid_frequency_hz or 0) * 100),
+            108: encode_i16(round(snapshot.revenue_meter.power_factor * 1000)),
+            109: int(snapshot.grid_interconnect.export_path_available),
+            299: 0 if meter_primary_alarm is None else ALARM_CODE.get(meter_primary_alarm.code, 0),
+            300: 0 if meter_primary_alarm is None else SEVERITY_CODE[meter_primary_alarm.severity],
+            301: _alarm_state_for_code(snapshot.alarms, "BREAKER_OPEN"),
+            302: _meter_comm_loss_alarm_state(snapshot),
+        }
+    )
+    registers.update(_i32_registers(102, round(snapshot.revenue_meter.export_power_kw)))
+    registers.update(_u32_registers(104, round((snapshot.revenue_meter.export_energy_mwh_total or 0) * 1000)))
     return registers
 
 
@@ -595,6 +635,12 @@ def _grid_export_path_alarm_state(snapshot: PlantSnapshot) -> int:
     if breaker_alarm_state != ALARM_STATE["inactive"]:
         return breaker_alarm_state
     return ALARM_STATE["active_unacknowledged"]
+
+
+def _meter_comm_loss_alarm_state(snapshot: PlantSnapshot) -> int:
+    if snapshot.revenue_meter.communication_state == "lost":
+        return ALARM_STATE["active_unacknowledged"]
+    return ALARM_STATE["inactive"]
 
 
 def _validate_unit_1_write_sequence(
@@ -682,6 +728,14 @@ def _ascii_registers(start_offset: int, value: str, *, register_count: int) -> d
 
 
 def _u32_registers(start_offset: int, value: int) -> dict[int, int]:
+    encoded = value & 0xFFFFFFFF
+    return {
+        start_offset: (encoded >> 16) & 0xFFFF,
+        start_offset + 1: encoded & 0xFFFF,
+    }
+
+
+def _i32_registers(start_offset: int, value: int) -> dict[int, int]:
     encoded = value & 0xFFFFFFFF
     return {
         start_offset: (encoded >> 16) & 0xFFFF,
