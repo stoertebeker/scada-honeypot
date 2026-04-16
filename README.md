@@ -51,6 +51,9 @@ Vorhanden sind:
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
 - `Unit 11-13` bilden jetzt die drei `inverter_block_*` als gemeinsame read-only Status-/Alarmmatrix mit korrekten Unit-IDs, Asset-Tags, `block_power_kw`, `availability_pct_x10` und lokaler Alarmdiagnose ab
 - `Unit 12` spiegelt einen Kommunikationsverlust jetzt sichtbar in `communication_state`, `data_quality`, `local_alarm_count` und `alarm_comm_loss_state`; Inverter-Write-Pfade bleiben in diesem Slice bewusst noch aus
+- erste read-only HMI fuer `/` und `/overview` steht als `FastAPI`-/`Jinja2`-App auf derselben Snapshot-Wahrheit wie Modbus
+- `overview` zeigt Parkleistung, Leistungsbegrenzung, Blindleistungsziel, Breaker-Zustand, Kommunikationslage, Blockstatus, Wetterwerte und die wichtigsten aktiven Alarme
+- HMI-Aufrufe schreiben jetzt eine saubere HTTP-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
 - `Unit 21` bleibt strikt read-only; Setpoint-Zugriffe auf `40200-40249` werden sauber als `02 Illegal Data Address` abgewiesen
 - `Unit 31` bildet jetzt `revenue_meter` mit eigenem Identitaetsblock, Status-/Alarmregistern und read-only Ablehnung fuer Setpoint-Schreibzugriffe ab
@@ -66,7 +69,8 @@ Vorhanden sind:
 Noch nicht vorhanden:
 - weitere Rule-Engine-Regeln, Dedupe/Suppression und echte Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- Web-HMI
+- lokaler HTTP-Dienststart fuer die HMI auf `127.0.0.1`
+- weitere HMI-Seiten jenseits von `overview`
 - Exporter-Implementierung
 
 ## Leitplanken
@@ -116,13 +120,14 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. read-only HMI fuer die jetzt vollstaendige Beobachtungssicht aufziehen
+1. lokalen HMI-HTTP-Dienst fuer die vorhandene `overview`-App auf `127.0.0.1` bootstrappen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. HMI-Servicepfade
-2. restliche Modbus-Write-Pfade
-3. weitere Rule-Engine-Regeln, Alerts und Exporter
+1. weitere read-only HMI-Seiten
+2. HMI-Servicepfade
+3. restliche Modbus-Write-Pfade
+4. weitere Rule-Engine-Regeln, Alerts und Exporter
 5. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration

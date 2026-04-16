@@ -19,9 +19,10 @@ Wichtiger Kurs:
 
 - `asset_domain`, `plant_sim`, `event_core` und der erste schreibbare
   `protocol_modbus`-Slice fuer `Unit 1` stehen jetzt als gemeinsamer Fachkern
-- HMI bleibt weiterhin nachgezogen; keine zweite Wahrheit neben Modbus bauen
+- erste read-only HMI fuer `/overview` steht jetzt als App auf derselben
+  Snapshot-Wahrheit; keine zweite Wahrheit neben Modbus bauen
 - Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
-  Modbus-Lesezugriffe
+  Modbus- und HMI-Lesezugriffe
 
 ## Letzte Commits
 
@@ -418,6 +419,60 @@ Vorhanden:
   - Adressfehler -> `02`
   - ungueltige `FC06`-/`FC16`-Werte -> `03`
 
+### 11. Erste Read-only HMI fuer `/overview`
+
+Dateien:
+
+- `src/honeypot/hmi_web/app.py`
+- `src/honeypot/hmi_web/__init__.py`
+- `src/honeypot/hmi_web/templates/overview.html`
+- `resources/locales/attacker-ui/en.json`
+- `src/honeypot/main.py`
+- `tests/integration/test_hmi_web_overview.py`
+- `tests/unit/test_runtime_bootstrap.py`
+
+Vorhanden:
+
+- `create_hmi_app()` erzeugt eine erste `FastAPI`-/`Jinja2`-App fuer:
+  - `/`
+  - `/overview`
+- die HMI liest pro Request dieselbe Snapshot-Wahrheit wie Modbus ueber einen
+  `snapshot_provider`
+- `build_local_runtime()` verdrahtet die HMI intern bereits an
+  `register_map.snapshot`
+- `overview` zeigt sichtbar:
+  - Parkleistung
+  - aktuelle Leistungsbegrenzung
+  - Blindleistungsziel
+  - Breaker-Zustand
+  - Anzahl aktiver Alarme
+  - Kommunikationszustand
+  - Kurzstatus der drei Inverter-Bloecke
+  - Wetter-Kurzwerte
+  - die bis zu drei wichtigsten aktiven Alarme
+- sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
+  `resources/locales/attacker-ui/en.json`
+- `overview` nutzt keine UI-Schattenwerte:
+  - Curtailment aus Modbus ist direkt in der HMI sichtbar
+  - Inverter-Comm-Loss aus `plant_sim` ist direkt in der HMI sichtbar
+- HMI-Aufrufe schreiben jetzt HTTP-Eventspur in den lokalen Store mit:
+  - `component = hmi-web`
+  - `service = web-hmi`
+  - `endpoint_or_register`
+  - `requested_value.http_method`
+  - `requested_value.http_path`
+  - `resulting_value.http_status`
+  - `session_id`
+- Anti-Fingerprint-Minimum:
+  - `FastAPI`-Docs/OpenAPI sind deaktiviert
+
+Noch bewusst **nicht** enthalten:
+
+- lokaler HTTP-Dienststart fuer die HMI auf `127.0.0.1`
+- weitere Seiten wie `single-line`, `inverters`, `weather`, `meter`, `alarms`
+- Service-Login oder schreibende HMI-Pfade
+- eigene HMI-Fehlerseiten fuer `404/500`
+
 ## Teststand
 
 Aktuell gruen:
@@ -426,7 +481,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `82 passed`
+- `85 passed`
 
 Abgedeckt sind bisher:
 
@@ -452,6 +507,8 @@ Abgedeckt sind bisher:
   konsistenter Breaker-Ableitung
 - `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
   Wiederherstellung und Alarm-Clear
+- erste read-only HMI fuer `/overview`, HTTP-Eventspur und Shared-Truth-Test
+  gegen Modbus-Curtailment
 - lokaler Runtime-Startpfad mit `build_local_runtime()` und Socket-Smoke-Test
 
 ## Sicherheitsplanken
@@ -478,7 +535,8 @@ Noch **nicht** vorhanden:
 
 - weitere Rule-Engine-Regeln, Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- HMI
+- lokaler HTTP-Dienststart fuer die HMI
+- weitere HMI-Seiten und HMI-Fehlerseiten
 - Exporter-Implementierung
 
 Operative Hinweise:
@@ -491,23 +549,23 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. read-only HMI auf die jetzt vollstaendige Beobachtungssicht setzen
-2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
-3. Rule-Engine und Exporter auf die sichtbaren Bedienpfade erweitern
+1. lokalen HMI-HTTP-Dienst fuer die vorhandene `overview`-App auf
+   `127.0.0.1` bootstrappen
+2. danach weitere read-only HMI-Seiten und erst dann HMI-Servicepfade
+3. restliche Modbus-Write-Pfade sowie Rule-Engine/Exporter nachziehen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- erste read-only HMI-Seite fuer `/overview` oder `/plant` auf die bestehende
-  gemeinsame Wahrheit aufsetzen
-- fokussierte Tests fuer HTTP-Status, Grundrendering und sichtbare Werte aus
-  `site`, `inverter_blocks`, `weather_station`, `revenue_meter`,
-  `grid_interconnect`
-- keine Service-Login- oder Schreibpfade vorziehen, bevor die reine
-  Beobachtungssicht im Browser sauber steht
+- kleinen lokalen HTTP-Dienst fuer `runtime.hmi_app` auf
+  `HMI_BIND_HOST/HMI_PORT` aufziehen
+- fokussierte Tests fuer echten `GET /overview` auf localhost,
+  Eventspur und sauberes Stoppen zusammen mit dem Runtime-Pfad
+- keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI
+  beobachtend lokal sauber erreichbar ist
 
 Nicht als naechstes tun:
 
-- keine HMI vorziehen
+- keine schreibenden HMI-Pfade vorziehen
 - keine Exporter oder externe Auslieferung vorziehen, bevor die
   Rule-Engine-Grundlage steht
 

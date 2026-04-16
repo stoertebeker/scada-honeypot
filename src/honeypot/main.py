@@ -3,9 +3,12 @@
 from dataclasses import dataclass
 from time import sleep
 
+from fastapi import FastAPI
+
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
+from honeypot.hmi_web import create_hmi_app
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
@@ -41,6 +44,7 @@ class LocalRuntime:
     snapshot: PlantSnapshot
     event_store: SQLiteEventStore
     event_recorder: EventRecorder
+    hmi_app: FastAPI
     modbus_service: ReadOnlyModbusTcpService
 
     def start(self) -> "LocalRuntime":
@@ -84,6 +88,11 @@ def build_local_runtime(
         rule_engine=RuleEngine.default_v1(min_severity=config.alert_min_severity),
     )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
+    hmi_app = create_hmi_app(
+        snapshot_provider=lambda: register_map.snapshot,
+        config=config,
+        event_recorder=event_recorder,
+    )
     modbus_service = ReadOnlyModbusTcpService(
         register_map=register_map,
         bind_host=config.modbus_bind_host,
@@ -96,6 +105,7 @@ def build_local_runtime(
         snapshot=snapshot,
         event_store=event_store,
         event_recorder=event_recorder,
+        hmi_app=hmi_app,
         modbus_service=modbus_service,
     )
 
