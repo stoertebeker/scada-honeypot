@@ -82,6 +82,11 @@
       font-weight: 600;
     }
 
+    nav a.current {
+      background: transparent;
+      color: var(--accent);
+    }
+
     .metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -256,8 +261,10 @@
       <div>
         <p class="meta">{{ page.site_name }}</p>
         <p class="meta">{{ t("label.snapshot_time") }} / {{ page.snapshot_time }}</p>
-        <nav aria-label="{{ t('nav.overview') }}">
-          <a href="/overview">{{ t("nav.overview") }}</a>
+        <nav aria-label="Primary">
+          {% for item in nav_items %}
+          <a href="{{ item.href }}" class="{% if item.is_current %}current{% endif %}">{{ t(item.label_key) }}</a>
+          {% endfor %}
         </nav>
       </div>
     </header>

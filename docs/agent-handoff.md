@@ -19,8 +19,8 @@ Wichtiger Kurs:
 
 - `asset_domain`, `plant_sim`, `event_core` und der erste schreibbare
   `protocol_modbus`-Slice fuer `Unit 1` stehen jetzt als gemeinsamer Fachkern
-- erste read-only HMI fuer `/overview` steht jetzt als App auf derselben
-  Snapshot-Wahrheit; keine zweite Wahrheit neben Modbus bauen
+- read-only HMI fuer `/overview` und `/single-line` steht jetzt als App auf
+  derselben Snapshot-Wahrheit; keine zweite Wahrheit neben Modbus bauen
 - Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
   Modbus- und HMI-Lesezugriffe
 
@@ -422,7 +422,7 @@ Vorhanden:
   - Adressfehler -> `02`
   - ungueltige `FC06`-/`FC16`-Werte -> `03`
 
-### 11. Erste Read-only HMI fuer `/overview`
+### 11. Read-only HMI fuer `/overview` und `/single-line`
 
 Dateien:
 
@@ -430,6 +430,7 @@ Dateien:
 - `src/honeypot/hmi_web/__init__.py`
 - `src/honeypot/hmi_web/server.py`
 - `src/honeypot/hmi_web/templates/overview.html`
+- `src/honeypot/hmi_web/templates/single_line.html`
 - `resources/locales/attacker-ui/en.json`
 - `src/honeypot/main.py`
 - `tests/integration/test_hmi_web_overview.py`
@@ -441,6 +442,7 @@ Vorhanden:
 - `create_hmi_app()` erzeugt eine erste `FastAPI`-/`Jinja2`-App fuer:
   - `/`
   - `/overview`
+  - `/single-line`
 - `LocalHmiHttpService` startet diese App als echten lokalen HTTP-Dienst auf
   `HMI_BIND_HOST/HMI_PORT`
 - die HMI liest pro Request dieselbe Snapshot-Wahrheit wie Modbus ueber einen
@@ -459,10 +461,19 @@ Vorhanden:
   - Kurzstatus der drei Inverter-Bloecke
   - Wetter-Kurzwerte
   - die bis zu drei wichtigsten aktiven Alarme
+- `single-line` zeigt sichtbar:
+  - PV-Park als Sammelsicht
+  - PPC
+  - die drei Inverter-Bloecke
+  - Revenue Meter
+  - Grid Interconnect / Breaker
+  - einfachen Leistungsfluss
+  - Breaker- und Exportpfad-Zustand
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
-- `overview` nutzt keine UI-Schattenwerte:
+- `overview` und `single-line` nutzen keine UI-Schattenwerte:
   - Curtailment aus Modbus ist direkt in der HMI sichtbar
+  - Breaker-Offen aus `Unit 41` ist direkt im Einlinienschema sichtbar
   - Inverter-Comm-Loss aus `plant_sim` ist direkt in der HMI sichtbar
 - HMI-Aufrufe schreiben jetzt HTTP-Eventspur in den lokalen Store mit:
   - `component = hmi-web`
@@ -478,12 +489,13 @@ Vorhanden:
     deaktiviert
 - lokaler Runtime-Smoke-Test prueft jetzt:
   - echter `GET /overview` auf localhost
+  - echter `GET /single-line` ueber denselben Runtime-Pfad
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- weitere Seiten wie `single-line`, `inverters`, `weather`, `meter`, `alarms`
+- weitere Seiten wie `inverters`, `weather`, `meter`, `alarms`
 - Service-Login oder schreibende HMI-Pfade
 - eigene HMI-Fehlerseiten fuer `404/500`
 
@@ -495,7 +507,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `86 passed`
+- `88 passed`
 
 Abgedeckt sind bisher:
 
@@ -521,8 +533,8 @@ Abgedeckt sind bisher:
   konsistenter Breaker-Ableitung
 - `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
   Wiederherstellung und Alarm-Clear
-- erste read-only HMI fuer `/overview`, HTTP-Eventspur und Shared-Truth-Test
-  gegen Modbus-Curtailment
+- read-only HMI fuer `/overview` und `/single-line`, HTTP-Eventspur und
+  Shared-Truth-Tests gegen Modbus-Curtailment und Breaker-Offen
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -563,14 +575,14 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt weitere read-only HMI-Seiten auf dieselbe Snapshot-Wahrheit setzen
+1. jetzt `inverters` als naechste read-only HMI-Seite auf dieselbe Snapshot-Wahrheit setzen
 2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
 3. Rule-Engine/Exporter entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
 - naechste read-only HMI-Seite auf dieselbe Snapshot-Wahrheit setzen,
-  bevorzugt `single-line` oder `inverters`
+  bevorzugt `inverters`
 - fokussierte Tests fuer sichtbare Zustandskonsistenz zu Modbus und
   fehlerarme lokale Renderpfade
 - keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI

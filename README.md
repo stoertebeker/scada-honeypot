@@ -51,11 +51,12 @@ Vorhanden sind:
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
 - `Unit 11-13` bilden jetzt die drei `inverter_block_*` als gemeinsame read-only Status-/Alarmmatrix mit korrekten Unit-IDs, Asset-Tags, `block_power_kw`, `availability_pct_x10` und lokaler Alarmdiagnose ab
 - `Unit 12` spiegelt einen Kommunikationsverlust jetzt sichtbar in `communication_state`, `data_quality`, `local_alarm_count` und `alarm_comm_loss_state`; Inverter-Write-Pfade bleiben in diesem Slice bewusst noch aus
-- erste read-only HMI fuer `/` und `/overview` steht als `FastAPI`-/`Jinja2`-App auf derselben Snapshot-Wahrheit wie Modbus
+- read-only HMI fuer `/`, `/overview` und `/single-line` steht als `FastAPI`-/`Jinja2`-App auf derselben Snapshot-Wahrheit wie Modbus
 - `overview` zeigt Parkleistung, Leistungsbegrenzung, Blindleistungsziel, Breaker-Zustand, Kommunikationslage, Blockstatus, Wetterwerte und die wichtigsten aktiven Alarme
+- `/single-line` zeigt jetzt das einfache Einlinienschema fuer PV-Park, PPC, Inverter-Bloecke, Revenue Meter und Grid Interconnect mitsamt Breaker- und Leistungsflusszustand
 - HMI-Aufrufe schreiben jetzt eine saubere HTTP-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main` bootstrapt jetzt `normal_operation`, `SQLiteEventStore`, den Modbus-Listener auf `127.0.0.1:1502` und die HMI auf `127.0.0.1:8080`
-- der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview` ist damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
+- der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview` und `GET /single-line` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
 - `Unit 21` bleibt strikt read-only; Setpoint-Zugriffe auf `40200-40249` werden sauber als `02 Illegal Data Address` abgewiesen
 - `Unit 31` bildet jetzt `revenue_meter` mit eigenem Identitaetsblock, Status-/Alarmregistern und read-only Ablehnung fuer Setpoint-Schreibzugriffe ab
@@ -70,7 +71,7 @@ Vorhanden sind:
 Noch nicht vorhanden:
 - weitere Rule-Engine-Regeln, Dedupe/Suppression und echte Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- weitere HMI-Seiten jenseits von `overview`
+- weitere HMI-Seiten jenseits von `overview` und `single-line`
 - eigene HMI-Fehlerseiten fuer `404/500`
 - Exporter-Implementierung
 
@@ -121,14 +122,15 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. weitere read-only HMI-Seiten auf die jetzt laufende lokale HMI setzen, zuerst `single-line` oder `inverters`
+1. naechste read-only HMI-Seite auf die jetzt laufende lokale HMI setzen, bevorzugt `inverters`
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. HMI-Servicepfade
-2. restliche Modbus-Write-Pfade
-3. weitere Rule-Engine-Regeln, Alerts und Exporter
-4. Hardening und Anti-Fingerprint
+1. weitere read-only HMI-Seiten
+2. HMI-Servicepfade
+3. restliche Modbus-Write-Pfade
+4. weitere Rule-Engine-Regeln, Alerts und Exporter
+5. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 
