@@ -17,14 +17,15 @@ praktisch abgeschlossen**:
 
 Wichtiger Kurs:
 
-- `asset_domain`, `plant_sim`, `event_core` und der erste read-only
-  `protocol_modbus`-Slice stehen jetzt als gemeinsamer Fachkern
+- `asset_domain`, `plant_sim`, `event_core` und der erste schreibbare
+  `protocol_modbus`-Slice fuer `Unit 1` stehen jetzt als gemeinsamer Fachkern
 - HMI bleibt weiterhin nachgezogen; keine zweite Wahrheit neben Modbus bauen
 - Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
   Modbus-Lesezugriffe
 
 ## Letzte Commits
 
+- `0be087b` `feat: add fc06 curtailment write path`
 - `9f0b0a3` `feat: add read-only modbus slice`
 - `04ebab8` `feat: record plant sim state transitions`
 - `cd25146` `feat: add event recorder and sqlite store`
@@ -260,7 +261,7 @@ Vorhanden:
   - Eventspur und Null-Export bei offenem Breaker
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
-### 10. Read-only Modbus Vertical Slice fuer Unit 1
+### 10. Modbus Vertical Slice fuer Unit 1 mit erstem FC06-Pfad
 
 Dateien:
 
@@ -275,32 +276,43 @@ Vorhanden:
 - `ReadOnlyRegisterMap` fuer:
   - Identitaetsblock `40001-40049`
   - Statusblock `40100-40111`
+  - Setpoint-Block `40200-40249`
   - Alarmblock `40300-40305`
-- read-only `Unit 1`-Sicht fuer `site / power_plant_controller`
+- `Unit 1`-Sicht fuer `site / power_plant_controller` mit erstem schreibbaren
+  Setpoint
 - `ReadOnlyModbusTcpService` mit:
   - stabilem MBAP-Header
   - `Transaction ID`-Echo
   - `Protocol Identifier = 0`
   - `FC03` fuer Holding Registers
+  - `FC06` fuer `40200 active_power_limit_pct_x10`
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
-  - Write auf read-only Slice -> `02 Illegal Data Address`
+  - `FC16` im aktuellen Slice -> `02 Illegal Data Address`
+  - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
   - Bereich ausserhalb aktiver Bloecke -> `02 Illegal Data Address`
-- Event-Logging fuer Modbus-Lesezugriffe und abgelehnte Requests in den
-  bestehenden `SQLite`-Eventstore
+- Event-Logging fuer Modbus-Lesezugriffe, akzeptierte `FC06`-Writes und
+  abgelehnte Requests in den bestehenden `SQLite`-Eventstore
+- gemeinsame `correlation_id` ueber Modbus-Write und nachgelagerte
+  `plant_sim`-Prozesswirkung
 - erste fachliche Registerabbildung fuer:
   - `operating_mode`
   - `communications_health`
   - `plant_power_kw`
+  - `active_power_limit_pct_x10`
   - `breaker_state`
   - `active_alarm_count`
   - primaere Alarmdiagnose
+- `active_power_limit_pct` hat im Fachkern jetzt `x10`-Granularitaet bis auf
+  Zehntel-Prozent
 - Contract-Tests auf echter Socket-Ebene fuer:
   - MBAP
   - `FC03`
+  - `FC06` mit sichtbarer Curtailment-Wirkung
   - `reserved -> 0x0000`
   - `FC04 -> 01`
   - Adressfehler -> `02`
+  - ungueltiger `FC06`-Wert -> `03`
 
 ## Teststand
 
@@ -310,7 +322,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `39 passed`
+- `44 passed`
 
 Abgedeckt sind bisher:
 
@@ -323,7 +335,7 @@ Abgedeckt sind bisher:
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
-- read-only Modbus-Slice mit Contract-Tests und Eventspur fuer Lesezugriffe
+- Modbus-Slice mit `FC03`/`FC06`, Contract-Tests und korrelierter Eventspur
 
 ## Sicherheitsplanken
 
@@ -349,7 +361,10 @@ Noch **nicht** vorhanden:
 
 - JSONL-Archivpfad
 - Rule-Engine und eventgetriebene Alarmableitung
-- Modbus-Write-Pfade fuer `FC06`/`FC16` und weitere aktive Units
+- Runtime-Orchestrierung, die den Modbus-Dienst ueber `honeypot.main` lokal
+  startet
+- restliche Modbus-Write-Pfade fuer `FC16`, weitere Setpoints und weitere
+  aktive Units
 - HMI
 - Exporter-Implementierung
 
@@ -364,19 +379,20 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. ersten `FC06`-Write-Pfad fuer `40200 active_power_limit_pct_x10` auf
-   `Unit 1` implementieren
-2. sichtbare Prozesswirkung und Eventspur fuer Curtailment mit Modbus koppeln
+1. den lokalen `Modbus/TCP`-Listener in `honeypot.main` auf `127.0.0.1`
+   verdrahten
+2. dabei `normal_operation`, `EventRecorder` und den aktuellen `Unit 1`-Slice
+   sauber bootstrappen
 3. danach `FC16`, restliche Registermatrix und weitere Units erweitern
 4. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nicht vergessen
 5. erst dann HMI-Slices anschliessen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `FC06` fuer `40200 active_power_limit_pct_x10` auf `Unit 1`
-- Modbus-Write -> `plant_sim.apply_curtailment()` -> Registerwirkung -> Eventspur
-- fokussierte Contract- und Integrations-Tests fuer gueltigen Write plus
-  sichtbaren Leistungsabfall
+- `main.py` startet lokal einen `Modbus/TCP`-Listener auf `127.0.0.1`
+- Bootstrapping von `PlantSnapshot(normal_operation)` + `EventRecorder` +
+  `ReadOnlyRegisterMap`
+- fokussierter Smoke-Test fuer Prozessstart und lokalen TCP-Connect
 
 Nicht als naechstes tun:
 

@@ -17,7 +17,7 @@ Die Anlage soll:
 ## Aktueller Stand
 
 Das Projekt befindet sich aktuell im **fruehen Implementierungsstand von
-Phase D bei offenem Rest aus Phase C**.
+Phase D/E bei offenem Rest aus Phase C**.
 
 Vorhanden sind:
 - Scope
@@ -44,15 +44,17 @@ Vorhanden sind:
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
-- erster read-only `Modbus/TCP`-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, Identitaetsblock, Kernregistern und Event-Logging fuer Lesezugriffe
+- erster `Modbus/TCP`-Vertical-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, Setpoint-Block und erstem `FC06`-Write-Pfad fuer `40200 active_power_limit_pct_x10`
+- `FC06` auf `40200` koppelt jetzt Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - minimal startbarer Prozesseinstieg ueber `uv run python -m honeypot.main`
-- Unit- und Contract-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge, Event-/Persistenzvertrag sowie den read-only-Modbus-Slice
+- Unit- und Contract-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Alarm-/Qualitaetsuebergaenge, Event-/Persistenzvertrag sowie den ersten `FC03`/`FC06`-Modbus-Slice
 
 Noch nicht vorhanden:
 - JSONL-Archivpfad fuer Eventexport
 - Rule-Engine und eventgetriebene Alarmableitung
-- Modbus-Write-Pfade fuer `FC06` und `FC16`
+- Runtime-Orchestrierung, die den Modbus-Dienst ueber `honeypot.main` auf `127.0.0.1` startet
+- restliche Modbus-Write-Pfade fuer `FC16`, weitere Setpoints und weitere aktive Units
 - Web-HMI
 - Exporter-Implementierung
 
@@ -103,11 +105,11 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. ersten `FC06`-Write-Pfad fuer `active_power_limit_pct_x10` auf `Unit 1` setzen und mit sichtbarer Prozesswirkung absichern
+1. den lokalen `Modbus/TCP`-Listener in `honeypot.main` verdrahten und den ersten `Unit 1`-Slice sauber auf `127.0.0.1` starten
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. `FC06`/`FC16` und restliche Registermatrix fuer Modbus
+1. `FC16`, restliche Registermatrix und weitere aktive Units fuer Modbus
 2. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
 3. read-only HMI
 4. HMI-Servicepfade
