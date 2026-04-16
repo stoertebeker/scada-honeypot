@@ -309,6 +309,175 @@ def test_fc16_can_latch_plant_mode_request_and_rejects_invalid_values(running_se
     assert rejected_event.error_code == "modbus_exception_03"
 
 
+def test_unit_41_fc03_returns_grid_identity_and_status(running_service) -> None:
+    service, store = running_service
+
+    identity_response = send_request(
+        service.address,
+        transaction_id=17,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 0, 8),
+    )
+    status_response = send_request(
+        service.address,
+        transaction_id=18,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 5),
+    )
+
+    identity_tx, identity_protocol, identity_unit, identity_pdu = parse_response(identity_response)
+    _, _, _, status_pdu = parse_response(status_response)
+    identity_registers = unpack(">8H", identity_pdu[2:])
+    status_registers = unpack(">5H", status_pdu[2:])
+    events = store.fetch_events()
+
+    assert identity_tx == 17
+    assert identity_protocol == 0
+    assert identity_unit == 41
+    assert identity_pdu[0] == READ_HOLDING_REGISTERS
+    assert identity_registers[:4] == (100, 1401, 41, 0)
+    assert status_registers == (0, 0, 0, 1, 0)
+    assert any(event.requested_value["register_start"] == 40001 for event in events)
+    assert any(event.requested_value["register_start"] == 40100 for event in events)
+
+
+def test_unit_41_fc06_opens_and_closes_breaker_with_self_clearing_pulses(running_service) -> None:
+    service, store = running_service
+
+    open_response = send_request(
+        service.address,
+        transaction_id=19,
+        unit_id=41,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 199, 1),
+    )
+    open_status_response = send_request(
+        service.address,
+        transaction_id=20,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 101, 3),
+    )
+    open_alarm_response = send_request(
+        service.address,
+        transaction_id=21,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 299, 4),
+    )
+    pulse_readback_response = send_request(
+        service.address,
+        transaction_id=22,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 199, 2),
+    )
+    close_response = send_request(
+        service.address,
+        transaction_id=23,
+        unit_id=41,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 200, 1),
+    )
+    close_status_response = send_request(
+        service.address,
+        transaction_id=24,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 101, 3),
+    )
+    close_alarm_response = send_request(
+        service.address,
+        transaction_id=25,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 299, 4),
+    )
+
+    _, _, _, open_pdu = parse_response(open_response)
+    _, _, _, open_status_pdu = parse_response(open_status_response)
+    _, _, _, open_alarm_pdu = parse_response(open_alarm_response)
+    _, _, _, pulse_readback_pdu = parse_response(pulse_readback_response)
+    _, _, _, close_pdu = parse_response(close_response)
+    _, _, _, close_status_pdu = parse_response(close_status_response)
+    _, _, _, close_alarm_pdu = parse_response(close_alarm_response)
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    grid_state = store.fetch_current_state("grid_interconnect")
+    active_breaker_alert = next(alert for alert in alerts if alert.alarm_code == "BREAKER_OPEN" and alert.state == "active_unacknowledged")
+    cleared_breaker_alert = next(alert for alert in alerts if alert.alarm_code == "BREAKER_OPEN" and alert.state == "cleared")
+    protocol_open_event = next(
+        event
+        for event in events
+        if event.event_type == "protocol.modbus.single_register_write"
+        and event.requested_value["register_start"] == 40200
+    )
+    protocol_close_event = next(
+        event
+        for event in events
+        if event.event_type == "protocol.modbus.single_register_write"
+        and event.requested_value["register_start"] == 40201
+    )
+    process_open_event = next(event for event in events if event.action == "breaker_open_request")
+    process_close_event = next(event for event in events if event.action == "breaker_close_request")
+
+    assert unpack(">BHH", open_pdu) == (WRITE_SINGLE_REGISTER, 199, 1)
+    assert unpack(">3H", open_status_pdu[2:]) == (1, 0, 2)
+    assert unpack(">4H", open_alarm_pdu[2:]) == (120, 3, 1, 1)
+    assert unpack(">2H", pulse_readback_pdu[2:]) == (0, 0)
+    assert unpack(">BHH", close_pdu) == (WRITE_SINGLE_REGISTER, 200, 1)
+    assert unpack(">3H", close_status_pdu[2:]) == (0, 1, 0)
+    assert unpack(">4H", close_alarm_pdu[2:]) == (0, 0, 3, 0)
+    assert protocol_open_event.previous_value == 0
+    assert protocol_open_event.resulting_value == 0
+    assert protocol_close_event.previous_value == 0
+    assert protocol_close_event.resulting_value == 0
+    assert protocol_open_event.correlation_id == process_open_event.correlation_id
+    assert protocol_close_event.correlation_id == process_close_event.correlation_id
+    assert grid_state["breaker_state"] == "closed"
+    assert grid_state["export_path_available"] is True
+    assert active_breaker_alert.asset_id == "grid-01"
+    assert cleared_breaker_alert.asset_id == "grid-01"
+
+
+def test_unit_41_fc16_rejects_conflicting_breaker_pulses(running_service) -> None:
+    service, store = running_service
+
+    rejected_response = send_request(
+        service.address,
+        transaction_id=26,
+        unit_id=41,
+        function_code=WRITE_MULTIPLE_REGISTERS,
+        body=fc16_body(199, 1, 1),
+    )
+    status_response = send_request(
+        service.address,
+        transaction_id=27,
+        unit_id=41,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 101, 3),
+    )
+
+    _, _, _, rejected_pdu = parse_response(rejected_response)
+    _, _, _, status_pdu = parse_response(status_response)
+    events = store.fetch_events()
+    rejected_event = next(
+        event
+        for event in events
+        if event.action == "fc16"
+        and event.result == "rejected"
+        and event.requested_value["register_start"] == 40200
+        and event.requested_value["register_values"] == [1, 1]
+    )
+
+    assert rejected_pdu == bytes([WRITE_MULTIPLE_REGISTERS | 0x80, ILLEGAL_DATA_VALUE])
+    assert unpack(">3H", status_pdu[2:]) == (0, 1, 0)
+    assert rejected_event.error_code == "modbus_exception_03"
+
+
 def send_request(
     address: tuple[str, int],
     *,

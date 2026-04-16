@@ -44,14 +44,16 @@ Vorhanden sind:
 - fachliche Qualitaetsregeln fuer `good`, `estimated`, `stale` und `invalid`
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
-- erster `Modbus/TCP`-Vertical-Slice fuer `Unit 1` mit MBAP-Handling, `FC03`, `FC06` und `FC16` fuer den PPC-Setpoint-Block `40200-40202`
+- `Modbus/TCP`-Vertical-Slices fuer `Unit 1` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
+- `Unit 41` bildet jetzt `grid_interconnect` mit eigenem Identitaetsblock, Status-/Alarmregistern sowie `breaker_open_request` und `breaker_close_request` als self-clearing Puls-Schreibpfaden ab
+- `plant_sim.close_breaker()` stellt Export und Normalzustand nach einem offenen Breaker wieder her und schreibt die Alarm-Clear-Spur fuer `BREAKER_OPEN`
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main`, der `normal_operation`, `SQLiteEventStore` und den Modbus-Listener auf `127.0.0.1` bootstrapt
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
-- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den ersten `FC03`/`FC06`-Modbus-Slice und den lokalen Runtime-Startpfad
+- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
 - JSONL-Archivpfad fuer Eventexport
@@ -107,16 +109,16 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt am Uebergang von Phase C zu D/E unterwegs. Der
 naechste konkrete Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. den ersten `grid_interconnect`-Slice fuer `Unit 41` aufziehen und `breaker_open_request`/`breaker_close_request` als naechsten sichtbaren Steuerpfad absichern
+1. den noch offenen `JSONL`-Archivpfad fuer Events einziehen und direkt an den lokalen Eventstore ankoppeln
+2. danach die minimale Rule-Engine-Schnittstelle aufsetzen, damit Alerts nicht nur aus dem Simulationskern kommen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
 1. restliche Registermatrix und weitere aktive Units fuer Modbus
-2. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle
-3. read-only HMI
-4. HMI-Servicepfade
-5. Alerts und Exporter
-6. Hardening und Anti-Fingerprint
+2. read-only HMI
+3. HMI-Servicepfade
+4. Alerts und Exporter
+5. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

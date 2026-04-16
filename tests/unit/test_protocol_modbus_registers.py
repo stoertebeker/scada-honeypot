@@ -41,6 +41,19 @@ def test_unit_1_setpoint_block_maps_latched_runtime_values() -> None:
     assert result.values == (1000, 0, 0)
 
 
+def test_unit_41_identity_and_status_blocks_map_grid_values() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    identity_result = register_map.read_holding_registers(unit_id=41, start_offset=0, quantity=8)
+    status_result = register_map.read_holding_registers(unit_id=41, start_offset=99, quantity=5)
+    alarm_result = register_map.read_holding_registers(unit_id=41, start_offset=299, quantity=4)
+
+    assert identity_result.asset_id == "grid-01"
+    assert identity_result.values[:4] == (100, 1401, 41, 0)
+    assert status_result.values == (0, 0, 0, 1, 0)
+    assert alarm_result.values == (0, 0, 0, 0)
+
+
 def test_reserved_registers_within_active_blocks_read_as_zero() -> None:
     register_map = ReadOnlyRegisterMap(build_snapshot())
 
@@ -123,5 +136,43 @@ def test_fc16_rejects_invalid_plant_mode_request_values() -> None:
 
     with pytest.raises(ModbusRegisterError) as exc_info:
         register_map.write_multiple_registers(unit_id=1, start_offset=201, values=(3,))
+
+    assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE
+
+
+def test_unit_41_fc06_pulse_requests_open_and_close_breaker() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    open_result = register_map.write_single_register(unit_id=41, start_offset=199, value=1)
+    open_status_result = register_map.read_holding_registers(unit_id=41, start_offset=101, quantity=3)
+    open_alarm_result = register_map.read_holding_registers(unit_id=41, start_offset=299, quantity=4)
+    pulse_result = register_map.read_holding_registers(unit_id=41, start_offset=199, quantity=2)
+    close_result = register_map.write_single_register(unit_id=41, start_offset=200, value=1)
+    close_status_result = register_map.read_holding_registers(unit_id=41, start_offset=101, quantity=3)
+    close_alarm_result = register_map.read_holding_registers(unit_id=41, start_offset=299, quantity=4)
+
+    assert open_result.register_address == 40200
+    assert open_result.previous_value == 0
+    assert open_result.resulting_value == 0
+    assert open_result.asset_id == "grid-01"
+    assert open_result.resulting_state["breaker_state"] == "open"
+    assert open_status_result.values == (1, 0, 2)
+    assert open_alarm_result.values == (120, 3, 1, 1)
+    assert pulse_result.values == (0, 0)
+
+    assert close_result.register_address == 40201
+    assert close_result.previous_value == 0
+    assert close_result.resulting_value == 0
+    assert close_result.asset_id == "grid-01"
+    assert close_result.resulting_state["breaker_state"] == "closed"
+    assert close_status_result.values == (0, 1, 0)
+    assert close_alarm_result.values == (0, 0, 3, 0)
+
+
+def test_unit_41_fc16_rejects_conflicting_breaker_requests() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    with pytest.raises(ModbusRegisterError) as exc_info:
+        register_map.write_multiple_registers(unit_id=41, start_offset=199, values=(1, 1))
 
     assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE

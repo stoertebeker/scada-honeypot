@@ -333,6 +333,38 @@ class PlantSimulator:
         )
         return resulting_snapshot
 
+    def close_breaker(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Schliesst den Netzuebergabebreaker und stellt den Normalexport wieder her."""
+
+        resulting_snapshot = self.simulate_normal_operation(snapshot)
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.breaker.state_changed",
+            category="process",
+            severity="medium",
+            asset_id=resulting_snapshot.grid_interconnect.asset_id,
+            action="breaker_close_request",
+            requested_value="closed",
+            previous_value=snapshot.grid_interconnect.breaker_state,
+            resulting_value=resulting_snapshot.grid_interconnect.breaker_state,
+            resulting_state={
+                "breaker_state": resulting_snapshot.grid_interconnect.breaker_state,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "export_power_kw": resulting_snapshot.revenue_meter.export_power_kw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=_present_alarm_code(resulting_snapshot, "BREAKER_OPEN"),
+            tags=("control-path", "grid", "breaker"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
     def lose_block_communications(
         self,
         snapshot: PlantSnapshot,

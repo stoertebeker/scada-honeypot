@@ -255,6 +255,7 @@ Vorhanden:
 - Eventspur fuer fachliche Schreibpfade:
   - `apply_curtailment()`
   - `open_breaker()`
+  - `close_breaker()`
   - `lose_block_communications()`
   - `acknowledge_alarm()`
 - lokale Persistenz der resultierenden Wahrheit in:
@@ -273,9 +274,10 @@ Vorhanden:
   - uebergebene `correlation_id` und Quellmetadaten
   - Eventspur und Alert fuer Curtailment
   - Eventspur und Null-Export bei offenem Breaker
+  - Alarm-Clear und Wiederherstellung nach `close_breaker()`
   - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
 
-### 10. Modbus Vertical Slice fuer Unit 1 mit FC06- und FC16-Pfaden
+### 10. Modbus Vertical Slices fuer Unit 1 und Unit 41
 
 Dateien:
 
@@ -289,11 +291,9 @@ Vorhanden:
 
 - `ReadOnlyRegisterMap` fuer:
   - Identitaetsblock `40001-40049`
-  - Statusblock `40100-40111`
-  - Setpoint-Block `40200-40249`
-  - Alarmblock `40300-40305`
-- `Unit 1`-Sicht fuer `site / power_plant_controller` mit erstem schreibbaren
-  Setpoint
+  - Unit-spezifische Status-, Setpoint- und Alarmbloecke
+- `Unit 1`-Sicht fuer `site / power_plant_controller`
+- `Unit 41`-Sicht fuer `grid_interconnect`
 - `ReadOnlyModbusTcpService` mit:
   - stabilem MBAP-Header
   - `Transaction ID`-Echo
@@ -301,11 +301,20 @@ Vorhanden:
   - `FC03` fuer Holding Registers
   - `FC06` fuer `40200 active_power_limit_pct_x10`
   - `FC16` fuer den PPC-Setpoint-Block `40200-40202`
+- `Unit 41` bildet zusaetzlich ab:
+  - Identitaetsblock mit `device_class_code = 1401`
+  - Status `40100-40104`
+  - self-clearing Pulsregister `40200 breaker_open_request` und
+    `40201 breaker_close_request`
+  - Alarmdiagnose `40300-40303`
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
   - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
   - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
   - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
+  - Wert ausserhalb `0..1` auf `Unit 41 / 40200-40201` -> `03 Illegal Data Value`
+  - gleichzeitiges `breaker_open_request=1` und `breaker_close_request=1` in
+    derselben `FC16`-Anfrage -> `03 Illegal Data Value`
   - Bereich ausserhalb aktiver Bloecke -> `02 Illegal Data Address`
 - Event-Logging fuer Modbus-Lesezugriffe, akzeptierte `FC06`-/`FC16`-Writes und
   abgelehnte Requests in den bestehenden `SQLite`-Eventstore
@@ -328,12 +337,19 @@ Vorhanden:
 - `plant_mode_request` ist im aktuellen Slice als latched Bedienwunsch
   sichtbar, ohne dem eigentlichen `operating_mode` eine zweite Wahrheit
   aufzuzwingen
+- `breaker_open_request` und `breaker_close_request` greifen direkt auf
+  `plant_sim.open_breaker()` und `plant_sim.close_breaker()` zu
+- `FC06`-Antworten spiegeln jetzt den angeforderten Pulswert korrekt, waehrend
+  die Register intern self-clearen
 - Contract-Tests auf echter Socket-Ebene fuer:
   - MBAP
   - `FC03`
   - `FC06` mit sichtbarer Curtailment-Wirkung
   - `FC16` mit Mehrregister-Header, reaktiver Setpoint-Wirkung und latched
     `plant_mode_request`
+  - `Unit 41`-Identity/Status-Lesezugriffe
+  - `Unit 41`-Breaker Open/Close mit selbstloeschenden Pulsregistern
+  - Konfliktablehnung fuer `Unit 41 / FC16`
   - `reserved -> 0x0000`
   - `FC04 -> 01`
   - Adressfehler -> `02`
@@ -347,7 +363,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `51 passed`
+- `59 passed`
 
 Abgedeckt sind bisher:
 
@@ -362,6 +378,8 @@ Abgedeckt sind bisher:
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
+- `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
+  Wiederherstellung und Alarm-Clear
 - lokaler Runtime-Startpfad mit `build_local_runtime()` und Socket-Smoke-Test
 
 ## Sicherheitsplanken
@@ -398,29 +416,26 @@ Operative Hinweise:
 
 ## Naechster Schritt
 
-### Phase D/E fortsetzen
+### Rest aus Phase C schliessen
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. den ersten `grid_interconnect`-Slice fuer `Unit 41` aufziehen
-2. dabei `breaker_open_request` und `breaker_close_request` als naechste
-   sichtbare Steuerpfade mit Eventspur absichern
-3. danach restliche Registermatrix und weitere Units erweitern
-4. JSONL-Archivpfad und minimale Rule-Engine-Schnittstelle nicht vergessen
-5. erst dann HMI-Slices anschliessen
+1. den `JSONL`-Archivpfad fuer Events sauber an den lokalen Store haengen
+2. direkt danach die minimale Rule-Engine-Schnittstelle aufsetzen
+3. erst dann restliche Registermatrix und weitere Units erweitern
+4. read-only HMI anschliessen, wenn die Beobachtungskette komplett ist
 
-Empfohlener naechster atomarer Fix in Phase D/E:
+Empfohlener naechster atomarer Fix fuer den offenen Rest aus Phase C:
 
-- `Unit 41` mit erstem Status-/Setpoint-Slice
-- `FC06` fuer `breaker_open_request` und danach `breaker_close_request`
-- fokussierte Contract-Tests fuer Breaker-Zustandswirkung, Exportverlust und
-  korrelierte Eventkette
+- `JSONL`-Archivschreiber an `SQLiteEventStore`/`EventRecorder` anbinden
+- fokussierte Tests fuer Event-Duplikation, Dateiformat und lokale Rotation
+- dabei keine neuen Netzwerkpfade oder Exporter vorziehen
 
 Nicht als naechstes tun:
 
 - keine HMI vorziehen
-- keine Exporter oder externe Auslieferung vorziehen, bevor Eventspur,
-  JSONL-Basis und Rule-Engine-Grundlage stehen
+- keine Exporter oder externe Auslieferung vorziehen, bevor `JSONL`-Basis und
+  Rule-Engine-Grundlage stehen
 
 ## Vor dem Weiterbauen lesen
 

@@ -59,6 +59,22 @@ def test_open_breaker_zeroes_export_and_sets_fault_alarm() -> None:
     assert breaker_open_snapshot.active_alarm_codes == ("BREAKER_OPEN",)
 
 
+def test_close_breaker_restores_export_and_clears_fault_alarm() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    breaker_open_snapshot = simulator.open_breaker(snapshot)
+    restored_snapshot = simulator.close_breaker(breaker_open_snapshot)
+
+    assert restored_snapshot.site.breaker_state == "closed"
+    assert restored_snapshot.site.operating_mode == "normal"
+    assert restored_snapshot.grid_interconnect.export_path_available is True
+    assert restored_snapshot.revenue_meter.export_power_kw == pytest.approx(5800.0)
+    assert restored_snapshot.site.plant_power_mw == pytest.approx(5.8)
+    assert restored_snapshot.alarm_by_code("BREAKER_OPEN").state == "cleared"
+    assert restored_snapshot.active_alarm_codes == ()
+
+
 def test_comm_loss_marks_target_block_stale_without_zeroing_site_power() -> None:
     snapshot = build_snapshot()
     simulator = PlantSimulator.from_snapshot(snapshot)
@@ -157,6 +173,30 @@ def test_open_breaker_records_fault_event_and_zeroed_state(tmp_path) -> None:
     assert grid_state["export_path_available"] is False
     assert alerts[0].alarm_code == "BREAKER_OPEN"
     assert alerts[0].state == "active_unacknowledged"
+
+
+def test_close_breaker_records_cleared_alert_state(tmp_path) -> None:
+    snapshot = build_snapshot()
+    simulator, store = build_recording_simulator(snapshot, tmp_path)
+
+    breaker_open_snapshot = simulator.open_breaker(snapshot)
+    simulator.close_breaker(breaker_open_snapshot)
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    grid_state = store.fetch_current_state("grid_interconnect")
+    close_event = next(event for event in events if event.action == "breaker_close_request")
+    cleared_alert = next(alert for alert in alerts if alert.state == "cleared")
+
+    assert len(events) == 2
+    assert len(alerts) == 2
+    assert close_event.event_type == "process.breaker.state_changed"
+    assert close_event.previous_value == "open"
+    assert close_event.resulting_value == "closed"
+    assert close_event.alarm_code == "BREAKER_OPEN"
+    assert grid_state["breaker_state"] == "closed"
+    assert grid_state["export_path_available"] is True
+    assert cleared_alert.alarm_code == "BREAKER_OPEN"
 
 
 def test_comm_loss_records_system_event_and_degraded_block_state(tmp_path) -> None:

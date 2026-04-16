@@ -330,7 +330,7 @@ def _handle_fc06_request(
     response = _build_adu(
         transaction_id=transaction_id,
         unit_id=unit_id,
-        pdu=pack(">BHH", WRITE_SINGLE_REGISTER, start_offset, result.resulting_value),
+        pdu=pack(">BHH", WRITE_SINGLE_REGISTER, start_offset, result.requested_value),
     )
     _log_request(
         event_recorder,
@@ -491,6 +491,8 @@ def _recv_exact(sock: Any, length: int) -> bytes | None:
 def _asset_id_for_unit(unit_id: int) -> str:
     if unit_id == 1:
         return "ppc-01"
+    if unit_id == 41:
+        return "grid-01"
     return f"unit-{unit_id}"
 
 
