@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -14,7 +15,8 @@ from fastapi.templating import Jinja2Templates
 
 from honeypot.asset_domain import PlantSnapshot
 from honeypot.config_core import RuntimeConfig
-from honeypot.event_core import EventRecorder
+from honeypot.event_core import AlertRecord, EventRecorder
+from honeypot.time_core import ensure_utc_datetime
 
 HMI_COMPONENT = "hmi-web"
 HMI_SERVICE = "web-hmi"
@@ -167,6 +169,44 @@ class MeterViewModel:
     context_label: str
     context_tone: str
     active_alarms: tuple[OverviewAlarm, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AlarmFilterLink:
+    label: str
+    href: str
+    is_current: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AlarmListRow:
+    code: str
+    label: str
+    category_label: str
+    severity_label: str
+    severity_key: str
+    state_label: str
+    ack_state_label: str
+    asset_id: str
+    first_seen: str
+    last_changed: str
+    last_changed_sort: str
+    tone: str
+
+
+@dataclass(frozen=True, slots=True)
+class AlarmsViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    snapshot_time: str
+    metrics: tuple[OverviewMetric, ...]
+    rows: tuple[AlarmListRow, ...]
+    severity_filters: tuple[AlarmFilterLink, ...]
+    state_filters: tuple[AlarmFilterLink, ...]
+    sort_filters: tuple[AlarmFilterLink, ...]
+    empty_label: str
 
 
 def create_hmi_app(
@@ -369,6 +409,57 @@ def create_hmi_app(
             },
             message="Meter page rendered",
             tags=("read-only", "meter", "web"),
+        )
+        return response
+
+    @app.get("/alarms", response_class=HTMLResponse, include_in_schema=False)
+    async def alarms(request: Request) -> HTMLResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        severity_filter = _normalize_alarm_filter(request.query_params.get("severity"), allowed={"low", "medium", "high", "critical"})
+        state_filter = _normalize_alarm_filter(
+            request.query_params.get("state"),
+            allowed={"active_unacknowledged", "active_acknowledged", "cleared"},
+        )
+        sort_order = _normalize_alarm_sort(request.query_params.get("sort"))
+        view_model = build_alarms_view_model(
+            snapshot=snapshot,
+            config=config,
+            texts=texts,
+            alert_history=_alert_history(event_recorder),
+            severity_filter=severity_filter,
+            state_filter=state_filter,
+            sort_order=sort_order,
+        )
+        response = templates.TemplateResponse(
+            request=request,
+            name="alarms.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+
+        _record_page_view(
+            request=request,
+            snapshot=snapshot,
+            session_id=session_id,
+            event_recorder=event_recorder,
+            event_type="hmi.page.alarms_viewed",
+            action="view_alarms",
+            asset_id=view_model.rows[0].asset_id if view_model.rows else snapshot.power_plant_controller.asset_id,
+            resulting_state={
+                "visible_alarm_count": len(view_model.rows),
+                "severity_filter": severity_filter or "all",
+                "state_filter": state_filter or "all",
+                "sort_order": sort_order,
+            },
+            message="Alarms page rendered",
+            tags=("read-only", "alarms", "web"),
         )
         return response
 
@@ -680,6 +771,97 @@ def build_meter_view_model(
     )
 
 
+def build_alarms_view_model(
+    *,
+    snapshot: PlantSnapshot,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+    alert_history: tuple[AlertRecord, ...],
+    severity_filter: str | None,
+    state_filter: str | None,
+    sort_order: str,
+) -> AlarmsViewModel:
+    """Bereitet die sichtbaren Werte fuer die zentrale Alarmliste auf."""
+
+    rows = _alarm_rows(
+        snapshot,
+        texts=texts,
+        alert_history=alert_history,
+        severity_filter=severity_filter,
+        state_filter=state_filter,
+        sort_order=sort_order,
+    )
+    acknowledged_count = sum(1 for alarm in snapshot.alarms if alarm.state == "active_acknowledged")
+    communication_count = sum(1 for alarm in snapshot.alarms if alarm.category == "communication" and alarm.is_active)
+    highest_severity = _highest_alarm_severity(snapshot)
+    metrics = (
+        OverviewMetric(
+            "label.active_alarms",
+            str(len(snapshot.active_alarms)),
+            "alarm" if snapshot.active_alarms else "good",
+        ),
+        OverviewMetric(
+            "label.acknowledged_alarms",
+            str(acknowledged_count),
+            "warn" if acknowledged_count else "good",
+        ),
+        OverviewMetric(
+            "label.communication_alarms",
+            str(communication_count),
+            "warn" if communication_count else "good",
+        ),
+        OverviewMetric(
+            "label.highest_severity",
+            _severity_text(texts, highest_severity) if highest_severity is not None else texts["state.normal"],
+            "alarm" if highest_severity in {"high", "critical"} else "good",
+        ),
+    )
+
+    return AlarmsViewModel(
+        page_title=texts["page.alarms.title"],
+        page_subtitle=texts["page.alarms.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        snapshot_time=_snapshot_time(snapshot),
+        metrics=metrics,
+        rows=rows,
+        severity_filters=_alarm_filter_links(
+            texts,
+            filter_name="severity",
+            current_value=severity_filter,
+            selected_state=state_filter,
+            sort_order=sort_order,
+            options=(
+                (None, texts["filter.all_severities"]),
+                ("low", _severity_text(texts, "low")),
+                ("medium", _severity_text(texts, "medium")),
+                ("high", _severity_text(texts, "high")),
+                ("critical", _severity_text(texts, "critical")),
+            ),
+        ),
+        state_filters=_alarm_filter_links(
+            texts,
+            filter_name="state",
+            current_value=state_filter,
+            selected_severity=severity_filter,
+            sort_order=sort_order,
+            options=(
+                (None, texts["filter.all_states"]),
+                ("active_unacknowledged", texts["alarm_state.active_unacknowledged"]),
+                ("active_acknowledged", texts["alarm_state.active_acknowledged"]),
+                ("cleared", texts["alarm_state.cleared"]),
+            ),
+        ),
+        sort_filters=_alarm_sort_links(
+            texts,
+            current_value=sort_order,
+            selected_severity=severity_filter,
+            selected_state=state_filter,
+        ),
+        empty_label=texts["alarm.none_matching"],
+    )
+
+
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
     return tuple(
         OverviewAlarm(
@@ -698,7 +880,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -717,6 +899,7 @@ def _nav_items(current_path: str) -> tuple[NavItem, ...]:
         NavItem(href="/inverters", label_key="nav.inverters", is_current=current == "/inverters"),
         NavItem(href="/weather", label_key="nav.weather", is_current=current == "/weather"),
         NavItem(href="/meter", label_key="nav.meter", is_current=current == "/meter"),
+        NavItem(href="/alarms", label_key="nav.alarms", is_current=current == "/alarms"),
     )
 
 
@@ -931,6 +1114,167 @@ def _count_degraded_blocks(snapshot: PlantSnapshot) -> int:
         for block in snapshot.inverter_blocks
         if block.status != "online" or block.communication_state != "healthy" or block.quality != "good"
     )
+
+
+def _alert_history(event_recorder: EventRecorder | None) -> tuple[AlertRecord, ...]:
+    if event_recorder is None:
+        return ()
+    return event_recorder.store.fetch_alerts()
+
+
+def _normalize_alarm_filter(value: str | None, *, allowed: set[str]) -> str | None:
+    if value is None or value == "all":
+        return None
+    return value if value in allowed else None
+
+
+def _normalize_alarm_sort(value: str | None) -> str:
+    if value in {"severity", "code"}:
+        return value
+    return "recent"
+
+
+def _highest_alarm_severity(snapshot: PlantSnapshot) -> str | None:
+    if not snapshot.active_alarms:
+        return None
+    severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+    return max(snapshot.active_alarms, key=lambda alarm: severity_order[alarm.severity]).severity
+
+
+def _alarm_rows(
+    snapshot: PlantSnapshot,
+    *,
+    texts: dict[str, str],
+    alert_history: tuple[AlertRecord, ...],
+    severity_filter: str | None,
+    state_filter: str | None,
+    sort_order: str,
+) -> tuple[AlarmListRow, ...]:
+    rows = []
+    for alarm in snapshot.alarms:
+        if severity_filter is not None and alarm.severity != severity_filter:
+            continue
+        if state_filter is not None and alarm.state != state_filter:
+            continue
+        asset_id = _alarm_asset_id(snapshot, alarm.code, alert_history)
+        history = tuple(
+            entry for entry in alert_history if entry.alarm_code == alarm.code and entry.asset_id == asset_id
+        )
+        first_seen = snapshot.start_time if not history else min(entry.created_at for entry in history)
+        last_changed = snapshot.start_time if not history else max(entry.created_at for entry in history)
+        rows.append(
+            AlarmListRow(
+                code=alarm.code,
+                label=texts.get(f"alarm.{alarm.code}", alarm.code),
+                category_label=_alarm_category_text(texts, alarm.category),
+                severity_label=_severity_text(texts, alarm.severity),
+                severity_key=alarm.severity,
+                state_label=_alarm_state_text(texts, alarm.state),
+                ack_state_label=_ack_state_text(texts, alarm.state),
+                asset_id=asset_id,
+                first_seen=_history_time(first_seen),
+                last_changed=_history_time(last_changed),
+                last_changed_sort=ensure_utc_datetime(last_changed).isoformat(),
+                tone=_tone_for_severity(alarm.severity),
+            )
+        )
+
+    severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+    if sort_order == "severity":
+        rows.sort(key=lambda row: (-severity_order[row.severity_key], row.code, row.asset_id))
+    elif sort_order == "code":
+        rows.sort(key=lambda row: (row.code, row.asset_id))
+    else:
+        rows.sort(key=lambda row: (row.last_changed_sort, row.code, row.asset_id), reverse=True)
+    return tuple(rows)
+
+
+def _alarm_asset_id(snapshot: PlantSnapshot, code: str, alert_history: tuple[AlertRecord, ...]) -> str:
+    matching_history = tuple(entry for entry in alert_history if entry.alarm_code == code)
+    if matching_history:
+        latest = max(matching_history, key=lambda entry: entry.created_at)
+        return latest.asset_id
+    if code == "PLANT_CURTAILED":
+        return snapshot.power_plant_controller.asset_id
+    if code == "BREAKER_OPEN":
+        return snapshot.grid_interconnect.asset_id
+    if code == "COMM_LOSS_INVERTER_BLOCK":
+        for block in snapshot.inverter_blocks:
+            if block.communication_state == "lost":
+                return block.asset_id
+    return snapshot.power_plant_controller.asset_id
+
+
+def _alarm_category_text(texts: dict[str, str], value: str) -> str:
+    return texts.get(f"alarm_category.{value}", value.replace("_", " ").title())
+
+
+def _ack_state_text(texts: dict[str, str], value: str) -> str:
+    if value == "active_acknowledged":
+        return texts["ack.acknowledged"]
+    if value == "active_unacknowledged":
+        return texts["ack.unacknowledged"]
+    if value == "cleared":
+        return texts["ack.cleared"]
+    return texts["ack.none"]
+
+
+def _history_time(value) -> str:
+    return ensure_utc_datetime(value).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _alarm_filter_links(
+    texts: dict[str, str],
+    *,
+    filter_name: str,
+    current_value: str | None,
+    sort_order: str,
+    options: tuple[tuple[str | None, str], ...],
+    selected_severity: str | None = None,
+    selected_state: str | None = None,
+) -> tuple[AlarmFilterLink, ...]:
+    links = []
+    for value, label in options:
+        query: dict[str, str] = {"sort": sort_order}
+        if filter_name != "severity" and selected_severity is not None:
+            query["severity"] = selected_severity
+        if filter_name != "state" and selected_state is not None:
+            query["state"] = selected_state
+        if value is not None:
+            query[filter_name] = value
+        href = "/alarms"
+        if query:
+            href = f"/alarms?{urlencode(query)}"
+        links.append(AlarmFilterLink(label=label, href=href, is_current=current_value == value))
+    return tuple(links)
+
+
+def _alarm_sort_links(
+    texts: dict[str, str],
+    *,
+    current_value: str,
+    selected_severity: str | None,
+    selected_state: str | None,
+) -> tuple[AlarmFilterLink, ...]:
+    links = []
+    for value, label in (
+        ("recent", texts["sort.recent"]),
+        ("severity", texts["sort.severity"]),
+        ("code", texts["sort.code"]),
+    ):
+        query = {"sort": value}
+        if selected_severity is not None:
+            query["severity"] = selected_severity
+        if selected_state is not None:
+            query["state"] = selected_state
+        links.append(
+            AlarmFilterLink(
+                label=label,
+                href=f"/alarms?{urlencode(query)}",
+                is_current=current_value == value,
+            )
+        )
+    return tuple(links)
 
 
 def _weather_output_context(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:

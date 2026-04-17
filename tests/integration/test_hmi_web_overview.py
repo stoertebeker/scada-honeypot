@@ -53,6 +53,7 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert "Inverters" in overview_response.text
     assert "Weather" in overview_response.text
     assert "Meter" in overview_response.text
+    assert "Alarms" in overview_response.text
     assert "5.80 MW" in overview_response.text
     assert "100.0 %" in overview_response.text
     assert "Closed" in overview_response.text
@@ -227,6 +228,64 @@ async def test_meter_page_marks_breaker_open_export_loss(tmp_path: Path) -> None
     assert "Unavailable" in response.text
     assert "Breaker open blocks export at the grid handoff." in response.text
     assert "BREAKER_OPEN" in response.text
+
+
+@pytest.mark.asyncio
+async def test_alarms_page_renders_alarm_history_and_logs_hmi_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-alarms.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    simulator = PlantSimulator.from_snapshot(snapshot, event_recorder=recorder)
+    curtailed_snapshot = simulator.apply_curtailment(snapshot, active_power_limit_pct=55.5)
+    acknowledged_snapshot = simulator.acknowledge_alarm(curtailed_snapshot, code="PLANT_CURTAILED")
+    app = create_hmi_app(
+        snapshot_provider=lambda: acknowledged_snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms?sort=severity")
+
+    events = store.fetch_events()
+    alarms_event = next(event for event in events if event.endpoint_or_register == "/alarms")
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "Alarm Register" in response.text
+    assert "PLANT_CURTAILED" in response.text
+    assert "Acknowledged" in response.text
+    assert "ppc-01" in response.text
+    assert alarms_event.event_type == "hmi.page.alarms_viewed"
+    assert alarms_event.component == "hmi-web"
+    assert alarms_event.service == "web-hmi"
+    assert alarms_event.resulting_state["visible_alarm_count"] == 1
+    assert alarms_event.resulting_state["sort_order"] == "severity"
+
+
+@pytest.mark.asyncio
+async def test_alarms_page_filters_acknowledged_state(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-alarms-filter.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    simulator = PlantSimulator.from_snapshot(snapshot, event_recorder=recorder)
+    curtailed_snapshot = simulator.apply_curtailment(snapshot, active_power_limit_pct=55.5)
+    acknowledged_snapshot = simulator.acknowledge_alarm(curtailed_snapshot, code="PLANT_CURTAILED")
+    app = create_hmi_app(
+        snapshot_provider=lambda: acknowledged_snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms?state=active_acknowledged")
+
+    assert response.status_code == 200
+    assert "PLANT_CURTAILED" in response.text
+    assert "BREAKER_OPEN" not in response.text
+    assert "Acknowledged" in response.text
 
 
 @pytest.mark.asyncio
@@ -419,3 +478,26 @@ async def test_runtime_meter_page_reads_same_values_as_unit_31_registers(tmp_pat
     assert "Open" in response.text
     assert "0.990" in response.text
     assert "BREAKER_OPEN" in response.text
+
+
+@pytest.mark.asyncio
+async def test_runtime_alarms_page_reads_breaker_alert_from_event_trail(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    runtime.modbus_service.register_map.write_single_register(unit_id=41, start_offset=199, value=1)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms")
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "BREAKER_OPEN" in response.text
+    assert "grid-01" in response.text
+    assert "Active" in response.text
