@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -9,6 +10,11 @@ from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import EventRecorder
 from honeypot.hmi_web import create_hmi_app
+from honeypot.hmi_web.app import (
+    SERVICE_LOGIN_PASSWORD,
+    SERVICE_LOGIN_USERNAME,
+    SERVICE_SESSION_COOKIE_NAME,
+)
 from honeypot.main import build_local_runtime
 from honeypot.plant_sim import PlantSimulator
 from honeypot.storage import SQLiteEventStore
@@ -376,6 +382,155 @@ async def test_hmi_500_page_uses_custom_template_and_logs_event(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
+async def test_service_login_page_renders_and_logs_view_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/service/login")
+
+    events = store.fetch_events()
+    login_view_event = next(event for event in events if event.endpoint_or_register == "/service/login")
+
+    assert response.status_code == 200
+    assert "Service Login" in response.text
+    assert "Username" in response.text
+    assert "Password" in response.text
+    assert login_view_event.event_type == "hmi.page.service_login_viewed"
+    assert login_view_event.resulting_state["service_session_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_service_login_failure_stays_quiet_and_logs_auth_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-fail.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/service/login",
+            data={"username": "wrong", "password": "wrong"},
+        )
+
+    events = store.fetch_events()
+    auth_event = next(event for event in events if event.event_type == "hmi.auth.service_login_attempt")
+
+    assert response.status_code == 200
+    assert "Authentication failed. Check credentials and retry." in response.text
+    assert SERVICE_SESSION_COOKIE_NAME not in response.cookies
+    assert auth_event.result == "failure"
+
+
+@pytest.mark.asyncio
+async def test_service_login_success_sets_session_and_opens_service_panel(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-success.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        login_response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        panel_response = await client.get("/service/panel")
+
+    events = store.fetch_events()
+    auth_event = next(event for event in events if event.event_type == "hmi.auth.service_login_attempt")
+    panel_event = next(event for event in events if event.endpoint_or_register == "/service/panel")
+
+    assert login_response.status_code == 303
+    assert login_response.headers["location"] == "/service/panel"
+    assert SERVICE_SESSION_COOKIE_NAME in login_response.cookies
+    assert panel_response.status_code == 200
+    assert "Service Panel" in panel_response.text
+    assert "Service view active" not in panel_response.text
+    assert SERVICE_LOGIN_USERNAME in panel_response.text
+    assert auth_event.result == "success"
+    assert panel_event.event_type == "hmi.page.service_panel_viewed"
+    assert panel_event.session_id is not None
+
+
+@pytest.mark.asyncio
+async def test_service_panel_requires_authentication(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/service/panel")
+
+    assert response.status_code == 401
+    assert "Authentication Required" in response.text
+    assert "Open /service/login to continue." in response.text
+
+
+@pytest.mark.asyncio
+async def test_service_session_expires_after_idle_timeout(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    clock = FrozenClock(snapshot.start_time)
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-session-expiry.db")
+    recorder = EventRecorder(store=store, clock=clock)
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        clock.advance(timedelta(minutes=21))
+        response = await client.get("/service/panel")
+
+    assert response.status_code == 401
+    assert "Authentication Required" in response.text
+
+
+@pytest.mark.asyncio
+async def test_service_login_returns_403_when_disabled(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    config = build_config(tmp_path).model_copy(update={"enable_service_login": False})
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/service/login")
+
+    assert response.status_code == 403
+    assert "Access Denied" in response.text
+
+
+@pytest.mark.asyncio
 async def test_overview_marks_comm_loss_block_and_alarm_context(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
@@ -632,3 +787,28 @@ async def test_runtime_hmi_404_page_uses_custom_template(tmp_path: Path) -> None
     assert response.status_code == 404
     assert "Page Unavailable" in response.text
     assert "The requested page is not available." in response.text
+
+
+@pytest.mark.asyncio
+async def test_runtime_service_login_opens_service_panel(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        login_response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        panel_response = await client.get("/service/panel")
+
+    assert login_response.status_code == 303
+    assert panel_response.status_code == 200
+    assert "Service Panel" in panel_response.text

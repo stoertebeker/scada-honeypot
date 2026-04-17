@@ -3,29 +3,34 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
-from honeypot.time_core import ensure_utc_datetime
+from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
 
 HMI_COMPONENT = "hmi-web"
 HMI_SERVICE = "web-hmi"
 HMI_PROTOCOL = "http"
 SESSION_COOKIE_NAME = "hmi_session"
+SERVICE_SESSION_COOKIE_NAME = "service_session"
+SERVICE_SESSION_IDLE_TIMEOUT = timedelta(minutes=20)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LOCALE_DIR = _REPO_ROOT / "resources" / "locales" / "attacker-ui"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+SERVICE_LOGIN_USERNAME = "field.service"
+SERVICE_LOGIN_PASSWORD = "Solar-Field-2026"
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +251,72 @@ class ErrorViewModel:
     error_message: str
 
 
+@dataclass(frozen=True, slots=True)
+class ServiceLoginViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    status_label: str | None
+    status_tone: str
+    session_active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ServicePanelViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    snapshot_time: str
+    operator_label: str
+    session_expires_at: str
+    metrics: tuple[OverviewMetric, ...]
+    allowed_actions: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ServiceSession:
+    handle: str
+    username: str
+    expires_at: Any
+
+
+@dataclass(slots=True)
+class ServiceSessionStore:
+    clock: Clock
+    idle_timeout: timedelta = SERVICE_SESSION_IDLE_TIMEOUT
+    _sessions: dict[str, ServiceSession] = field(default_factory=dict, init=False, repr=False)
+
+    def create(self, *, username: str) -> ServiceSession:
+        now = self.clock.now()
+        session = ServiceSession(
+            handle=f"svc_{uuid4().hex}",
+            username=username,
+            expires_at=ensure_utc_datetime(now + self.idle_timeout),
+        )
+        self._sessions[session.handle] = session
+        return session
+
+    def touch(self, handle: str | None) -> ServiceSession | None:
+        if handle is None:
+            return None
+        session = self._sessions.get(handle)
+        if session is None:
+            return None
+        now = ensure_utc_datetime(self.clock.now())
+        if now >= ensure_utc_datetime(session.expires_at):
+            self._sessions.pop(handle, None)
+            return None
+        refreshed = ServiceSession(
+            handle=session.handle,
+            username=session.username,
+            expires_at=ensure_utc_datetime(now + self.idle_timeout),
+        )
+        self._sessions[handle] = refreshed
+        return refreshed
+
+
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
@@ -256,6 +327,7 @@ def create_hmi_app(
 
     texts = _load_locale_texts(config)
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
+    service_sessions = ServiceSessionStore(clock=_hmi_clock(event_recorder))
     app = FastAPI(
         title=config.hmi_title,
         docs_url=None,
@@ -265,7 +337,30 @@ def create_hmi_app(
 
     @app.exception_handler(StarletteHTTPException)
     async def hmi_http_exception(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
-        if exc.status_code != 404:
+        error_page = {
+            401: (
+                texts["error.401.title"],
+                texts["error.401.subtitle"],
+                texts["error.401.message"],
+                "hmi.error.unauthorized",
+                "hmi_401",
+            ),
+            403: (
+                texts["error.403.title"],
+                texts["error.403.subtitle"],
+                texts["error.403.message"],
+                "hmi.error.forbidden",
+                "hmi_403",
+            ),
+            404: (
+                texts["error.404.title"],
+                texts["error.404.subtitle"],
+                texts["error.404.message"],
+                "hmi.error.not_found",
+                "hmi_404",
+            ),
+        }.get(exc.status_code)
+        if error_page is None:
             raise exc
         return _render_error_page(
             request=request,
@@ -273,12 +368,12 @@ def create_hmi_app(
             config=config,
             texts=texts,
             event_recorder=event_recorder,
-            status_code=404,
-            page_title=texts["error.404.title"],
-            page_subtitle=texts["error.404.subtitle"],
-            error_message=texts["error.404.message"],
-            event_type="hmi.error.not_found",
-            error_code="hmi_404",
+            status_code=exc.status_code,
+            page_title=error_page[0],
+            page_subtitle=error_page[1],
+            error_message=error_page[2],
+            event_type=error_page[3],
+            error_code=error_page[4],
         )
 
     @app.exception_handler(Exception)
@@ -568,6 +663,143 @@ def create_hmi_app(
             },
             message="Trends page rendered",
             tags=("read-only", "trends", "web"),
+        )
+        return response
+
+    @app.get("/service/login", response_class=HTMLResponse, include_in_schema=False)
+    async def service_login_get(request: Request) -> HTMLResponse:
+        if not config.enable_service_login:
+            raise StarletteHTTPException(status_code=403)
+        session_id, set_cookie = _session_state(request)
+        service_session = service_sessions.touch(request.cookies.get(SERVICE_SESSION_COOKIE_NAME))
+        view_model = build_service_login_view_model(
+            config=config,
+            texts=texts,
+            status_label=(texts["service.session_active"] if service_session is not None else None),
+            status_tone=("good" if service_session is not None else "neutral"),
+            session_active=service_session is not None,
+        )
+        response = templates.TemplateResponse(
+            request=request,
+            name="service_login.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+        if service_session is not None:
+            _set_service_session_cookie(response, service_session)
+
+        _record_page_view(
+            request=request,
+            snapshot=snapshot_provider(),
+            session_id=session_id,
+            event_recorder=event_recorder,
+            event_type="hmi.page.service_login_viewed",
+            action="view_service_login",
+            asset_id=HMI_COMPONENT,
+            resulting_state={"service_session_active": service_session is not None},
+            message="Service login page rendered",
+            tags=("auth", "service", "web"),
+        )
+        return response
+
+    @app.post("/service/login", response_class=HTMLResponse, include_in_schema=False)
+    async def service_login_post(request: Request) -> HTMLResponse:
+        if not config.enable_service_login:
+            raise StarletteHTTPException(status_code=403)
+        session_id, set_cookie = _session_state(request)
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        username = (form.get("username", [""])[0]).strip()
+        password = form.get("password", [""])[0]
+        login_success = username == SERVICE_LOGIN_USERNAME and password == SERVICE_LOGIN_PASSWORD
+        auth_event = _build_service_auth_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=session_id,
+            username=username,
+            result="success" if login_success else "failure",
+        )
+        if auth_event is not None:
+            event_recorder.record(auth_event)
+
+        if not login_success:
+            view_model = build_service_login_view_model(
+                config=config,
+                texts=texts,
+                status_label=texts["service.login_failed"],
+                status_tone="alarm",
+                session_active=False,
+            )
+            response = templates.TemplateResponse(
+                request=request,
+                name="service_login.html",
+                context=_template_context(
+                    config=config,
+                    texts=texts,
+                    current_path=request.url.path,
+                    page=view_model,
+                ),
+            )
+            if set_cookie:
+                _set_session_cookie(response, session_id)
+            return response
+
+        service_session = service_sessions.create(username=username)
+        response = RedirectResponse(url="/service/panel", status_code=303)
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+        _set_service_session_cookie(response, service_session)
+        return response
+
+    @app.get("/service/panel", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        snapshot = snapshot_provider()
+        view_model = build_service_panel_view_model(
+            snapshot=snapshot,
+            config=config,
+            texts=texts,
+            service_session=service_session,
+        )
+        response = templates.TemplateResponse(
+            request=request,
+            name="service_panel.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+        _set_service_session_cookie(response, service_session)
+        _record_page_view(
+            request=request,
+            snapshot=snapshot,
+            session_id=service_session.handle,
+            event_recorder=event_recorder,
+            event_type="hmi.page.service_panel_viewed",
+            action="view_service_panel",
+            asset_id=snapshot.power_plant_controller.asset_id,
+            resulting_state={
+                "service_view": True,
+                "plant_power_mw": snapshot.site.plant_power_mw,
+                "breaker_state": snapshot.grid_interconnect.breaker_state,
+            },
+            message="Service panel rendered",
+            tags=("service", "panel", "web"),
         )
         return response
 
@@ -1061,6 +1293,67 @@ def build_trends_view_model(
     )
 
 
+def build_service_login_view_model(
+    *,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+    status_label: str | None,
+    status_tone: str,
+    session_active: bool,
+) -> ServiceLoginViewModel:
+    return ServiceLoginViewModel(
+        page_title=texts["page.service_login.title"],
+        page_subtitle=texts["page.service_login.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        status_label=status_label,
+        status_tone=status_tone,
+        session_active=session_active,
+    )
+
+
+def build_service_panel_view_model(
+    *,
+    snapshot: PlantSnapshot,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+    service_session: ServiceSession,
+) -> ServicePanelViewModel:
+    metrics = (
+        OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
+        OverviewMetric(
+            "label.power_limit",
+            f"{snapshot.power_plant_controller.active_power_limit_pct:.1f} %",
+            _tone_for_limit(snapshot),
+        ),
+        OverviewMetric(
+            "label.breaker_state",
+            _enum_text(texts, snapshot.grid_interconnect.breaker_state),
+            _tone_for_breaker(snapshot.grid_interconnect.breaker_state),
+        ),
+        OverviewMetric(
+            "label.communications",
+            _enum_text(texts, snapshot.site.communications_health),
+            _tone_for_communications(snapshot.site.communications_health),
+        ),
+    )
+    return ServicePanelViewModel(
+        page_title=texts["page.service_panel.title"],
+        page_subtitle=texts["page.service_panel.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        snapshot_time=_snapshot_time(snapshot),
+        operator_label=service_session.username,
+        session_expires_at=_history_time(service_session.expires_at),
+        metrics=metrics,
+        allowed_actions=(
+            texts["service.action.power_limit"],
+            texts["service.action.breaker"],
+            texts["service.action.block_enable_reset"],
+        ),
+    )
+
+
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
     return tuple(
         OverviewAlarm(
@@ -1079,7 +1372,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel | TrendsViewModel | ErrorViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel | TrendsViewModel | ErrorViewModel | ServiceLoginViewModel | ServicePanelViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -1129,6 +1422,17 @@ def _set_session_cookie(response: HTMLResponse, session_id: str) -> None:
         session_id,
         httponly=True,
         samesite="lax",
+    )
+
+
+def _set_service_session_cookie(response: HTMLResponse, service_session: ServiceSession) -> None:
+    max_age = int(SERVICE_SESSION_IDLE_TIMEOUT.total_seconds())
+    response.set_cookie(
+        SERVICE_SESSION_COOKIE_NAME,
+        service_session.handle,
+        httponly=True,
+        samesite="lax",
+        max_age=max_age,
     )
 
 
@@ -1250,6 +1554,57 @@ def _record_error_page(
         tags=("error", "web"),
     )
     event_recorder.record(event)
+
+
+def _build_service_auth_event(
+    *,
+    request: Request,
+    event_recorder: EventRecorder | None,
+    session_id: str,
+    username: str,
+    result: str,
+):
+    if event_recorder is None:
+        return None
+    return event_recorder.build_event(
+        event_type="hmi.auth.service_login_attempt",
+        category="auth",
+        severity="low" if result == "success" else "medium",
+        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        actor_type="remote_client",
+        component=HMI_COMPONENT,
+        asset_id=HMI_COMPONENT,
+        action="login",
+        result=result,
+        session_id=session_id,
+        protocol=HMI_PROTOCOL,
+        service=HMI_SERVICE,
+        endpoint_or_register=request.url.path,
+        requested_value={"username": username, "http_path": request.url.path},
+        resulting_value={"http_status": 303 if result == "success" else 200},
+        message=f"Service login attempt {result}",
+        tags=("auth", "service", "web"),
+    )
+
+
+def _require_service_session(
+    request: Request,
+    *,
+    config: RuntimeConfig,
+    service_sessions: ServiceSessionStore,
+) -> ServiceSession:
+    if not config.enable_service_login:
+        raise StarletteHTTPException(status_code=403)
+    service_session = service_sessions.touch(request.cookies.get(SERVICE_SESSION_COOKIE_NAME))
+    if service_session is None:
+        raise StarletteHTTPException(status_code=401)
+    return service_session
+
+
+def _hmi_clock(event_recorder: EventRecorder | None) -> Clock:
+    if event_recorder is not None:
+        return event_recorder.clock
+    return SystemClock()
 
 
 def _sorted_active_alarms(snapshot: PlantSnapshot):

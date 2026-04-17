@@ -438,6 +438,8 @@ Dateien:
 - `src/honeypot/hmi_web/templates/alarms.html`
 - `src/honeypot/hmi_web/templates/trends.html`
 - `src/honeypot/hmi_web/templates/error_page.html`
+- `src/honeypot/hmi_web/templates/service_login.html`
+- `src/honeypot/hmi_web/templates/service_panel.html`
 - `resources/locales/attacker-ui/en.json`
 - `src/honeypot/main.py`
 - `tests/integration/test_hmi_web_overview.py`
@@ -514,6 +516,11 @@ Vorhanden:
   - `404` ohne Framework-Defaultbild
   - `500` ohne technische Fehltexte
   - dieselbe Navigations- und HMI-Sprache wie die uebrigen Seiten
+- `service/login` und `service/panel` zeigen sichtbar:
+  - Login-Formular ohne Framework-Standardformular
+  - ruhige Fehlermeldung bei Login-Fehlschlag
+  - serverseitige Session mit `20` Minuten Idle-Timeout
+  - geschuetzten Service-Bereich mit `401` fuer unauthentifiziert und `403` bei deaktiviertem Login
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
 - `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends` nutzen keine
@@ -535,6 +542,10 @@ Vorhanden:
   - `session_id`
 - `404`- und `500`-Seiten schreiben jetzt zusaetzlich eigene Fehler-Events mit
   kontrolliertem `error_code`
+- Service-Login schreibt jetzt:
+  - `hmi.auth.service_login_attempt`
+  - `hmi.page.service_login_viewed`
+  - `hmi.page.service_panel_viewed`
 - Anti-Fingerprint-Minimum:
   - `FastAPI`-Docs/OpenAPI sind deaktiviert
   - `uvicorn`-`Server`- und `Date`-Header sind im lokalen HMI-Dienst
@@ -549,12 +560,15 @@ Vorhanden:
   - echter `GET /trends` ueber denselben Baseline-/Snapshot-Pfad
   - echter `GET` auf unbekannte HMI-Routen mit eigener `404`-Seite
   - interner Renderfehler mit eigener `500`-Seite
+  - echter `/service/login`-Pfad mit Erfolgs- und Fehlversuch
+  - Session-Ablauf nach `20` Minuten Idle-Zeit
+  - geschuetztes `/service/panel` mit `401/403`
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- Service-Login oder schreibende HMI-Pfade
+- schreibende HMI-Pfade
 
 ## Teststand
 
@@ -564,7 +578,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `105 passed`
+- `112 passed`
 
 Abgedeckt sind bisher:
 
@@ -597,6 +611,8 @@ Abgedeckt sind bisher:
   synthetische Trendableitung aus Baseline plus Snapshot
 - eigene HMI-Fehlerseiten fuer `404/500` mit Fehler-Events statt
   Framework-Standardbildern
+- `/service/login` und `/service/panel` mit serverseitiger Session-Grundlogik,
+  `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten und Auth-Events
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -637,13 +653,13 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt `/service/login` mit ruhiger Session-Grundlogik und kontrolliertem `401/403`-Verhalten aufsetzen
+1. jetzt erste schreibende Service-Bedienungen fuer Leistungsbegrenzung und Breaker in denselben Session-Pfad haengen
 2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
 3. Rule-Engine/Exporter entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `/service/login` mit kontrollierter Session-Grundlogik und ohne Framework-Standardformulare aufsetzen
+- erste schreibende Service-Bedienungen fuer Leistungsbegrenzung und Breaker mit derselben Fachwirkung wie Modbus aufsetzen
 - fokussierte Tests fuer sichtbare Zustandskonsistenz zu Modbus und
   fehlerarme lokale Renderpfade
 - keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI

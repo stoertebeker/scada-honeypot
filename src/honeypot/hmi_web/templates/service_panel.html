@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.page_title }}</title>
+  <style>
+    :root {
+      --bg: #eef1ea;
+      --panel: #fbfcf8;
+      --line: #b8c1ba;
+      --ink: #142226;
+      --muted: #617174;
+      --good: #1f6a4b;
+      --warn: #9c6a1f;
+      --alarm: #9b2e26;
+      --accent: #345867;
+      --shadow: rgba(20, 34, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Aptos", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(52, 88, 103, 0.14), transparent 28rem),
+        linear-gradient(180deg, #f3f6f0 0%, var(--bg) 100%);
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .masthead {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      align-items: end;
+      margin-bottom: 20px;
+      padding: 22px 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(251, 252, 248, 0.98), rgba(217, 229, 234, 0.92));
+      box-shadow: 0 18px 40px var(--shadow);
+    }
+
+    .eyebrow,
+    .meta {
+      margin: 0;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+    }
+
+    h1 {
+      margin: 6px 0 0;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      line-height: 1.05;
+    }
+
+    .subtitle {
+      margin: 10px 0 0;
+      max-width: 46rem;
+      color: var(--muted);
+    }
+
+    nav a {
+      display: inline-block;
+      padding: 10px 14px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #f4f7f8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .card,
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 12px 28px var(--shadow);
+    }
+
+    .card {
+      padding: 16px 18px;
+      border-top: 4px solid var(--accent);
+    }
+
+    .card.good { border-top-color: var(--good); }
+    .card.warn { border-top-color: var(--warn); }
+    .card.alarm { border-top-color: var(--alarm); }
+
+    .card-label {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .card-value,
+    .mono {
+      margin: 0;
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+    }
+
+    .card-value {
+      font-size: 1.42rem;
+      font-weight: 700;
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 1.05rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    li + li {
+      margin-top: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .shell { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">{{ t("label.site") }} / {{ page.site_code }}</p>
+        <h1>{{ page.page_title }}</h1>
+        <p class="subtitle">{{ page.page_subtitle }}</p>
+      </div>
+      <div>
+        <p class="meta">{{ page.site_name }}</p>
+        <p class="meta">{{ t("label.snapshot_time") }} / {{ page.snapshot_time }}</p>
+        <p class="meta">{{ t("label.operator") }} / {{ page.operator_label }}</p>
+        <p class="meta">{{ t("label.session_expires") }} / {{ page.session_expires_at }}</p>
+        <nav aria-label="Primary">
+          {% for item in nav_items %}
+          <a href="{{ item.href }}">{{ t(item.label_key) }}</a>
+          {% endfor %}
+        </nav>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="{{ t('section.service_panel.title') }}">
+      {% for metric in page.metrics %}
+      <article class="card {{ metric.tone }}">
+        <p class="card-label">{{ t(metric.label_key) }}</p>
+        <p class="card-value">{{ metric.value }}</p>
+      </article>
+      {% endfor %}
+    </section>
+
+    <section class="panel">
+      <h2>{{ t("section.service_panel.title") }}</h2>
+      <ul>
+        {% for action in page.allowed_actions %}
+        <li>{{ action }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+</body>
+</html>
