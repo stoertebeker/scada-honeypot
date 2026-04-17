@@ -582,6 +582,37 @@ Noch bewusst **nicht** enthalten:
 
 - weitere schreibende HMI-Pfade jenseits von Leistungsbegrenzung und Breaker
 
+### 12. Exporter-SDK-Grundlage
+
+Dateien:
+
+- `src/honeypot/exporter_sdk/contracts.py`
+- `src/honeypot/exporter_sdk/local_test_exporter.py`
+- `src/honeypot/exporter_sdk/__init__.py`
+- `tests/unit/test_exporter_sdk.py`
+
+Vorhanden:
+
+- `HoneypotExporter` als minimaler Vertrag fuer:
+  - `capabilities()`
+  - `validate_config(config)`
+  - `health()`
+  - `deliver_event_batch(batch)`
+  - `deliver_alert_batch(batch)`
+- leichte Vertragsmodelle fuer:
+  - `ExporterCapabilities`
+  - `ExporterHealth`
+  - `ExportDelivery`
+- `LocalTestExporter` ohne Netzwerkpfad:
+  - nimmt Event- und Alert-Batches lokal im Speicher an
+  - kann kontrolliert `retry_later` fuer Runner- und Fehlerpfadtests erzwingen
+  - meldet Health/Capture-Zustand sauber fuer spaetere Runner
+- Unit-Tests fuer:
+  - Delivery-Vertrag und Retry-Semantik
+  - Capabilities-/Health-Meldung
+  - lokale Batch-Erfassung fuer Events und Alerts
+  - Konfigurationsvalidierung ohne echte Zielparameter
+
 ## Teststand
 
 Aktuell gruen:
@@ -590,7 +621,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `122 passed`
+- `127 passed`
 
 Abgedeckt sind bisher:
 
@@ -628,6 +659,8 @@ Abgedeckt sind bisher:
   `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten, Auth-Events und den
   ersten schreibenden Service-Bedienungen fuer Leistungsbegrenzung und Breaker
   inklusive korrelierter Eventspur zum Fachkern
+- `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
+  Outbox-Runner und Ziel-Exporter
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -656,7 +689,7 @@ Noch **nicht** vorhanden:
 - Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
-- Exporter-Implementierung
+- Outbox-Runner und echte Ziel-Exporter
 
 Operative Hinweise:
 
@@ -668,15 +701,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Exporter-SDK-Vertraege und einen lokalen Test-Exporter an die vorhandene Outbox haengen
-2. danach Runner/Webhook-Exporter und restliche HMI-/Modbus-Servicepfade nachziehen
+1. jetzt Outbox-Runner und ersten Webhook-Exporter an den vorhandenen Exporter-Vertrag haengen
+2. danach restliche HMI-/Modbus-Servicepfade nachziehen
 3. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- Exporter-SDK-Vertraege plus lokalen Test-Exporter auf Basis der vorhandenen Outbox aufsetzen
-- fokussierte Tests fuer Outbox-Payloads, Alert/Event-Referenzen und lokal ruhige Fehlerpfade
-- keine Webhook- oder externen Ziele vorziehen, bevor der lokale Exporter-Vertrag sauber sitzt
+- Outbox-Runner plus Webhook-Exporter auf Basis des vorhandenen Exporter-Vertrags aufsetzen
+- fokussierte Tests fuer Leasing/Persistenz von Outbox-Eintraegen, Payload-Aufloesung und Retry-Backoff
+- keine externen Ziele ausser einem lokalen/emulierten Webhook vorziehen, bevor der Runner sauber liefert und Fehler ruhig behandelt
 
 Nicht als naechstes tun:
 
