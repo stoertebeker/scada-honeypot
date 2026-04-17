@@ -163,7 +163,8 @@
       font-size: 0.92rem;
     }
 
-    input {
+    input,
+    select {
       padding: 12px 14px;
       border: 1px solid var(--line);
       font: inherit;
@@ -295,6 +296,26 @@
           <button type="submit">{{ t("action.apply_reactive_power") }}</button>
         </form>
         <p class="hint">{{ t("service.reactive_power_hint") }}</p>
+        {% else %}
+        <p class="hint">{{ t("service.status.control_unavailable") }}</p>
+        {% endif %}
+      </article>
+
+      <article class="panel">
+        <h2>{{ t("section.service_control.plant_mode") }}</h2>
+        {% if page.controls_available %}
+        <form method="post" action="/service/panel/plant-mode">
+          <label>
+            {{ t("label.operating_mode_request") }}
+            <select name="plant_mode_request">
+              <option value="0" {% if page.plant_mode_request_value == "0" %}selected{% endif %}>{{ t("state.normal") }}</option>
+              <option value="1" {% if page.plant_mode_request_value == "1" %}selected{% endif %}>{{ t("state.curtailed") }}</option>
+              <option value="2" {% if page.plant_mode_request_value == "2" %}selected{% endif %}>{{ t("state.maintenance") }}</option>
+            </select>
+          </label>
+          <button type="submit">{{ t("action.apply_plant_mode") }}</button>
+        </form>
+        <p class="hint">{{ t("service.plant_mode_hint") }}</p>
         {% else %}
         <p class="hint">{{ t("service.status.control_unavailable") }}</p>
         {% endif %}

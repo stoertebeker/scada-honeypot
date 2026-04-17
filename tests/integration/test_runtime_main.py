@@ -115,6 +115,11 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
                 data={"reactive_power_target_pct": "25.0"},
             )
             reactive_panel_response = client.get(reactive_response.headers["location"])
+            plant_mode_response = client.post(
+                "/service/panel/plant-mode",
+                data={"plant_mode_request": "2"},
+            )
+            plant_mode_panel_response = client.get(plant_mode_response.headers["location"])
             breaker_response = client.post(
                 "/service/panel/breaker",
                 data={"breaker_action": "open"},
@@ -132,6 +137,7 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
         in {
             "process.setpoint.curtailment_changed",
             "process.setpoint.reactive_power_target_changed",
+            "process.setpoint.plant_mode_request_changed",
             "process.breaker.state_changed",
         }
     ]
@@ -144,14 +150,18 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
     assert reactive_response.status_code == 303
     assert reactive_panel_response.status_code == 200
     assert "Reactive power target updated successfully." in reactive_panel_response.text
+    assert plant_mode_response.status_code == 303
+    assert plant_mode_panel_response.status_code == 200
+    assert "Plant mode request updated successfully." in plant_mode_panel_response.text
     assert breaker_response.status_code == 303
     assert breaker_panel_response.status_code == 200
     assert "Breaker open request accepted." in breaker_panel_response.text
     assert runtime.modbus_service.register_map.snapshot.site.plant_power_mw == 0.0
     assert runtime.modbus_service.register_map.snapshot.site.reactive_power_setpoint == 0.25
+    assert runtime.modbus_service.register_map.read_holding_registers(unit_id=1, start_offset=201, quantity=1).values == (2,)
     assert runtime.modbus_service.register_map.snapshot.grid_interconnect.breaker_state == "open"
-    assert len(control_events) == 3
-    assert len(process_events) == 3
+    assert len(control_events) == 4
+    assert len(process_events) == 4
     assert hmi_address is not None
     assert_port_closed(hmi_address)
 

@@ -206,6 +206,44 @@ class ReadOnlyRegisterMap:
             resulting_state=result.resulting_state,
         )
 
+    def get_plant_mode_request(self) -> int:
+        """Liefert den aktuell sichtbaren gelatchten Plant-Mode-Request fuer Unit 1."""
+
+        with self._lock:
+            return self._current_setpoint_value(
+                1,
+                UNIT_1_PLANT_MODE_REQUEST_OFFSET,
+                snapshot=self._snapshot,
+                plant_mode_request_override=self._plant_mode_request_override,
+            )
+
+    def set_plant_mode_request(
+        self,
+        *,
+        plant_mode_request: int,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterWriteResult:
+        """Setzt den PPC-Plant-Mode-Request ueber denselben Fachpfad wie FC16."""
+
+        try:
+            result = self.write_multiple_registers(
+                unit_id=1,
+                start_offset=UNIT_1_PLANT_MODE_REQUEST_OFFSET,
+                values=(plant_mode_request,),
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+        return RegisterWriteResult(
+            register_address=result.start_register_address,
+            requested_value=result.requested_values[0],
+            previous_value=result.previous_values[0],
+            resulting_value=result.resulting_values[0],
+            asset_id=result.asset_id,
+            resulting_state=result.resulting_state,
+        )
+
     def request_breaker_open(
         self,
         *,

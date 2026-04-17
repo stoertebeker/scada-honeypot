@@ -277,6 +277,7 @@ class ServicePanelViewModel:
     controls_available: bool
     power_limit_value: str
     reactive_power_target_pct_value: str
+    plant_mode_request_value: str
     breaker_state_label: str
     breaker_open_enabled: bool
     breaker_close_enabled: bool
@@ -303,6 +304,15 @@ class ServiceControlPort(Protocol):
         self,
         *,
         reactive_power_target_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
+
+    def get_plant_mode_request(self) -> int: ...
+
+    def set_plant_mode_request(
+        self,
+        *,
+        plant_mode_request: int,
         event_context: SimulationEventContext | None = None,
     ) -> Any: ...
 
@@ -805,6 +815,11 @@ def create_hmi_app(
         session_id, set_cookie = _session_state(request)
         snapshot = snapshot_provider()
         status_label, status_tone = _service_panel_status(request=request, texts=texts)
+        plant_mode_request_value = (
+            service_controls.get_plant_mode_request()
+            if service_controls is not None
+            else _default_plant_mode_request(snapshot)
+        )
         view_model = build_service_panel_view_model(
             snapshot=snapshot,
             config=config,
@@ -813,6 +828,7 @@ def create_hmi_app(
             status_label=status_label,
             status_tone=status_tone,
             controls_available=service_controls is not None,
+            plant_mode_request_value=plant_mode_request_value,
         )
         response = templates.TemplateResponse(
             request=request,
@@ -1089,6 +1105,132 @@ def create_hmi_app(
             set_cookie=set_cookie,
             service_session=service_session,
             status_code="reactive_power_updated",
+        )
+
+    @app.post("/service/panel/plant-mode", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_plant_mode(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        before_snapshot = snapshot_provider()
+        current_mode_request = (
+            service_controls.get_plant_mode_request()
+            if service_controls is not None
+            else _default_plant_mode_request(before_snapshot)
+        )
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_plant_mode_request",
+                result="rejected",
+                requested_value={"plant_mode_request": None},
+                resulting_state={"controls_available": False},
+                message="Service plant mode path unavailable",
+                tags=("service", "control", "plant-mode", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_unavailable",
+            )
+
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        raw_mode_request = (form.get("plant_mode_request", [""])[0]).strip()
+        try:
+            plant_mode_request = int(raw_mode_request)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_plant_mode_request",
+                result="rejected",
+                requested_value={"plant_mode_request": raw_mode_request},
+                previous_value=current_mode_request,
+                resulting_state={"plant_mode_request": current_mode_request},
+                message="Service plant mode request could not be parsed",
+                tags=("service", "control", "plant-mode", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        event_context = SimulationEventContext(
+            source_ip=source_ip,
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = service_controls.set_plant_mode_request(
+                plant_mode_request=plant_mode_request,
+                event_context=event_context,
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_plant_mode_request",
+                result="rejected",
+                requested_value={"plant_mode_request": plant_mode_request},
+                previous_value=current_mode_request,
+                resulting_state={"plant_mode_request": current_mode_request},
+                message=f"Service plant mode request rejected: {exc}",
+                tags=("service", "control", "plant-mode", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_rejected",
+            )
+
+        after_snapshot = snapshot_provider()
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action="set_plant_mode_request",
+            result="accepted",
+            requested_value={"plant_mode_request": plant_mode_request},
+            previous_value=current_mode_request,
+            resulting_value=result.resulting_state.get("plant_mode_request"),
+            resulting_state=result.resulting_state,
+            message="Service plant mode request accepted",
+            tags=("service", "control", "plant-mode", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            status_code="plant_mode_updated",
         )
 
     @app.post("/service/panel/breaker", response_class=HTMLResponse, include_in_schema=False)
@@ -1728,6 +1870,7 @@ def build_service_panel_view_model(
     status_label: str | None,
     status_tone: str,
     controls_available: bool,
+    plant_mode_request_value: int,
 ) -> ServicePanelViewModel:
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
@@ -1738,8 +1881,13 @@ def build_service_panel_view_model(
         ),
         OverviewMetric(
             "label.reactive_power",
-            f"{snapshot.power_plant_controller.reactive_power_target:.2f}",
+            f"{snapshot.power_plant_controller.reactive_power_target * 100:.1f} %",
             "neutral",
+        ),
+        OverviewMetric(
+            "label.operating_mode",
+            _enum_text(texts, snapshot.site.operating_mode),
+            "warn" if snapshot.site.operating_mode == "curtailed" else "neutral",
         ),
         OverviewMetric(
             "label.breaker_state",
@@ -1765,6 +1913,7 @@ def build_service_panel_view_model(
         controls_available=controls_available,
         power_limit_value=f"{snapshot.power_plant_controller.active_power_limit_pct:.1f}",
         reactive_power_target_pct_value=f"{snapshot.power_plant_controller.reactive_power_target * 100:.1f}",
+        plant_mode_request_value=str(plant_mode_request_value),
         breaker_state_label=_enum_text(texts, snapshot.grid_interconnect.breaker_state),
         breaker_open_enabled=snapshot.grid_interconnect.breaker_state != "open",
         breaker_close_enabled=snapshot.grid_interconnect.breaker_state != "closed",
@@ -1772,6 +1921,7 @@ def build_service_panel_view_model(
         allowed_actions=(
             texts["service.action.power_limit"],
             texts["service.action.reactive_power"],
+            texts["service.action.plant_mode"],
             texts["service.action.breaker"],
             texts["service.action.block_enable_reset"],
         ),
@@ -1868,6 +2018,7 @@ def _service_panel_status(*, request: Request, texts: dict[str, str]) -> tuple[s
     status_map = {
         "power_limit_updated": ("service.status.power_limit_updated", "good"),
         "reactive_power_updated": ("service.status.reactive_power_updated", "good"),
+        "plant_mode_updated": ("service.status.plant_mode_updated", "good"),
         "breaker_open_requested": ("service.status.breaker_open_requested", "good"),
         "breaker_close_requested": ("service.status.breaker_close_requested", "good"),
         "control_invalid": ("service.status.control_invalid", "alarm"),
@@ -1878,6 +2029,14 @@ def _service_panel_status(*, request: Request, texts: dict[str, str]) -> tuple[s
     if label_key is None:
         return None, "neutral"
     return texts[label_key], tone
+
+
+def _default_plant_mode_request(snapshot: PlantSnapshot) -> int:
+    if snapshot.site.operating_mode == "maintenance":
+        return 2
+    if snapshot.site.operating_mode == "curtailed" or snapshot.site.plant_power_limit_pct < 100:
+        return 1
+    return 0
 
 
 def _service_panel_redirect_response(
