@@ -277,6 +277,30 @@
       </article>
 
       <article class="panel">
+        <h2>{{ t("section.service_control.reactive_power") }}</h2>
+        {% if page.controls_available %}
+        <form method="post" action="/service/panel/reactive-power">
+          <label>
+            {{ t("label.reactive_power_percent") }}
+            <input
+              type="number"
+              name="reactive_power_target_pct"
+              min="-100"
+              max="100"
+              step="0.1"
+              value="{{ page.reactive_power_target_pct_value }}"
+              required
+            >
+          </label>
+          <button type="submit">{{ t("action.apply_reactive_power") }}</button>
+        </form>
+        <p class="hint">{{ t("service.reactive_power_hint") }}</p>
+        {% else %}
+        <p class="hint">{{ t("service.status.control_unavailable") }}</p>
+        {% endif %}
+      </article>
+
+      <article class="panel">
         <h2>{{ t("section.service_control.breaker") }}</h2>
         <p class="hint">{{ t("label.breaker_state") }}: {{ page.breaker_state_label }}</p>
         {% if page.controls_available %}

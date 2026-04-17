@@ -528,7 +528,7 @@ Vorhanden:
   - ruhige Fehlermeldung bei Login-Fehlschlag
   - serverseitige Session mit `20` Minuten Idle-Timeout
   - geschuetzten Service-Bereich mit `401` fuer unauthentifiziert und `403` bei deaktiviertem Login
-  - schreibende Bedienungen fuer `active_power_limit_pct` sowie `breaker_open_request` / `breaker_close_request`
+  - schreibende Bedienungen fuer `active_power_limit_pct`, `reactive_power_target` sowie `breaker_open_request` / `breaker_close_request`
   - ruhige Statusrueckmeldung nach akzeptierten oder abgelehnten Bedienungen
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
@@ -574,13 +574,14 @@ Vorhanden:
   - Session-Ablauf nach `20` Minuten Idle-Zeit
   - geschuetztes `/service/panel` mit `401/403`
   - echte `POST /service/panel/power-limit`-Wirkung mit sichtbarem Curtailment
+  - echte `POST /service/panel/reactive-power`-Wirkung mit sichtbarem Blindleistungsziel
   - echte `POST /service/panel/breaker`-Wirkung mit sichtbarem Exportverlust und Wiederherstellung
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- weitere schreibende HMI-Pfade jenseits von Leistungsbegrenzung und Breaker
+- weitere schreibende HMI-Pfade jenseits von Leistungsbegrenzung, Blindleistungsziel und Breaker
 
 ### 12. Exporter-SDK-Grundlage
 
@@ -673,7 +674,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `134 passed`
+- `136 passed`
 
 Abgedeckt sind bisher:
 
@@ -708,9 +709,9 @@ Abgedeckt sind bisher:
 - eigene HMI-Fehlerseiten fuer `404/500` mit Fehler-Events statt
   Framework-Standardbildern
 - `/service/login` und `/service/panel` mit serverseitiger Session-Grundlogik,
-  `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten, Auth-Events und den
-  ersten schreibenden Service-Bedienungen fuer Leistungsbegrenzung und Breaker
-  inklusive korrelierter Eventspur zum Fachkern
+  `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten, Auth-Events und
+  schreibenden Service-Bedienungen fuer Leistungsbegrenzung, Blindleistungsziel
+  und Breaker inklusive korrelierter Eventspur zum Fachkern
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-Exporter, Outbox-Leasing und Retry-Backoff auf

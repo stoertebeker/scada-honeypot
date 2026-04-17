@@ -179,6 +179,33 @@ class ReadOnlyRegisterMap:
         except ModbusRegisterError as exc:
             raise ValueError(str(exc)) from exc
 
+    def set_reactive_power_target_pct(
+        self,
+        *,
+        reactive_power_target_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterWriteResult:
+        """Setzt das PPC-Blindleistungsziel ueber denselben Fachpfad wie FC16."""
+
+        try:
+            result = self.write_multiple_registers(
+                unit_id=1,
+                start_offset=UNIT_1_REACTIVE_POWER_TARGET_OFFSET,
+                values=(encode_i16(int(round(reactive_power_target_pct * 10))),),
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+        return RegisterWriteResult(
+            register_address=result.start_register_address,
+            requested_value=result.requested_values[0],
+            previous_value=result.previous_values[0],
+            resulting_value=result.resulting_values[0],
+            asset_id=result.asset_id,
+            resulting_state=result.resulting_state,
+        )
+
     def request_breaker_open(
         self,
         *,

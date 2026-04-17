@@ -593,6 +593,49 @@ async def test_service_panel_power_limit_updates_shared_truth_and_logs_control_e
 
 
 @pytest.mark.asyncio
+async def test_service_panel_reactive_power_updates_shared_truth_and_logs_control_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-reactive-power.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/reactive-power",
+            data={"reactive_power_target_pct": "25.0"},
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_reactive_power_target"
+    )
+    process_event = next(event for event in events if event.event_type == "process.setpoint.reactive_power_target_changed")
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=reactive_power_updated"
+    assert panel_response.status_code == 200
+    assert "Reactive power target updated successfully." in panel_response.text
+    assert 'value="25.0"' in panel_response.text
+    assert register_map.snapshot.power_plant_controller.reactive_power_target == 0.25
+    assert register_map.snapshot.site.reactive_power_setpoint == 0.25
+    assert control_event.result == "accepted"
+    assert control_event.requested_value["reactive_power_target_pct"] == 25.0
+    assert control_event.resulting_value == {"http_status": 303, "value": 25.0}
+    assert control_event.resulting_state["reactive_power_target"] == 0.25
+    assert control_event.correlation_id == process_event.correlation_id
+
+
+@pytest.mark.asyncio
 async def test_service_panel_breaker_controls_shared_truth_and_log_events(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-service-breaker.db")
@@ -673,6 +716,43 @@ async def test_service_panel_rejects_invalid_power_limit_without_state_change(tm
     assert panel_response.status_code == 200
     assert "Submitted control request was rejected by the local process model." in panel_response.text
     assert register_map.snapshot.power_plant_controller.active_power_limit_pct == 100.0
+    assert control_event.result == "rejected"
+    assert control_event.error_code == "service_control_rejected"
+
+
+@pytest.mark.asyncio
+async def test_service_panel_rejects_invalid_reactive_power_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-reactive-power-reject.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/reactive-power",
+            data={"reactive_power_target_pct": "150.0"},
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_reactive_power_target"
+    )
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=control_rejected"
+    assert panel_response.status_code == 200
+    assert "Submitted control request was rejected by the local process model." in panel_response.text
+    assert register_map.snapshot.power_plant_controller.reactive_power_target == 0.0
     assert control_event.result == "rejected"
     assert control_event.error_code == "service_control_rejected"
 

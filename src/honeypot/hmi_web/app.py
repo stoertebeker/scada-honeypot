@@ -276,6 +276,7 @@ class ServicePanelViewModel:
     status_tone: str
     controls_available: bool
     power_limit_value: str
+    reactive_power_target_pct_value: str
     breaker_state_label: str
     breaker_open_enabled: bool
     breaker_close_enabled: bool
@@ -295,6 +296,13 @@ class ServiceControlPort(Protocol):
         self,
         *,
         active_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
+
+    def set_reactive_power_target_pct(
+        self,
+        *,
+        reactive_power_target_pct: float,
         event_context: SimulationEventContext | None = None,
     ) -> Any: ...
 
@@ -958,6 +966,131 @@ def create_hmi_app(
             status_code="power_limit_updated",
         )
 
+    @app.post("/service/panel/reactive-power", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_reactive_power(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        before_snapshot = snapshot_provider()
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_reactive_power_target",
+                result="rejected",
+                requested_value={"reactive_power_target_pct": None},
+                resulting_state={"controls_available": False},
+                message="Service reactive power path unavailable",
+                tags=("service", "control", "reactive-power", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_unavailable",
+            )
+
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        raw_target = (form.get("reactive_power_target_pct", [""])[0]).strip()
+        try:
+            reactive_power_target_pct = float(raw_target)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_reactive_power_target",
+                result="rejected",
+                requested_value={"reactive_power_target_pct": raw_target},
+                previous_value=round(before_snapshot.power_plant_controller.reactive_power_target * 100, 1),
+                resulting_state={
+                    "reactive_power_target": before_snapshot.power_plant_controller.reactive_power_target,
+                },
+                message="Service reactive power request could not be parsed",
+                tags=("service", "control", "reactive-power", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        event_context = SimulationEventContext(
+            source_ip=source_ip,
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = service_controls.set_reactive_power_target_pct(
+                reactive_power_target_pct=reactive_power_target_pct,
+                event_context=event_context,
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_reactive_power_target",
+                result="rejected",
+                requested_value={"reactive_power_target_pct": reactive_power_target_pct},
+                previous_value=round(before_snapshot.power_plant_controller.reactive_power_target * 100, 1),
+                resulting_state={
+                    "reactive_power_target": before_snapshot.power_plant_controller.reactive_power_target,
+                },
+                message=f"Service reactive power request rejected: {exc}",
+                tags=("service", "control", "reactive-power", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_rejected",
+            )
+
+        after_snapshot = snapshot_provider()
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action="set_reactive_power_target",
+            result="accepted",
+            requested_value={"reactive_power_target_pct": reactive_power_target_pct},
+            previous_value=round(before_snapshot.power_plant_controller.reactive_power_target * 100, 1),
+            resulting_value=round(after_snapshot.power_plant_controller.reactive_power_target * 100, 1),
+            resulting_state=result.resulting_state,
+            message="Service reactive power request accepted",
+            tags=("service", "control", "reactive-power", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            status_code="reactive_power_updated",
+        )
+
     @app.post("/service/panel/breaker", response_class=HTMLResponse, include_in_schema=False)
     async def service_panel_breaker(request: Request) -> HTMLResponse:
         service_session = _require_service_session(
@@ -1097,7 +1230,7 @@ def build_overview_view_model(
         ),
         OverviewMetric(
             "label.reactive_power",
-            f"{snapshot.power_plant_controller.reactive_power_target:.2f}",
+            f"{snapshot.power_plant_controller.reactive_power_target * 100:.1f} %",
             "neutral",
         ),
         OverviewMetric(
@@ -1604,6 +1737,11 @@ def build_service_panel_view_model(
             _tone_for_limit(snapshot),
         ),
         OverviewMetric(
+            "label.reactive_power",
+            f"{snapshot.power_plant_controller.reactive_power_target:.2f}",
+            "neutral",
+        ),
+        OverviewMetric(
             "label.breaker_state",
             _enum_text(texts, snapshot.grid_interconnect.breaker_state),
             _tone_for_breaker(snapshot.grid_interconnect.breaker_state),
@@ -1626,12 +1764,14 @@ def build_service_panel_view_model(
         status_tone=status_tone,
         controls_available=controls_available,
         power_limit_value=f"{snapshot.power_plant_controller.active_power_limit_pct:.1f}",
+        reactive_power_target_pct_value=f"{snapshot.power_plant_controller.reactive_power_target * 100:.1f}",
         breaker_state_label=_enum_text(texts, snapshot.grid_interconnect.breaker_state),
         breaker_open_enabled=snapshot.grid_interconnect.breaker_state != "open",
         breaker_close_enabled=snapshot.grid_interconnect.breaker_state != "closed",
         metrics=metrics,
         allowed_actions=(
             texts["service.action.power_limit"],
+            texts["service.action.reactive_power"],
             texts["service.action.breaker"],
             texts["service.action.block_enable_reset"],
         ),
@@ -1727,6 +1867,7 @@ def _service_panel_status(*, request: Request, texts: dict[str, str]) -> tuple[s
 
     status_map = {
         "power_limit_updated": ("service.status.power_limit_updated", "good"),
+        "reactive_power_updated": ("service.status.reactive_power_updated", "good"),
         "breaker_open_requested": ("service.status.breaker_open_requested", "good"),
         "breaker_close_requested": ("service.status.breaker_close_requested", "good"),
         "control_invalid": ("service.status.control_invalid", "alarm"),
