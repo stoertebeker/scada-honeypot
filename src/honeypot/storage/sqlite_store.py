@@ -294,7 +294,7 @@ class SQLiteEventStore:
                 SELECT alert_id, event_id, correlation_id, alarm_code, severity, state,
                        component, asset_id, message, created_at
                 FROM alert_log
-                ORDER BY created_at, alert_id
+                ORDER BY created_at, rowid
                 """
             ).fetchall()
 

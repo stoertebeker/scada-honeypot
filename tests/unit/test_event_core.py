@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from honeypot.event_core import EventRecorder
 from honeypot.rule_engine import (
     COMM_LOSS_ALERT_CODE,
+    GRID_PATH_UNAVAILABLE_ALERT_CODE,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
     RuleEngine,
     SETPOINT_ALERT_CODE,
@@ -176,6 +177,53 @@ def test_fetch_events_preserves_insert_order_for_identical_timestamps(tmp_path) 
     events = recorder.store.fetch_events()
 
     assert [event.event_id for event in events] == [first_event.event_id, second_event.event_id]
+
+
+def test_fetch_alerts_preserves_insert_order_for_identical_timestamps(tmp_path) -> None:
+    recorder = build_recorder(tmp_path)
+    first_event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+    )
+    second_event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_close_request",
+        result="accepted",
+    )
+    first_alert = recorder.build_alert(
+        event=first_event,
+        alarm_code="GRID_PATH_UNAVAILABLE",
+        severity="critical",
+        state="active_unacknowledged",
+        message="Exportpfad nicht verfuegbar auf grid-01",
+    )
+    second_alert = recorder.build_alert(
+        event=second_event,
+        alarm_code="GRID_PATH_UNAVAILABLE",
+        severity="critical",
+        state="cleared",
+        message="Exportpfad nicht verfuegbar auf grid-01",
+    )
+
+    recorder.record(first_event, alert=first_alert)
+    recorder.record(second_event, alert=second_alert)
+
+    alerts = recorder.store.fetch_alerts()
+
+    assert [alert.alert_id for alert in alerts] == [first_alert.alert_id, second_alert.alert_id]
 
 
 def test_record_derives_rule_based_alert_and_outbox_when_configured(tmp_path) -> None:
@@ -374,6 +422,126 @@ def test_record_derives_multi_block_follow_up_alert_and_outbox_on_second_comm_lo
     assert aggregate_alert.severity == "critical"
     assert len(alerts) == 3
     assert len(outbox_entries) == 3
+
+
+def test_record_derives_grid_path_follow_up_alert_and_clears_it_after_breaker_close(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    open_event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        resulting_state={"breaker_state": "open", "plant_power_mw": 0.0},
+        tags=("control-path", "grid", "breaker"),
+    )
+    close_event = open_event.model_copy(
+        update={
+            "event_id": "evt_grid_close",
+            "correlation_id": "corr_grid_close",
+            "action": "breaker_close_request",
+            "resulting_value": "closed",
+            "resulting_state": {"breaker_state": "closed", "plant_power_mw": 5.8},
+        }
+    )
+
+    open_record = recorder.record(
+        open_event,
+        current_state_updates={
+            "grid_interconnect": {
+                "breaker_state": "open",
+                "export_path_available": False,
+                "grid_acceptance_state": "unavailable",
+            }
+        },
+        outbox_targets=("webhook",),
+    )
+    close_record = recorder.record(
+        close_event,
+        current_state_updates={
+            "grid_interconnect": {
+                "breaker_state": "closed",
+                "export_path_available": True,
+                "grid_acceptance_state": "accepted",
+            }
+        },
+        outbox_targets=("webhook",),
+    )
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert {alert.alarm_code for alert in open_record.alerts} == {"BREAKER_OPEN", GRID_PATH_UNAVAILABLE_ALERT_CODE}
+    grid_path_open = next(alert for alert in open_record.alerts if alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE)
+    grid_path_cleared = next(alert for alert in close_record.alerts if alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE)
+    assert grid_path_open.state == "active_unacknowledged"
+    assert grid_path_cleared.state == "cleared"
+    assert grid_path_cleared.asset_id == "grid-01"
+    assert len(alerts) == 3
+    assert len(outbox_entries) == 3
+
+
+def test_record_re_raises_grid_path_follow_up_after_cleared_history(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    open_state = {
+        "grid_interconnect": {
+            "breaker_state": "open",
+            "export_path_available": False,
+            "grid_acceptance_state": "unavailable",
+        }
+    }
+    closed_state = {
+        "grid_interconnect": {
+            "breaker_state": "closed",
+            "export_path_available": True,
+            "grid_acceptance_state": "accepted",
+        }
+    }
+
+    first_open_event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        event_id="evt_grid_open_first",
+        correlation_id="corr_grid_open_first",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    close_event = first_open_event.model_copy(
+        update={
+            "event_id": "evt_grid_close",
+            "correlation_id": "corr_grid_close",
+            "action": "breaker_close_request",
+            "resulting_value": "closed",
+        }
+    )
+    second_open_event = first_open_event.model_copy(
+        update={
+            "event_id": "evt_grid_open_second",
+            "correlation_id": "corr_grid_open_second",
+        }
+    )
+
+    recorder.record(first_open_event, current_state_updates=open_state, outbox_targets=("webhook",))
+    recorder.record(close_event, current_state_updates=closed_state, outbox_targets=("webhook",))
+    second_open_record = recorder.record(second_open_event, current_state_updates=open_state, outbox_targets=("webhook",))
+
+    grid_path_alerts = tuple(alert for alert in second_open_record.alerts if alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE)
+
+    assert len(grid_path_alerts) == 1
+    assert grid_path_alerts[0].state == "active_unacknowledged"
 
 
 def test_record_suppresses_duplicate_multi_block_follow_up_while_aggregate_alert_is_active(tmp_path) -> None:

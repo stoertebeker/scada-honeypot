@@ -5,6 +5,7 @@ import pytest
 from honeypot.event_core.models import AlertRecord, EventRecord
 from honeypot.rule_engine import (
     COMM_LOSS_ALERT_CODE,
+    GRID_PATH_UNAVAILABLE_ALERT_CODE,
     LOGIN_FAILURE_THRESHOLD,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
     REPEATED_LOGIN_FAILURE_ALERT_CODE,
@@ -111,6 +112,7 @@ def test_default_v1_registers_documented_initial_rules() -> None:
         "repeated_service_login_failure",
         "successful_setpoint_change",
         "breaker_open",
+        "grid_path_unavailable",
         "inverter_comm_loss",
         "multi_block_unavailable",
     )
@@ -133,6 +135,118 @@ def test_breaker_open_rule_derives_alert_for_accepted_open_event() -> None:
     assert len(derived_alerts) == 1
     assert derived_alerts[0].alarm_code == "BREAKER_OPEN"
     assert derived_alerts[0].severity == "high"
+
+
+def test_grid_path_unavailable_rule_derives_follow_up_alert_for_breaker_open() -> None:
+    engine = RuleEngine.default_v1()
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="process.breaker.state_changed",
+            action="breaker_open_request",
+            asset_id="grid-01",
+            alarm_code="BREAKER_OPEN",
+            resulting_value="open",
+            tags=("control-path", "grid", "breaker"),
+        ),
+        context=RuleContext(
+            current_state={
+                "grid_interconnect": {
+                    "breaker_state": "open",
+                    "export_path_available": False,
+                    "grid_acceptance_state": "unavailable",
+                }
+            }
+        ),
+    )
+
+    assert len(derived_alerts) == 2
+    follow_up_alert = next(alert for alert in derived_alerts if alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE)
+    assert follow_up_alert.severity == "critical"
+    assert follow_up_alert.state == "active_unacknowledged"
+    assert follow_up_alert.asset_id == "grid-01"
+    assert follow_up_alert.message == "Exportpfad nicht verfuegbar auf grid-01"
+
+
+def test_grid_path_unavailable_rule_clears_follow_up_alert_after_breaker_close() -> None:
+    engine = RuleEngine.default_v1()
+    existing_alert = AlertRecord(
+        alert_id="alt_grid_path_active",
+        event_id="evt_existing_grid_path",
+        correlation_id="corr_existing_grid_path",
+        alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+        severity="critical",
+        state="active_unacknowledged",
+        component="plant-sim",
+        asset_id="grid-01",
+        message="Exportpfad nicht verfuegbar auf grid-01",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="process.breaker.state_changed",
+            action="breaker_close_request",
+            asset_id="grid-01",
+            alarm_code="BREAKER_OPEN",
+            resulting_value="closed",
+            tags=("control-path", "grid", "breaker"),
+        ),
+        context=RuleContext(
+            current_state={
+                "grid_interconnect": {
+                    "breaker_state": "closed",
+                    "export_path_available": True,
+                    "grid_acceptance_state": "accepted",
+                }
+            },
+            alert_history=(existing_alert,),
+        ),
+    )
+
+    assert len(derived_alerts) == 1
+    assert derived_alerts[0].alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE
+    assert derived_alerts[0].severity == "critical"
+    assert derived_alerts[0].state == "cleared"
+
+
+def test_grid_path_unavailable_rule_allows_re_raise_after_clear() -> None:
+    engine = RuleEngine.default_v1()
+    cleared_alert = AlertRecord(
+        alert_id="alt_grid_path_cleared",
+        event_id="evt_existing_grid_path",
+        correlation_id="corr_existing_grid_path",
+        alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+        severity="critical",
+        state="cleared",
+        component="plant-sim",
+        asset_id="grid-01",
+        message="Exportpfad nicht verfuegbar auf grid-01",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="process.breaker.state_changed",
+            action="breaker_open_request",
+            asset_id="grid-01",
+            alarm_code="BREAKER_OPEN",
+            resulting_value="open",
+            tags=("control-path", "grid", "breaker"),
+        ),
+        context=RuleContext(
+            current_state={
+                "grid_interconnect": {
+                    "breaker_state": "open",
+                    "export_path_available": False,
+                    "grid_acceptance_state": "unavailable",
+                }
+            },
+            alert_history=(cleared_alert,),
+        ),
+    )
+
+    assert {alert.alarm_code for alert in derived_alerts} == {"BREAKER_OPEN", GRID_PATH_UNAVAILABLE_ALERT_CODE}
 
 
 def test_inverter_comm_loss_rule_derives_alert_for_lost_block_event() -> None:

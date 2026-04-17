@@ -12,6 +12,7 @@ SETPOINT_ALERT_CODE = "SETPOINT_CHANGE_ACCEPTED"
 REPEATED_LOGIN_FAILURE_ALERT_CODE = "REPEATED_LOGIN_FAILURE"
 COMM_LOSS_ALERT_CODE = "COMM_LOSS_INVERTER_BLOCK"
 MULTI_BLOCK_UNAVAILABLE_ALERT_CODE = "MULTI_BLOCK_UNAVAILABLE"
+GRID_PATH_UNAVAILABLE_ALERT_CODE = "GRID_PATH_UNAVAILABLE"
 SITE_AGGREGATE_ASSET_ID = "site"
 LOGIN_FAILURE_THRESHOLD = 3
 MULTI_BLOCK_UNAVAILABLE_THRESHOLD = 2
@@ -165,6 +166,72 @@ class MultiBlockUnavailableRule:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class GridPathUnavailableRule:
+    """Eskaliert sichtbare Breaker-Open/Close-Ereignisse auf den Exportpfadzustand."""
+
+    rule_id: str = "grid_path_unavailable"
+
+    def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
+        if event.result != "accepted":
+            return ()
+        if event.event_type != "process.breaker.state_changed":
+            return ()
+
+        grid_state = context.current_state.get("grid_interconnect", {})
+        if not isinstance(grid_state, Mapping):
+            return ()
+
+        message = f"Exportpfad nicht verfuegbar auf {event.asset_id}"
+        if event.action == "breaker_open_request" and event.resulting_value == "open":
+            if grid_state.get("export_path_available") is not False:
+                return ()
+            return (
+                DerivedAlert(
+                    alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+                    severity="critical",
+                    message=message,
+                    asset_id=event.asset_id,
+                ),
+            )
+
+        if event.action == "breaker_close_request" and event.resulting_value == "closed":
+            if grid_state.get("export_path_available") is not True:
+                return ()
+            latest_alert = self._latest_matching_alert(event=event, context=context, message=message)
+            if latest_alert is None or latest_alert.state == "cleared":
+                return ()
+            return (
+                DerivedAlert(
+                    alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+                    severity="critical",
+                    state="cleared",
+                    message=message,
+                    asset_id=event.asset_id,
+                ),
+            )
+
+        return ()
+
+    def _latest_matching_alert(
+        self,
+        *,
+        event: EventRecord,
+        context: RuleContext,
+        message: str,
+    ) -> AlertRecord | None:
+        latest_matching_alert: AlertRecord | None = None
+        for alert in context.alert_history:
+            if (
+                alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE
+                and alert.component == event.component
+                and alert.asset_id == event.asset_id
+                and alert.message == message
+            ):
+                latest_matching_alert = alert
+        return latest_matching_alert
+
+
 @dataclass(slots=True)
 class RepeatedServiceLoginFailureRule:
     """Leitet ab der Schwellzahl wiederholter Login-Fehler einen Auth-Alert ab."""
@@ -216,6 +283,7 @@ class RuleEngine:
         engine.register(RepeatedServiceLoginFailureRule())
         engine.register(SuccessfulSetpointChangeRule())
         engine.register(BreakerOpenRule())
+        engine.register(GridPathUnavailableRule())
         engine.register(InverterCommLossRule())
         engine.register(MultiBlockUnavailableRule())
         return engine
@@ -283,6 +351,8 @@ class RuleEngine:
 
         if latest_matching_alert is None:
             return False
+        if derived_alert.state == "cleared":
+            return latest_matching_alert.state == "cleared"
         return latest_matching_alert.state != "cleared"
 
     def _resolved_asset_id(self, *, event: EventRecord, derived_alert: DerivedAlert) -> str:

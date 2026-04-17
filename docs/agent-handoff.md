@@ -694,7 +694,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `163 passed`
+- `169 passed`
 
 Abgedeckt sind bisher:
 
@@ -708,10 +708,14 @@ Abgedeckt sind bisher:
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - `JSONL`-Archivpfad fuer Eventanalyse
 - minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer wiederholte
-  Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`,
+  Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`, den
+  kritischen Grid-Folge-Alert `GRID_PATH_UNAVAILABLE`,
   `COMM_LOSS_INVERTER_BLOCK` und den kritischen Folge-Alert
   `MULTI_BLOCK_UNAVAILABLE` beim zweiten unterschiedlichen aktiven
   Block-Comm-Loss
+- `alert_log` wird jetzt auch bei identischen Frozen-Timestamps in stabiler
+  Insert-Reihenfolge gelesen; Clear- und Re-raise-Regeln fuer Folge-Alerts
+  haengen damit nicht mehr an zufaelligen `alert_id`-Sortierungen
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
@@ -785,18 +789,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
-2. danach weitere Ziel-Exporter oder Alert-Folgeregeln ergaenzen
+1. jetzt den fehlenden `SMTP`-Exporter auf dieselbe Outbox-Wahrheit ziehen
+2. danach weitere Alert-Folgeregeln entlang der sichtbaren Bedienpfade ergaenzen
 3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- die naechste mehrstufige Alert-Folgeregel entlang der vorhandenen
-  Prozesspfade setzen, zum Beispiel `GRID_PATH_UNAVAILABLE` oder
-  `LOW_SITE_OUTPUT_UNEXPECTED`
-- fokussierte Tests fuer weitere Outbox-/Alert-Suppression ohne
-  Alert-Flut in der bestehenden Release-Gate-Suite
-- keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben
+- `SMTP` als dritten lokalen Ziel-Exporter auf denselben Outbox-/Runner-Pfad
+  setzen
+- fokussierte Tests fuer Delivery, Retry und ruhige Fehlerbilder ohne
+  Client-seitiges Leakage
+- keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
+  diese Gates dauerhaft gruen bleiben
 
 Nicht als naechstes tun:
 

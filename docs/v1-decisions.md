@@ -118,6 +118,8 @@ Fuer V1 wird festgelegt:
   - wiederholte Login-Fehler
   - erfolgreiche Setpoint-Aenderung
   - `BREAKER_OPEN`
+  - `GRID_PATH_UNAVAILABLE` als kritischer Folge-Alert bei sichtbarem
+    Exportpfadverlust
   - `COMM_LOSS_INVERTER_BLOCK`
   - `MULTI_BLOCK_UNAVAILABLE` als kritischer Folge-Alert beim zweiten
     gleichzeitigen Block-Kommunikationsverlust

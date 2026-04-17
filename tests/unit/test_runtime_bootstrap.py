@@ -60,6 +60,7 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
         "repeated_service_login_failure",
         "successful_setpoint_change",
         "breaker_open",
+        "grid_path_unavailable",
         "inverter_comm_loss",
         "multi_block_unavailable",
     )
