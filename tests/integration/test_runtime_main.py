@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 from pathlib import Path
 from struct import pack, unpack
+from time import monotonic, sleep
 
 import httpx
 
@@ -179,6 +180,78 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
     assert len(process_events) == 6
     assert hmi_address is not None
     assert_port_closed(hmi_address)
+
+
+def test_build_local_runtime_drains_webhook_outbox_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-03",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "WEBHOOK_EXPORTER_ENABLED=1",
+                "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = request.content.decode("utf-8")
+        return httpx.Response(202, json={"accepted": True})
+
+    runtime.outbox_runner.exporters["webhook"] = runtime.outbox_runner.exporters["webhook"].__class__(
+        url="https://example.invalid/hook",
+        transport=httpx.MockTransport(handler),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    alert = runtime.event_recorder.build_alert(
+        event=event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+    runtime.event_recorder.record(event, alert=alert, outbox_targets=("webhook",))
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and outbox_entries[0].status == "delivered":
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert outbox_entries[0].status == "delivered"
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert "BREAKER_OPEN" in captured["json"]
 
 
 def send_request(

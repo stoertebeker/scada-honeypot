@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
+from threading import Event, Lock, Thread
 from typing import Sequence
 
 from honeypot.event_core.models import AlertRecord, EventRecord
@@ -121,3 +122,64 @@ class OutboxRunner:
             return tuple(alerts)
 
         return None
+
+
+@dataclass(slots=True)
+class BackgroundOutboxRunnerService:
+    """Fuehrt den Outbox-Drain im Hintergrund fuer die lokale Runtime aus."""
+
+    runner: OutboxRunner
+    drain_interval_seconds: float = 1.0
+    _stop_event: Event = field(default_factory=Event, init=False, repr=False)
+    _wake_event: Event = field(default_factory=Event, init=False, repr=False)
+    _thread: Thread | None = field(default=None, init=False, repr=False)
+    _lock: Lock = field(default_factory=Lock, init=False, repr=False)
+    _last_result: OutboxDrainResult | None = field(default=None, init=False, repr=False)
+    _drain_count: int = field(default=0, init=False, repr=False)
+
+    @property
+    def last_result(self) -> OutboxDrainResult | None:
+        with self._lock:
+            return self._last_result
+
+    @property
+    def drain_count(self) -> int:
+        with self._lock:
+            return self._drain_count
+
+    def start_in_thread(self) -> "BackgroundOutboxRunnerService":
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            return self
+
+        self._stop_event.clear()
+        self._wake_event.clear()
+        self._thread = Thread(
+            target=self._run_loop,
+            name="outbox-runner",
+            daemon=True,
+        )
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        self._wake_event.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=max(self.drain_interval_seconds, 0.1) + 1.0)
+        self._thread = None
+
+    def wake(self) -> None:
+        self._wake_event.set()
+
+    def _run_loop(self) -> None:
+        while not self._stop_event.is_set():
+            result = self.runner.drain_once()
+            with self._lock:
+                self._last_result = result
+                self._drain_count += 1
+            if self._stop_event.is_set():
+                break
+            self._wake_event.wait(timeout=self.drain_interval_seconds)
+            self._wake_event.clear()

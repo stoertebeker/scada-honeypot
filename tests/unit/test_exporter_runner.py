@@ -1,10 +1,11 @@
 import json
 from datetime import UTC, datetime, timedelta
+from time import monotonic, sleep
 
 import httpx
 
 from honeypot.event_core import EventRecorder
-from honeypot.exporter_runner import OutboxRunner, WebhookExporter
+from honeypot.exporter_runner import BackgroundOutboxRunnerService, OutboxRunner, WebhookExporter
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
@@ -121,3 +122,38 @@ def test_outbox_runner_marks_entries_failed_when_exporter_is_missing(tmp_path) -
     assert outbox_entries[0].status == "failed"
     assert outbox_entries[0].retry_count == 1
     assert outbox_entries[0].last_error == "Kein Exporter registriert fuer webhook"
+
+
+def test_background_outbox_runner_service_delivers_pending_entry_without_manual_drain(tmp_path) -> None:
+    recorder, clock = seed_webhook_alert(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(202, json={"accepted": True})
+
+    runner = OutboxRunner(
+        store=recorder.store,
+        exporters={
+            "webhook": WebhookExporter(
+                url="https://example.invalid/hook",
+                transport=httpx.MockTransport(handler),
+            )
+        },
+        clock=clock,
+    )
+    service = BackgroundOutboxRunnerService(runner=runner, drain_interval_seconds=0.05)
+
+    try:
+        service.start_in_thread()
+        deadline = monotonic() + 1.0
+        while monotonic() < deadline:
+            if recorder.store.fetch_outbox_entries()[0].status == "delivered":
+                break
+            sleep(0.02)
+    finally:
+        service.stop()
+
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert outbox_entries[0].status == "delivered"
+    assert service.drain_count >= 1

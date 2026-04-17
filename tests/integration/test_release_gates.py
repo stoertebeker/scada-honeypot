@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 from pathlib import Path
 from struct import pack, unpack
+from time import monotonic, sleep
 
 import httpx
 
@@ -116,6 +117,8 @@ def test_release_gate_exporter_failure_stays_internal_and_clients_remain_stable(
     )
     runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
     assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
 
     def failing_handler(request: httpx.Request) -> httpx.Response:
         del request
@@ -154,7 +157,12 @@ def test_release_gate_exporter_failure_stays_internal_and_clients_remain_stable(
         runtime.start()
         hmi_address = runtime.hmi_service.address
         modbus_address = runtime.modbus_service.address
-        drain_result = runtime.outbox_runner.drain_once()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and outbox_entries[0].retry_count == 1:
+                break
+            sleep(0.05)
         overview = httpx.get(
             f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
             timeout=5.0,
@@ -173,7 +181,7 @@ def test_release_gate_exporter_failure_stays_internal_and_clients_remain_stable(
     outbox_entries = runtime.event_store.fetch_outbox_entries()
     transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
 
-    assert drain_result.retried_count == 1
+    assert runtime.outbox_runner_service.drain_count >= 1
     assert outbox_entries[0].status == "pending"
     assert outbox_entries[0].retry_count == 1
     assert outbox_entries[0].last_error == "Webhook antwortete mit HTTP 503"

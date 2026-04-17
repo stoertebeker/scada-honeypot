@@ -648,12 +648,16 @@ Vorhanden:
   - einzelne Events/Alerts ueber Referenzen aufloesen
   - Outbox-Eintraege leasen
   - Outbox-Eintraege als `delivered`, `pending` mit Backoff oder `failed` markieren
-- `build_local_runtime()` verdrahtet jetzt optional einen Outbox-Runner fuer
-  `webhook`, sobald `WEBHOOK_EXPORTER_ENABLED=1` gesetzt ist
+- `BackgroundOutboxRunnerService` fuehrt denselben Outbox-Drain jetzt lokal im
+  Thread aus und bleibt strikt im selben Prozess
+- `build_local_runtime()` verdrahtet jetzt optional Outbox-Runner **und**
+  Hintergrunddienst fuer `webhook`, sobald `WEBHOOK_EXPORTER_ENABLED=1` gesetzt
+  ist
 - Unit-Tests fuer:
   - Webhook-Batch-POST
   - Retry-Backoff bei HTTP-Fehlern
   - `failed` bei fehlendem Exporter
+  - Hintergrund-Drain ohne manuellen `drain_once()`
   - Runtime-Verdrahtung des Webhook-Runners
 
 ### 14. Release-Gate- und Hardening-Suite
@@ -680,7 +684,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `149 passed`
+- `151 passed`
 
 Abgedeckt sind bisher:
 
@@ -724,6 +728,8 @@ Abgedeckt sind bisher:
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-Exporter, Outbox-Leasing und Retry-Backoff auf
   dem lokalen SQLite-Store
+- lokaler Runner-Hintergrundbetrieb fuer den Webhook-Pfad ohne manuelles
+  `drain_once()` im Runtime-Slice
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut und
   Exporter-Ausfall ohne sichtbare Seiteneffekte
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
@@ -754,7 +760,7 @@ Noch **nicht** vorhanden:
 - Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
-- weitere Ziel-Exporter, Runner-Hintergrundbetrieb und restliche Servicepfade
+- weitere Ziel-Exporter, Rule-Engine-Feinschliff und restliche Servicepfade
 
 Operative Hinweise:
 
@@ -766,13 +772,13 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt weitere Ziel-Exporter und Runner-Hintergrundbetrieb auf den bestehenden Outbox-Pfad ziehen
+1. jetzt weitere Ziel-Exporter auf den bestehenden Outbox-Pfad ziehen
 2. danach Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
 3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- einen weiteren Ziel-Exporter oder Runner-Hintergrundpfad auf dieselbe Outbox-Wahrheit setzen
+- einen weiteren Ziel-Exporter auf dieselbe Outbox-Wahrheit setzen
 - fokussierte Tests fuer Konsistenz zwischen Outbox, Retry-Verhalten, Eventspur und bestehender Release-Gate-Suite
 - keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben
 

@@ -65,6 +65,7 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
     assert runtime.hmi_app is not None
     assert runtime.hmi_service.address == ("127.0.0.1", 0)
     assert runtime.outbox_runner is None
+    assert runtime.outbox_runner_service is None
 
 
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:
@@ -84,6 +85,7 @@ def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: 
     runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
 
     assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
     assert runtime.outbox_runner.batch_size == 25
     assert runtime.outbox_runner.retry_backoff_seconds == 45
     assert tuple(runtime.outbox_runner.exporters) == ("webhook",)

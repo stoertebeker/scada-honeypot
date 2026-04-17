@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
-from honeypot.exporter_runner import OutboxRunner, WebhookExporter
+from honeypot.exporter_runner import BackgroundOutboxRunnerService, OutboxRunner, WebhookExporter
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.rule_engine import RuleEngine
@@ -49,6 +49,7 @@ class LocalRuntime:
     hmi_service: LocalHmiHttpService
     modbus_service: ReadOnlyModbusTcpService
     outbox_runner: OutboxRunner | None = None
+    outbox_runner_service: BackgroundOutboxRunnerService | None = None
 
     def start(self) -> "LocalRuntime":
         try:
@@ -69,13 +70,24 @@ class LocalRuntime:
         except Exception:
             self.modbus_service.stop()
             raise
+        try:
+            if self.outbox_runner_service is not None:
+                self.outbox_runner_service.start_in_thread()
+        except Exception:
+            self.hmi_service.stop()
+            self.modbus_service.stop()
+            raise
         return self
 
     def stop(self) -> None:
         try:
-            self.hmi_service.stop()
+            if self.outbox_runner_service is not None:
+                self.outbox_runner_service.stop()
         finally:
-            self.modbus_service.stop()
+            try:
+                self.hmi_service.stop()
+            finally:
+                self.modbus_service.stop()
 
 
 def bootstrap_runtime() -> RuntimeManifest:
@@ -127,6 +139,7 @@ def build_local_runtime(
         log_level=config.log_level,
     )
     outbox_runner = None
+    outbox_runner_service = None
     if config.webhook_exporter_enabled and config.webhook_exporter_url is not None:
         outbox_runner = OutboxRunner(
             store=event_store,
@@ -140,6 +153,7 @@ def build_local_runtime(
             retry_backoff_seconds=config.outbox_retry_backoff_seconds,
             clock=event_recorder.clock,
         )
+        outbox_runner_service = BackgroundOutboxRunnerService(runner=outbox_runner)
     return LocalRuntime(
         config=config,
         manifest=manifest,
@@ -150,6 +164,7 @@ def build_local_runtime(
         hmi_service=hmi_service,
         modbus_service=modbus_service,
         outbox_runner=outbox_runner,
+        outbox_runner_service=outbox_runner_service,
     )
 
 
