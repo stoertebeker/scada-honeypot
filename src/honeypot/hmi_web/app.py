@@ -155,6 +155,20 @@ class WeatherViewModel:
     active_alarms: tuple[OverviewAlarm, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class MeterViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    snapshot_time: str
+    metrics: tuple[OverviewMetric, ...]
+    facts: tuple[OverviewFact, ...]
+    context_label: str
+    context_tone: str
+    active_alarms: tuple[OverviewAlarm, ...]
+
+
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
@@ -318,6 +332,43 @@ def create_hmi_app(
             },
             message="Weather page rendered",
             tags=("read-only", "weather", "web"),
+        )
+        return response
+
+    @app.get("/meter", response_class=HTMLResponse, include_in_schema=False)
+    async def meter(request: Request) -> HTMLResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        view_model = build_meter_view_model(snapshot=snapshot, config=config, texts=texts)
+        response = templates.TemplateResponse(
+            request=request,
+            name="meter.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+
+        _record_page_view(
+            request=request,
+            snapshot=snapshot,
+            session_id=session_id,
+            event_recorder=event_recorder,
+            event_type="hmi.page.meter_viewed",
+            action="view_meter",
+            asset_id=snapshot.revenue_meter.asset_id,
+            resulting_state={
+                "export_power_kw": snapshot.revenue_meter.export_power_kw,
+                "export_path_available": snapshot.grid_interconnect.export_path_available,
+                "breaker_state": snapshot.grid_interconnect.breaker_state,
+                "meter_quality": snapshot.revenue_meter.quality,
+            },
+            message="Meter page rendered",
+            tags=("read-only", "meter", "web"),
         )
         return response
 
@@ -567,6 +618,68 @@ def build_weather_view_model(
     )
 
 
+def build_meter_view_model(
+    *,
+    snapshot: PlantSnapshot,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+) -> MeterViewModel:
+    """Bereitet die sichtbaren Werte fuer die Einspeise- und Netzsicht auf."""
+
+    context_label, context_tone = _meter_context(snapshot, texts)
+    metrics = (
+        OverviewMetric(
+            "label.export_power",
+            _format_power_kw(snapshot.revenue_meter.export_power_kw),
+            "good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
+        ),
+        OverviewMetric(
+            "label.export_path",
+            _availability_text(snapshot.grid_interconnect.export_path_available, texts),
+            "good" if snapshot.grid_interconnect.export_path_available else "alarm",
+        ),
+        OverviewMetric(
+            "label.breaker_state",
+            _enum_text(texts, snapshot.grid_interconnect.breaker_state),
+            _tone_for_breaker(snapshot.grid_interconnect.breaker_state),
+        ),
+        OverviewMetric(
+            "label.data_quality",
+            _enum_text(texts, snapshot.revenue_meter.quality),
+            _tone_for_quality(snapshot.revenue_meter.quality),
+        ),
+    )
+    facts = (
+        OverviewFact(
+            "label.export_energy",
+            _format_optional_measurement(snapshot.revenue_meter.export_energy_mwh_total, "MWh", texts),
+        ),
+        OverviewFact(
+            "label.grid_voltage",
+            _format_optional_measurement(snapshot.revenue_meter.grid_voltage_v, "V", texts),
+        ),
+        OverviewFact(
+            "label.grid_frequency",
+            _format_optional_measurement(snapshot.revenue_meter.grid_frequency_hz, "Hz", texts),
+        ),
+        OverviewFact("label.power_factor", _format_power_factor(snapshot.revenue_meter.power_factor)),
+        OverviewFact("label.communications", _enum_text(texts, snapshot.revenue_meter.communication_state)),
+    )
+
+    return MeterViewModel(
+        page_title=texts["page.meter.title"],
+        page_subtitle=texts["page.meter.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        snapshot_time=_snapshot_time(snapshot),
+        metrics=metrics,
+        facts=facts,
+        context_label=context_label,
+        context_tone=context_tone,
+        active_alarms=_active_alarm_view_models(snapshot, texts),
+    )
+
+
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
     return tuple(
         OverviewAlarm(
@@ -585,7 +698,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -603,6 +716,7 @@ def _nav_items(current_path: str) -> tuple[NavItem, ...]:
         NavItem(href="/single-line", label_key="nav.single_line", is_current=current == "/single-line"),
         NavItem(href="/inverters", label_key="nav.inverters", is_current=current == "/inverters"),
         NavItem(href="/weather", label_key="nav.weather", is_current=current == "/weather"),
+        NavItem(href="/meter", label_key="nav.meter", is_current=current == "/meter"),
     )
 
 
@@ -793,6 +907,20 @@ def _format_temperature(value_c: float | None, texts: dict[str, str]) -> str:
     return f"{value_c:.1f} C"
 
 
+def _format_optional_measurement(value: float | None, unit: str, texts: dict[str, str]) -> str:
+    if value is None:
+        return texts["state.unavailable"]
+    return f"{value:.3f} {unit}" if unit == "MWh" else f"{value:.1f} {unit}"
+
+
+def _format_power_factor(value: float) -> str:
+    return f"{value:.3f}"
+
+
+def _availability_text(is_available: bool, texts: dict[str, str]) -> str:
+    return texts["state.available"] if is_available else texts["state.unavailable"]
+
+
 def _count_active_blocks(snapshot: PlantSnapshot) -> int:
     return sum(1 for block in snapshot.inverter_blocks if block.status in {"online", "degraded"} and block.availability_pct > 0)
 
@@ -815,6 +943,18 @@ def _weather_output_context(snapshot: PlantSnapshot, texts: dict[str, str]) -> t
     if snapshot.weather_station.irradiance_w_m2 < 400 and snapshot.site.plant_power_mw < 3:
         return texts["weather.context.low_irradiance_explains_output"], "good"
     return texts["weather.context.review_alignment"], "warn"
+
+
+def _meter_context(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:
+    if snapshot.grid_interconnect.breaker_state != "closed":
+        return texts["meter.context.breaker_open_blocks_export"], "alarm"
+    if not snapshot.grid_interconnect.export_path_available:
+        return texts["meter.context.export_path_unavailable"], "alarm"
+    if snapshot.revenue_meter.communication_state != "healthy" or snapshot.revenue_meter.quality in {"stale", "invalid"}:
+        return texts["meter.context.reduced_confidence"], "warn"
+    if snapshot.revenue_meter.export_power_kw > 0:
+        return texts["meter.context.normal_export"], "good"
+    return texts["meter.context.review_alignment"], "warn"
 
 
 def _single_line_flow(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:

@@ -52,6 +52,7 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert "Single Line" in overview_response.text
     assert "Inverters" in overview_response.text
     assert "Weather" in overview_response.text
+    assert "Meter" in overview_response.text
     assert "5.80 MW" in overview_response.text
     assert "100.0 %" in overview_response.text
     assert "Closed" in overview_response.text
@@ -169,6 +170,63 @@ async def test_weather_page_renders_conditions_and_logs_hmi_events(tmp_path: Pat
     assert weather_event.resulting_value == {"http_status": 200}
     assert weather_event.resulting_state["irradiance_w_m2"] == 840
     assert weather_event.resulting_state["weather_quality"] == "good"
+
+
+@pytest.mark.asyncio
+async def test_meter_page_renders_export_view_and_logs_hmi_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-meter.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/meter")
+
+    events = store.fetch_events()
+    meter_event = next(event for event in events if event.endpoint_or_register == "/meter")
+
+    assert response.status_code == 200
+    assert "Meter Overview" in response.text
+    assert "5.79 MW" in response.text
+    assert "0.990" in response.text
+    assert "Available" in response.text
+    assert "Unavailable" in response.text
+    assert "Meter Snapshot" in response.text
+    assert meter_event.event_type == "hmi.page.meter_viewed"
+    assert meter_event.component == "hmi-web"
+    assert meter_event.service == "web-hmi"
+    assert meter_event.requested_value == {"http_method": "GET", "http_path": "/meter"}
+    assert meter_event.resulting_value == {"http_status": 200}
+    assert meter_event.resulting_state["export_power_kw"] == 5790.0
+    assert meter_event.resulting_state["export_path_available"] is True
+    assert meter_event.resulting_state["breaker_state"] == "closed"
+    assert meter_event.resulting_state["meter_quality"] == "good"
+
+
+@pytest.mark.asyncio
+async def test_meter_page_marks_breaker_open_export_loss(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    breaker_open_snapshot = PlantSimulator.from_snapshot(snapshot).open_breaker(snapshot)
+    app = create_hmi_app(
+        snapshot_provider=lambda: breaker_open_snapshot,
+        config=build_config(tmp_path),
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/meter")
+
+    assert response.status_code == 200
+    assert "0 kW" in response.text
+    assert "Open" in response.text
+    assert "Unavailable" in response.text
+    assert "Breaker open blocks export at the grid handoff." in response.text
+    assert "BREAKER_OPEN" in response.text
 
 
 @pytest.mark.asyncio
@@ -334,3 +392,30 @@ async def test_runtime_single_line_reads_breaker_change_from_modbus_register_map
     assert "Open" in response.text
     assert "0 kW" in response.text
     assert "Unavailable" in response.text
+
+
+@pytest.mark.asyncio
+async def test_runtime_meter_page_reads_same_values_as_unit_31_registers(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    runtime.modbus_service.register_map.write_single_register(unit_id=41, start_offset=199, value=1)
+    meter_result = runtime.modbus_service.register_map.read_holding_registers(unit_id=31, start_offset=102, quantity=8)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/meter")
+
+    assert response.status_code == 200
+    assert meter_result.values == (0, 0, 0, 0, 0, 0, 990, 0)
+    assert "Meter Overview" in response.text
+    assert "0 kW" in response.text
+    assert "Unavailable" in response.text
+    assert "Open" in response.text
+    assert "0.990" in response.text
+    assert "BREAKER_OPEN" in response.text
