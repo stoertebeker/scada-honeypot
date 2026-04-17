@@ -102,6 +102,7 @@ class EventRecorder:
         severity: AlertSeverity,
         state: AlertState,
         message: str | None = None,
+        asset_id: str | None = None,
         created_at: datetime | None = None,
     ) -> AlertRecord:
         """Leitet einen Alert aus einem vorhandenen Event ab."""
@@ -115,7 +116,7 @@ class EventRecorder:
             severity=severity,
             state=state,
             component=event.component,
-            asset_id=event.asset_id,
+            asset_id=event.asset_id if asset_id is None else asset_id,
             message=message,
             created_at=alert_timestamp,
         )
@@ -212,5 +213,6 @@ class EventRecorder:
             severity=derived_alert.severity,
             state=derived_alert.state,
             message=derived_alert.message,
+            asset_id=derived_alert.asset_id,
             created_at=event.timestamp,
         )

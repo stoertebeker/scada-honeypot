@@ -119,6 +119,8 @@ Fuer V1 wird festgelegt:
   - erfolgreiche Setpoint-Aenderung
   - `BREAKER_OPEN`
   - `COMM_LOSS_INVERTER_BLOCK`
+  - `MULTI_BLOCK_UNAVAILABLE` als kritischer Folge-Alert beim zweiten
+    gleichzeitigen Block-Kommunikationsverlust
 - `LOW_SITE_OUTPUT_UNEXPECTED` nutzt als Startschwelle
   `ALARM_THRESHOLD_LOW_OUTPUT_PCT=35`
 

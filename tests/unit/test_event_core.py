@@ -2,7 +2,13 @@ import json
 from datetime import UTC, datetime
 
 from honeypot.event_core import EventRecorder
-from honeypot.rule_engine import RuleEngine, SETPOINT_ALERT_CODE
+from honeypot.rule_engine import (
+    COMM_LOSS_ALERT_CODE,
+    MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+    RuleEngine,
+    SETPOINT_ALERT_CODE,
+    SITE_AGGREGATE_ASSET_ID,
+)
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
@@ -325,6 +331,97 @@ def test_record_allows_rule_alert_again_after_matching_alert_was_cleared(tmp_pat
     assert second_record.alert.alarm_code == SETPOINT_ALERT_CODE
     assert second_record.alert.state == "active_unacknowledged"
     assert len(outbox_entries) == 2
+
+
+def test_record_derives_multi_block_follow_up_alert_and_outbox_on_second_comm_loss(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    first_event = recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_comm_loss_02",
+            "correlation_id": "corr_comm_loss_02",
+            "asset_id": "invb-02",
+        }
+    )
+
+    first_record = recorder.record(first_event, outbox_targets=("webhook",))
+    second_record = recorder.record(second_event, outbox_targets=("webhook",))
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert len(first_record.alerts) == 1
+    assert first_record.alert is not None
+    assert first_record.alert.alarm_code == COMM_LOSS_ALERT_CODE
+    assert len(second_record.alerts) == 2
+    assert {alert.alarm_code for alert in second_record.alerts} == {
+        COMM_LOSS_ALERT_CODE,
+        MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+    }
+    aggregate_alert = next(alert for alert in second_record.alerts if alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE)
+    assert aggregate_alert.asset_id == SITE_AGGREGATE_ASSET_ID
+    assert aggregate_alert.severity == "critical"
+    assert len(alerts) == 3
+    assert len(outbox_entries) == 3
+
+
+def test_record_suppresses_duplicate_multi_block_follow_up_while_aggregate_alert_is_active(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+
+    for index, asset_id in enumerate(("invb-01", "invb-02"), start=1):
+        event = recorder.build_event(
+            event_type="system.communication.inverter_block_lost",
+            category="system",
+            severity="medium",
+            source_ip="203.0.113.24",
+            actor_type="remote_client",
+            component="plant-sim",
+            asset_id=asset_id,
+            action="simulate_comm_loss",
+            result="accepted",
+            event_id=f"evt_comm_loss_seed_{index}",
+            correlation_id=f"corr_comm_loss_seed_{index}",
+            resulting_value="lost",
+            tags=("fault-path", "communications", "inverter-block"),
+        )
+        recorder.record(event, outbox_targets=("webhook",))
+
+    third_event = recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-03",
+        action="simulate_comm_loss",
+        result="accepted",
+        event_id="evt_comm_loss_03",
+        correlation_id="corr_comm_loss_03",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+
+    third_record = recorder.record(third_event, outbox_targets=("webhook",))
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert len(third_record.alerts) == 1
+    assert third_record.alert is not None
+    assert third_record.alert.alarm_code == COMM_LOSS_ALERT_CODE
+    assert len(alerts) == 4
+    assert len(outbox_entries) == 4
 
 
 def test_record_writes_event_to_jsonl_archive_when_enabled(tmp_path) -> None:

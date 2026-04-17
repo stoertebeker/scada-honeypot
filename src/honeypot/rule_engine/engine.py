@@ -10,7 +10,11 @@ from honeypot.event_core.models import AlertRecord, AlertSeverity, AlertState, E
 ALERT_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 SETPOINT_ALERT_CODE = "SETPOINT_CHANGE_ACCEPTED"
 REPEATED_LOGIN_FAILURE_ALERT_CODE = "REPEATED_LOGIN_FAILURE"
+COMM_LOSS_ALERT_CODE = "COMM_LOSS_INVERTER_BLOCK"
+MULTI_BLOCK_UNAVAILABLE_ALERT_CODE = "MULTI_BLOCK_UNAVAILABLE"
+SITE_AGGREGATE_ASSET_ID = "site"
 LOGIN_FAILURE_THRESHOLD = 3
+MULTI_BLOCK_UNAVAILABLE_THRESHOLD = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +25,7 @@ class DerivedAlert:
     severity: AlertSeverity
     state: AlertState = "active_unacknowledged"
     message: str | None = None
+    asset_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,9 +118,49 @@ class InverterCommLossRule:
 
         return (
             DerivedAlert(
-                alarm_code="COMM_LOSS_INVERTER_BLOCK",
+                alarm_code=COMM_LOSS_ALERT_CODE,
                 severity="medium",
                 message=f"Kommunikationsverlust fuer Inverter-Block {event.asset_id}",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MultiBlockUnavailableRule:
+    """Eskaliert auf Site-Ebene, wenn mehrere Block-Kommunikationsverluste gleichzeitig aktiv sind."""
+
+    threshold: int = MULTI_BLOCK_UNAVAILABLE_THRESHOLD
+    aggregate_asset_id: str = SITE_AGGREGATE_ASSET_ID
+    rule_id: str = "multi_block_unavailable"
+
+    def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
+        if event.result != "accepted":
+            return ()
+        if event.event_type != "system.communication.inverter_block_lost":
+            return ()
+        if event.action != "simulate_comm_loss":
+            return ()
+        if event.resulting_value != "lost":
+            return ()
+
+        active_block_assets = {
+            alert.asset_id
+            for alert in context.alert_history
+            if alert.alarm_code == COMM_LOSS_ALERT_CODE and alert.state != "cleared"
+        }
+        if event.asset_id in active_block_assets:
+            return ()
+
+        total_affected_blocks = active_block_assets | {event.asset_id}
+        if len(total_affected_blocks) < self.threshold:
+            return ()
+
+        return (
+            DerivedAlert(
+                alarm_code=MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+                severity="critical",
+                message="Mehrere Inverter-Bloecke gleichzeitig nicht verfuegbar",
+                asset_id=self.aggregate_asset_id,
             ),
         )
 
@@ -172,6 +217,7 @@ class RuleEngine:
         engine.register(SuccessfulSetpointChangeRule())
         engine.register(BreakerOpenRule())
         engine.register(InverterCommLossRule())
+        engine.register(MultiBlockUnavailableRule())
         return engine
 
     @property
@@ -191,7 +237,7 @@ class RuleEngine:
     ) -> tuple[DerivedAlert, ...]:
         resolved_context = RuleContext() if context is None else context
         collected: list[DerivedAlert] = []
-        seen: set[tuple[str, AlertSeverity, AlertState, str | None]] = set()
+        seen: set[tuple[str, AlertSeverity, AlertState, str | None, str]] = set()
 
         for rule in self._rules.values():
             for derived_alert in rule.evaluate(event, context=resolved_context):
@@ -208,6 +254,7 @@ class RuleEngine:
                     derived_alert.severity,
                     derived_alert.state,
                     derived_alert.message,
+                    self._resolved_asset_id(event=event, derived_alert=derived_alert),
                 )
                 if dedupe_key in seen:
                     continue
@@ -229,7 +276,7 @@ class RuleEngine:
                 alert.alarm_code == derived_alert.alarm_code
                 and alert.severity == derived_alert.severity
                 and alert.component == event.component
-                and alert.asset_id == event.asset_id
+                and alert.asset_id == self._resolved_asset_id(event=event, derived_alert=derived_alert)
                 and alert.message == derived_alert.message
             ):
                 latest_matching_alert = alert
@@ -237,3 +284,6 @@ class RuleEngine:
         if latest_matching_alert is None:
             return False
         return latest_matching_alert.state != "cleared"
+
+    def _resolved_asset_id(self, *, event: EventRecord, derived_alert: DerivedAlert) -> str:
+        return event.asset_id if derived_alert.asset_id is None else derived_alert.asset_id

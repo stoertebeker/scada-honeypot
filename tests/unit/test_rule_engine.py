@@ -4,11 +4,14 @@ import pytest
 
 from honeypot.event_core.models import AlertRecord, EventRecord
 from honeypot.rule_engine import (
+    COMM_LOSS_ALERT_CODE,
     LOGIN_FAILURE_THRESHOLD,
+    MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
     REPEATED_LOGIN_FAILURE_ALERT_CODE,
     RuleContext,
     RuleEngine,
     SETPOINT_ALERT_CODE,
+    SITE_AGGREGATE_ASSET_ID,
     SuccessfulSetpointChangeRule,
 )
 
@@ -109,6 +112,7 @@ def test_default_v1_registers_documented_initial_rules() -> None:
         "successful_setpoint_change",
         "breaker_open",
         "inverter_comm_loss",
+        "multi_block_unavailable",
     )
 
 
@@ -147,8 +151,93 @@ def test_inverter_comm_loss_rule_derives_alert_for_lost_block_event() -> None:
     )
 
     assert len(derived_alerts) == 1
-    assert derived_alerts[0].alarm_code == "COMM_LOSS_INVERTER_BLOCK"
+    assert derived_alerts[0].alarm_code == COMM_LOSS_ALERT_CODE
     assert derived_alerts[0].severity == "medium"
+
+
+def test_multi_block_unavailable_rule_derives_critical_follow_up_on_second_distinct_loss() -> None:
+    engine = RuleEngine.default_v1()
+    first_loss_alert = AlertRecord(
+        alert_id="alt_comm_loss_01",
+        event_id="evt_existing_loss",
+        correlation_id="corr_existing_loss",
+        alarm_code=COMM_LOSS_ALERT_CODE,
+        severity="medium",
+        state="active_unacknowledged",
+        component="plant-sim",
+        asset_id="invb-01",
+        message="Kommunikationsverlust fuer Inverter-Block invb-01",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="system.communication.inverter_block_lost",
+            category="system",
+            action="simulate_comm_loss",
+            asset_id="invb-02",
+            alarm_code=COMM_LOSS_ALERT_CODE,
+            resulting_value="lost",
+            tags=("fault-path", "communications", "inverter-block"),
+        ),
+        context=RuleContext(alert_history=(first_loss_alert,)),
+    )
+
+    assert len(derived_alerts) == 2
+    assert {alert.alarm_code for alert in derived_alerts} == {
+        COMM_LOSS_ALERT_CODE,
+        MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+    }
+    aggregate_alert = next(alert for alert in derived_alerts if alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE)
+    assert aggregate_alert.severity == "critical"
+    assert aggregate_alert.asset_id == SITE_AGGREGATE_ASSET_ID
+    assert aggregate_alert.message == "Mehrere Inverter-Bloecke gleichzeitig nicht verfuegbar"
+
+
+def test_multi_block_unavailable_rule_is_suppressed_while_matching_aggregate_alert_is_active() -> None:
+    engine = RuleEngine.default_v1()
+    active_alerts = (
+        AlertRecord(
+            alert_id="alt_comm_loss_01",
+            event_id="evt_existing_loss",
+            correlation_id="corr_existing_loss",
+            alarm_code=COMM_LOSS_ALERT_CODE,
+            severity="medium",
+            state="active_unacknowledged",
+            component="plant-sim",
+            asset_id="invb-01",
+            message="Kommunikationsverlust fuer Inverter-Block invb-01",
+            created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+        ),
+        AlertRecord(
+            alert_id="alt_multi_block_active",
+            event_id="evt_existing_multi",
+            correlation_id="corr_existing_multi",
+            alarm_code=MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+            severity="critical",
+            state="active_unacknowledged",
+            component="plant-sim",
+            asset_id=SITE_AGGREGATE_ASSET_ID,
+            message="Mehrere Inverter-Bloecke gleichzeitig nicht verfuegbar",
+            created_at=datetime(2026, 4, 16, 9, 30, tzinfo=UTC),
+        ),
+    )
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="system.communication.inverter_block_lost",
+            category="system",
+            action="simulate_comm_loss",
+            asset_id="invb-03",
+            alarm_code=COMM_LOSS_ALERT_CODE,
+            resulting_value="lost",
+            tags=("fault-path", "communications", "inverter-block"),
+        ),
+        context=RuleContext(alert_history=active_alerts),
+    )
+
+    assert len(derived_alerts) == 1
+    assert derived_alerts[0].alarm_code == COMM_LOSS_ALERT_CODE
 
 
 def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success() -> None:

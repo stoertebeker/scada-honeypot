@@ -667,7 +667,9 @@ Fuer V1 festgezogen:
 - `PCAP` bleibt in der Default-Konfiguration deaktiviert
 - Exporter laufen im selben Prozess ueber entkoppelte Outbox-/Runner-Logik
 - erste Alert-Regeln sind wiederholte Login-Fehler, erfolgreiche
-  Setpoint-Aenderung, `BREAKER_OPEN` und `COMM_LOSS_INVERTER_BLOCK`
+  Setpoint-Aenderung, `BREAKER_OPEN`, `COMM_LOSS_INVERTER_BLOCK` und der
+  kritische Folge-Alert `MULTI_BLOCK_UNAVAILABLE` bei mehreren gleichzeitig
+  aktiven Block-Kommunikationsverlusten
 
 Spaeter noch zu konkretisieren:
 

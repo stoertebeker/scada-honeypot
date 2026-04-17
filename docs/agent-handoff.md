@@ -694,7 +694,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `159 passed`
+- `163 passed`
 
 Abgedeckt sind bisher:
 
@@ -708,8 +708,10 @@ Abgedeckt sind bisher:
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - `JSONL`-Archivpfad fuer Eventanalyse
 - minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer wiederholte
-  Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN` und
-  `COMM_LOSS_INVERTER_BLOCK`
+  Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`,
+  `COMM_LOSS_INVERTER_BLOCK` und den kritischen Folge-Alert
+  `MULTI_BLOCK_UNAVAILABLE` beim zweiten unterschiedlichen aktiven
+  Block-Comm-Loss
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
@@ -767,7 +769,7 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Rule-Engine-Feinschliff fuer mehrstufige Alarmfolgen und spaetere
+- weiterer Rule-Engine-Feinschliff fuer mehrstufige Alarmfolgen und spaetere
   Suppression-Strategien jenseits identischer aktiver Alerts
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
@@ -789,9 +791,11 @@ Direkter Kurs fuer den naechsten Agenten:
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- eine erste mehrstufige Alert-Folgeregel auf dieselbe Event- und
-  Outbox-Wahrheit setzen
-- fokussierte Tests fuer Konsistenz zwischen Outbox, Retry-Verhalten, Eventspur und bestehender Release-Gate-Suite
+- die naechste mehrstufige Alert-Folgeregel entlang der vorhandenen
+  Prozesspfade setzen, zum Beispiel `GRID_PATH_UNAVAILABLE` oder
+  `LOW_SITE_OUTPUT_UNEXPECTED`
+- fokussierte Tests fuer weitere Outbox-/Alert-Suppression ohne
+  Alert-Flut in der bestehenden Release-Gate-Suite
 - keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben
 
 Nicht als naechstes tun:

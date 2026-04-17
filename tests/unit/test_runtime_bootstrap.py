@@ -61,6 +61,7 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
         "successful_setpoint_change",
         "breaker_open",
         "inverter_comm_loss",
+        "multi_block_unavailable",
     )
     assert runtime.hmi_app is not None
     assert runtime.hmi_service.address == ("127.0.0.1", 0)

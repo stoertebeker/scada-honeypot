@@ -45,7 +45,7 @@ Vorhanden sind:
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
-- lokale `RuleEngine`, die jetzt wiederholte Login-Fehler, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN` und `COMM_LOSS_INVERTER_BLOCK` abdeckt, explizite Prozessalarme priorisiert und identische aktive Rule-Alerts bis `cleared` unterdrueckt
+- lokale `RuleEngine`, die jetzt wiederholte Login-Fehler, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`, `COMM_LOSS_INVERTER_BLOCK` und den kritischen Folge-Alert `MULTI_BLOCK_UNAVAILABLE` beim zweiten unterschiedlichen aktiven Block-Comm-Loss abdeckt, explizite Prozessalarme priorisiert und identische aktive Rule-Alerts bis `cleared` unterdrueckt
 - `exporter_sdk` mit stabilem Exporter-Vertrag fuer Capabilities, Health und Batch-Delivery sowie einem lokalen `LocalTestExporter` ohne Netzwerkpfad fuer spaetere Runner-/Outbox-Tests
 - `exporter_runner` mit leased Outbox-Drain, `WebhookExporter`, `TelegramExporter`, Retry-Backoff und einem lokalen Hintergrunddienst; Export-Ausfaelle landen kontrolliert in `outbox.retry_count`, `next_attempt_at` und `last_error`, ohne den Kernpfad zu blockieren
 - Release-Gate- und Hardening-Tests pruefen jetzt ruhige `401/403/404`-Seiten, fehlende `Server`-/`Date`-Header, lokale Bindings sowie Exporter-Ausfall ohne sichtbare Client-Seiteneffekte
@@ -80,7 +80,7 @@ Vorhanden sind:
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
-- Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
+- weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten jenseits von `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends`
 - weitere Ziel-Exporter, Rule-Engine-Feinschliff und restliche Servicepfade
