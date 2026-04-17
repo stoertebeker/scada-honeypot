@@ -6,6 +6,7 @@ from struct import pack, unpack
 
 import httpx
 
+from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
 
@@ -72,6 +73,72 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert modbus_address is not None
     assert hmi_address is not None
     assert_port_closed(modbus_address)
+    assert_port_closed(hmi_address)
+
+
+def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-02",
+                f"EVENT_STORE_PATH={event_store_path}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    hmi_address: tuple[str, int] | None = None
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        with httpx.Client(
+            base_url=f"http://{hmi_address[0]}:{hmi_address[1]}",
+            timeout=5.0,
+            trust_env=False,
+            follow_redirects=False,
+        ) as client:
+            login_response = client.post(
+                "/service/login",
+                data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            )
+            limit_response = client.post(
+                "/service/panel/power-limit",
+                data={"active_power_limit_pct": "55.5"},
+            )
+            limit_panel_response = client.get(limit_response.headers["location"])
+            breaker_response = client.post(
+                "/service/panel/breaker",
+                data={"breaker_action": "open"},
+            )
+            breaker_panel_response = client.get(breaker_response.headers["location"])
+        events = runtime.event_store.fetch_events()
+    finally:
+        runtime.stop()
+
+    control_events = [event for event in events if event.event_type == "hmi.action.service_control_submitted"]
+    process_events = [
+        event
+        for event in events
+        if event.event_type in {"process.setpoint.curtailment_changed", "process.breaker.state_changed"}
+    ]
+
+    assert login_response.status_code == 303
+    assert limit_response.status_code == 303
+    assert limit_panel_response.status_code == 200
+    assert "Active power limit updated successfully." in limit_panel_response.text
+    assert "55.5 %" in limit_panel_response.text
+    assert breaker_response.status_code == 303
+    assert breaker_panel_response.status_code == 200
+    assert "Breaker open request accepted." in breaker_panel_response.text
+    assert runtime.modbus_service.register_map.snapshot.site.plant_power_mw == 0.0
+    assert runtime.modbus_service.register_map.snapshot.grid_interconnect.breaker_state == "open"
+    assert len(control_events) == 2
+    assert len(process_events) == 2
+    assert hmi_address is not None
     assert_port_closed(hmi_address)
 
 

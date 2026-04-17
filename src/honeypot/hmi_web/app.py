@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 from urllib.parse import parse_qs, urlencode
 from uuid import uuid4
 
@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
+from honeypot.plant_sim import SimulationEventContext
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
 
 HMI_COMPONENT = "hmi-web"
@@ -271,6 +272,13 @@ class ServicePanelViewModel:
     snapshot_time: str
     operator_label: str
     session_expires_at: str
+    status_label: str | None
+    status_tone: str
+    controls_available: bool
+    power_limit_value: str
+    breaker_state_label: str
+    breaker_open_enabled: bool
+    breaker_close_enabled: bool
     metrics: tuple[OverviewMetric, ...]
     allowed_actions: tuple[str, ...]
 
@@ -280,6 +288,27 @@ class ServiceSession:
     handle: str
     username: str
     expires_at: Any
+
+
+class ServiceControlPort(Protocol):
+    def set_active_power_limit_pct(
+        self,
+        *,
+        active_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
+
+    def request_breaker_open(
+        self,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
+
+    def request_breaker_close(
+        self,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
 
 
 @dataclass(slots=True)
@@ -322,8 +351,9 @@ def create_hmi_app(
     snapshot_provider: Callable[[], PlantSnapshot],
     config: RuntimeConfig,
     event_recorder: EventRecorder | None = None,
+    service_controls: ServiceControlPort | None = None,
 ) -> FastAPI:
-    """Erzeugt die ersten read-only HMI-Seiten fuer die lokale Runtime."""
+    """Erzeugt die ersten HMI-Seiten fuer die lokale Runtime inklusive Service-Pfad."""
 
     texts = _load_locale_texts(config)
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
@@ -766,11 +796,15 @@ def create_hmi_app(
         )
         session_id, set_cookie = _session_state(request)
         snapshot = snapshot_provider()
+        status_label, status_tone = _service_panel_status(request=request, texts=texts)
         view_model = build_service_panel_view_model(
             snapshot=snapshot,
             config=config,
             texts=texts,
             service_session=service_session,
+            status_label=status_label,
+            status_tone=status_tone,
+            controls_available=service_controls is not None,
         )
         response = templates.TemplateResponse(
             request=request,
@@ -802,6 +836,246 @@ def create_hmi_app(
             tags=("service", "panel", "web"),
         )
         return response
+
+    @app.post("/service/panel/power-limit", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_power_limit(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        before_snapshot = snapshot_provider()
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_active_power_limit",
+                result="rejected",
+                requested_value={"active_power_limit_pct": None},
+                resulting_state={"controls_available": False},
+                message="Service power limit path unavailable",
+                tags=("service", "control", "curtailment", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_unavailable",
+            )
+
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        raw_limit = (form.get("active_power_limit_pct", [""])[0]).strip()
+        try:
+            active_power_limit_pct = float(raw_limit)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_active_power_limit",
+                result="rejected",
+                requested_value={"active_power_limit_pct": raw_limit},
+                previous_value=before_snapshot.power_plant_controller.active_power_limit_pct,
+                resulting_state={"active_power_limit_pct": before_snapshot.power_plant_controller.active_power_limit_pct},
+                message="Service power limit request could not be parsed",
+                tags=("service", "control", "curtailment", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        event_context = SimulationEventContext(
+            source_ip=source_ip,
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = service_controls.set_active_power_limit_pct(
+                active_power_limit_pct=active_power_limit_pct,
+                event_context=event_context,
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.power_plant_controller.asset_id,
+                action="set_active_power_limit",
+                result="rejected",
+                requested_value={"active_power_limit_pct": active_power_limit_pct},
+                previous_value=before_snapshot.power_plant_controller.active_power_limit_pct,
+                resulting_state={"active_power_limit_pct": before_snapshot.power_plant_controller.active_power_limit_pct},
+                message=f"Service power limit request rejected: {exc}",
+                tags=("service", "control", "curtailment", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_rejected",
+            )
+
+        after_snapshot = snapshot_provider()
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action="set_active_power_limit",
+            result="accepted",
+            requested_value={"active_power_limit_pct": active_power_limit_pct},
+            previous_value=before_snapshot.power_plant_controller.active_power_limit_pct,
+            resulting_value=after_snapshot.power_plant_controller.active_power_limit_pct,
+            resulting_state=result.resulting_state,
+            message="Service power limit request accepted",
+            tags=("service", "control", "curtailment", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            status_code="power_limit_updated",
+        )
+
+    @app.post("/service/panel/breaker", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_breaker(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        before_snapshot = snapshot_provider()
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.grid_interconnect.asset_id,
+                action="breaker_request",
+                result="rejected",
+                requested_value={"breaker_action": None},
+                resulting_state={"controls_available": False},
+                message="Service breaker path unavailable",
+                tags=("service", "control", "breaker", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_unavailable",
+            )
+
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        breaker_action = (form.get("breaker_action", [""])[0]).strip().lower()
+        if breaker_action not in {"open", "close"}:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.grid_interconnect.asset_id,
+                action="breaker_request",
+                result="rejected",
+                requested_value={"breaker_action": breaker_action},
+                previous_value=before_snapshot.grid_interconnect.breaker_state,
+                resulting_state={"breaker_state": before_snapshot.grid_interconnect.breaker_state},
+                message="Service breaker request used an invalid action",
+                tags=("service", "control", "breaker", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        event_context = SimulationEventContext(
+            source_ip=request.client.host if request.client is not None else "127.0.0.1",
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = (
+                service_controls.request_breaker_open(event_context=event_context)
+                if breaker_action == "open"
+                else service_controls.request_breaker_close(event_context=event_context)
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=before_snapshot.grid_interconnect.asset_id,
+                action=f"breaker_{breaker_action}_request",
+                result="rejected",
+                requested_value={"breaker_action": breaker_action},
+                previous_value=before_snapshot.grid_interconnect.breaker_state,
+                resulting_state={"breaker_state": before_snapshot.grid_interconnect.breaker_state},
+                message=f"Service breaker request rejected: {exc}",
+                tags=("service", "control", "breaker", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_rejected",
+            )
+
+        after_snapshot = snapshot_provider()
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action=f"breaker_{breaker_action}_request",
+            result="accepted",
+            requested_value={"breaker_action": breaker_action},
+            previous_value=before_snapshot.grid_interconnect.breaker_state,
+            resulting_value=after_snapshot.grid_interconnect.breaker_state,
+            resulting_state=result.resulting_state,
+            message=f"Service breaker {breaker_action} request accepted",
+            tags=("service", "control", "breaker", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            status_code=("breaker_open_requested" if breaker_action == "open" else "breaker_close_requested"),
+        )
 
     return app
 
@@ -1318,6 +1592,9 @@ def build_service_panel_view_model(
     config: RuntimeConfig,
     texts: dict[str, str],
     service_session: ServiceSession,
+    status_label: str | None,
+    status_tone: str,
+    controls_available: bool,
 ) -> ServicePanelViewModel:
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
@@ -1345,6 +1622,13 @@ def build_service_panel_view_model(
         snapshot_time=_snapshot_time(snapshot),
         operator_label=service_session.username,
         session_expires_at=_history_time(service_session.expires_at),
+        status_label=status_label,
+        status_tone=status_tone,
+        controls_available=controls_available,
+        power_limit_value=f"{snapshot.power_plant_controller.active_power_limit_pct:.1f}",
+        breaker_state_label=_enum_text(texts, snapshot.grid_interconnect.breaker_state),
+        breaker_open_enabled=snapshot.grid_interconnect.breaker_state != "open",
+        breaker_close_enabled=snapshot.grid_interconnect.breaker_state != "closed",
         metrics=metrics,
         allowed_actions=(
             texts["service.action.power_limit"],
@@ -1434,6 +1718,42 @@ def _set_service_session_cookie(response: HTMLResponse, service_session: Service
         samesite="lax",
         max_age=max_age,
     )
+
+
+def _service_panel_status(*, request: Request, texts: dict[str, str]) -> tuple[str | None, str]:
+    status_code = request.query_params.get("status")
+    if status_code is None:
+        return None, "neutral"
+
+    status_map = {
+        "power_limit_updated": ("service.status.power_limit_updated", "good"),
+        "breaker_open_requested": ("service.status.breaker_open_requested", "good"),
+        "breaker_close_requested": ("service.status.breaker_close_requested", "good"),
+        "control_invalid": ("service.status.control_invalid", "alarm"),
+        "control_rejected": ("service.status.control_rejected", "alarm"),
+        "control_unavailable": ("service.status.control_unavailable", "warn"),
+    }
+    label_key, tone = status_map.get(status_code, (None, "neutral"))
+    if label_key is None:
+        return None, "neutral"
+    return texts[label_key], tone
+
+
+def _service_panel_redirect_response(
+    *,
+    session_id: str,
+    set_cookie: bool,
+    service_session: ServiceSession,
+    status_code: str,
+) -> RedirectResponse:
+    response = RedirectResponse(
+        url=f"/service/panel?{urlencode({'status': status_code})}",
+        status_code=303,
+    )
+    if set_cookie:
+        _set_session_cookie(response, session_id)
+    _set_service_session_cookie(response, service_session)
+    return response
 
 
 def _render_error_page(
@@ -1585,6 +1905,56 @@ def _build_service_auth_event(
         message=f"Service login attempt {result}",
         tags=("auth", "service", "web"),
     )
+
+
+def _record_service_control_event(
+    *,
+    request: Request,
+    event_recorder: EventRecorder | None,
+    session_id: str,
+    correlation_id: str,
+    asset_id: str,
+    action: str,
+    result: str,
+    requested_value: dict[str, Any],
+    message: str,
+    tags: tuple[str, ...],
+    previous_value: Any | None = None,
+    resulting_value: Any | None = None,
+    resulting_state: dict[str, Any] | None = None,
+    error_code: str | None = None,
+) -> None:
+    if event_recorder is None:
+        return
+
+    event = event_recorder.build_event(
+        event_type="hmi.action.service_control_submitted",
+        category="hmi",
+        severity="low" if result == "accepted" else "medium",
+        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        actor_type="remote_client",
+        component=HMI_COMPONENT,
+        asset_id=asset_id,
+        action=action,
+        result=result,
+        session_id=session_id,
+        correlation_id=correlation_id,
+        protocol=HMI_PROTOCOL,
+        service=HMI_SERVICE,
+        endpoint_or_register=request.url.path,
+        requested_value={
+            "http_method": request.method,
+            "http_path": request.url.path,
+            **requested_value,
+        },
+        previous_value=previous_value,
+        resulting_value={"http_status": 303, "value": resulting_value},
+        resulting_state=resulting_state,
+        error_code=error_code,
+        message=message,
+        tags=tags,
+    )
+    event_recorder.record(event)
 
 
 def _require_service_session(

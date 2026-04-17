@@ -110,6 +110,7 @@ def build_local_runtime(
         snapshot_provider=lambda: register_map.snapshot,
         config=config,
         event_recorder=event_recorder,
+        service_controls=register_map,
     )
     modbus_service = ReadOnlyModbusTcpService(
         register_map=register_map,

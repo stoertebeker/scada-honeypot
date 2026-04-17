@@ -60,8 +60,9 @@ Vorhanden sind:
 - `/alarms` zeigt jetzt Alarmcode, Kategorie, Severity, Asset-Bezug, Zustand, Ack-Status sowie First-Seen/Last-Changed aus derselben lokalen Eventspur wie die Fachlogik
 - `/trends` zeigt jetzt kurze synthetische Verlaufsspuren fuer Parkleistung, Leistungslimit, Einstrahlung, Exportleistung und Blockleistung je Inverter auf Basis derselben Baseline- und Snapshot-Wahrheit
 - eigene HMI-Fehlerseiten fuer `404` und `500` sind jetzt aktiv; sie zeigen keine Framework-Standardbilder und schreiben denselben Fehlerpfad in die lokale Eventspur
-- `/service/login` und `/service/panel` stehen jetzt mit serverseitiger Service-Session, `20` Minuten Idle-Timeout und ruhigem `401/403`-Verhalten; schreibende Bedienungen folgen erst im naechsten Schlag
-- HMI-Aufrufe schreiben jetzt eine saubere HTTP-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
+- `/service/login` und `/service/panel` stehen jetzt mit serverseitiger Service-Session, `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten und den ersten schreibenden Bedienungen fuer Leistungsbegrenzung sowie Breaker Open/Close auf derselben Fachwirkung wie Modbus
+- Service-Bedienungen im Panel schreiben jetzt korrelierte HMI-Control-Events und triggern ueber denselben Shared-Truth-Pfad sichtbare Curtailment- und Breaker-Wirkung wie `Unit 1` und `Unit 41`
+- HMI-Aufrufe und Service-Bedienungen schreiben jetzt eine saubere HTTP-/HMI-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main` bootstrapt jetzt `normal_operation`, `SQLiteEventStore`, den Modbus-Listener auf `127.0.0.1:1502` und die HMI auf `127.0.0.1:8080`
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
@@ -128,15 +129,14 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. erste schreibende Service-Bedienungen fuer Leistungsbegrenzung und Breaker auf den bestehenden Session-Kurs setzen
+1. Rule-Engine-Regeln fuer Breaker, Comm-Loss und wiederholte Login-Fehlschlaege auf den jetzt sichtbaren Bedienpfad setzen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. weitere read-only HMI-Seiten
-2. HMI-Servicepfade
-3. restliche Modbus-Write-Pfade
-4. weitere Rule-Engine-Regeln, Alerts und Exporter
-5. Hardening und Anti-Fingerprint
+1. weitere HMI-Servicepfade
+2. restliche Modbus-Write-Pfade
+3. weitere Rule-Engine-Regeln, Alerts und Exporter
+4. Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

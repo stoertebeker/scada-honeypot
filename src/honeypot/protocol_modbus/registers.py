@@ -161,6 +161,58 @@ class ReadOnlyRegisterMap:
         with self._lock:
             return self._snapshot
 
+    def set_active_power_limit_pct(
+        self,
+        *,
+        active_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterWriteResult:
+        """Setzt das PPC-Wirkleistungslimit ueber denselben Fachpfad wie FC06."""
+
+        try:
+            return self.write_single_register(
+                unit_id=1,
+                start_offset=UNIT_1_ACTIVE_POWER_LIMIT_OFFSET,
+                value=int(round(active_power_limit_pct * 10)),
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+    def request_breaker_open(
+        self,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterWriteResult:
+        """Fordert das Oeffnen des Netzuebergabebreakers ueber denselben Fachpfad wie FC06 an."""
+
+        try:
+            return self.write_single_register(
+                unit_id=41,
+                start_offset=UNIT_41_BREAKER_OPEN_REQUEST_OFFSET,
+                value=1,
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+    def request_breaker_close(
+        self,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterWriteResult:
+        """Fordert das Schliessen des Netzuebergabebreakers ueber denselben Fachpfad wie FC06 an."""
+
+        try:
+            return self.write_single_register(
+                unit_id=41,
+                start_offset=UNIT_41_BREAKER_CLOSE_REQUEST_OFFSET,
+                value=1,
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
     def read_holding_registers(
         self,
         *,

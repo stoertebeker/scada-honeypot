@@ -125,11 +125,82 @@
       padding: 18px;
     }
 
+    .status {
+      margin: 0 0 18px;
+      padding: 12px 14px;
+      border-left: 4px solid var(--accent);
+      background: rgba(217, 229, 234, 0.3);
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+    }
+
+    .status.good { border-left-color: var(--good); color: var(--good); }
+    .status.warn { border-left-color: var(--warn); color: var(--warn); }
+    .status.alarm { border-left-color: var(--alarm); color: var(--alarm); }
+
     .panel h2 {
       margin: 0 0 14px;
       font-size: 1.05rem;
       text-transform: uppercase;
       letter-spacing: 0.08em;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    input {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      width: fit-content;
+      padding: 12px 16px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #f4f7f8;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.warn {
+      border-color: var(--warn);
+      background: var(--warn);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      margin: 14px 0 0;
+      color: var(--muted);
     }
 
     ul {
@@ -176,8 +247,62 @@
       {% endfor %}
     </section>
 
+    {% if page.status_label %}
+    <p class="status {{ page.status_tone }}">{{ page.status_label }}</p>
+    {% endif %}
+
+    <section class="controls">
+      <article class="panel">
+        <h2>{{ t("section.service_control.power_limit") }}</h2>
+        {% if page.controls_available %}
+        <form method="post" action="/service/panel/power-limit">
+          <label>
+            {{ t("label.power_limit") }}
+            <input
+              type="number"
+              name="active_power_limit_pct"
+              min="0"
+              max="100"
+              step="0.1"
+              value="{{ page.power_limit_value }}"
+              required
+            >
+          </label>
+          <button type="submit">{{ t("action.apply_power_limit") }}</button>
+        </form>
+        <p class="hint">{{ t("service.power_limit_hint") }}</p>
+        {% else %}
+        <p class="hint">{{ t("service.status.control_unavailable") }}</p>
+        {% endif %}
+      </article>
+
+      <article class="panel">
+        <h2>{{ t("section.service_control.breaker") }}</h2>
+        <p class="hint">{{ t("label.breaker_state") }}: {{ page.breaker_state_label }}</p>
+        {% if page.controls_available %}
+        <div class="button-row">
+          <form method="post" action="/service/panel/breaker">
+            <input type="hidden" name="breaker_action" value="open">
+            <button type="submit" class="warn" {% if not page.breaker_open_enabled %}disabled{% endif %}>
+              {{ t("action.breaker_open") }}
+            </button>
+          </form>
+          <form method="post" action="/service/panel/breaker">
+            <input type="hidden" name="breaker_action" value="close">
+            <button type="submit" {% if not page.breaker_close_enabled %}disabled{% endif %}>
+              {{ t("action.breaker_close") }}
+            </button>
+          </form>
+        </div>
+        <p class="hint">{{ t("service.breaker_hint") }}</p>
+        {% else %}
+        <p class="hint">{{ t("service.status.control_unavailable") }}</p>
+        {% endif %}
+      </article>
+    </section>
+
     <section class="panel">
-      <h2>{{ t("section.service_panel.title") }}</h2>
+      <h2>{{ t("section.service_actions.title") }}</h2>
       <ul>
         {% for action in page.allowed_actions %}
         <li>{{ action }}</li>

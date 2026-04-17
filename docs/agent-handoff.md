@@ -19,8 +19,9 @@ Wichtiger Kurs:
 
 - `asset_domain`, `plant_sim`, `event_core` und der erste schreibbare
   `protocol_modbus`-Slice fuer `Unit 1` stehen jetzt als gemeinsamer Fachkern
-- read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms` und `/trends`
-  steht jetzt als App auf derselben Snapshot-Wahrheit; keine zweite Wahrheit
+- HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`,
+  `/alarms`, `/trends` sowie den ersten schreibenden Service-Pfad auf
+  derselben Snapshot-Wahrheit steht jetzt als App; keine zweite Wahrheit
   neben Modbus bauen
 - Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
   Modbus- und HMI-Lesezugriffe
@@ -423,7 +424,7 @@ Vorhanden:
   - Adressfehler -> `02`
   - ungueltige `FC06`-/`FC16`-Werte -> `03`
 
-### 11. Read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms` und `/trends`
+### 11. HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms`, `/trends` und den ersten Service-Control-Pfad
 
 Dateien:
 
@@ -521,6 +522,8 @@ Vorhanden:
   - ruhige Fehlermeldung bei Login-Fehlschlag
   - serverseitige Session mit `20` Minuten Idle-Timeout
   - geschuetzten Service-Bereich mit `401` fuer unauthentifiziert und `403` bei deaktiviertem Login
+  - schreibende Bedienungen fuer `active_power_limit_pct` sowie `breaker_open_request` / `breaker_close_request`
+  - ruhige Statusrueckmeldung nach akzeptierten oder abgelehnten Bedienungen
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
 - `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends` nutzen keine
@@ -546,6 +549,7 @@ Vorhanden:
   - `hmi.auth.service_login_attempt`
   - `hmi.page.service_login_viewed`
   - `hmi.page.service_panel_viewed`
+  - `hmi.action.service_control_submitted`
 - Anti-Fingerprint-Minimum:
   - `FastAPI`-Docs/OpenAPI sind deaktiviert
   - `uvicorn`-`Server`- und `Date`-Header sind im lokalen HMI-Dienst
@@ -563,12 +567,14 @@ Vorhanden:
   - echter `/service/login`-Pfad mit Erfolgs- und Fehlversuch
   - Session-Ablauf nach `20` Minuten Idle-Zeit
   - geschuetztes `/service/panel` mit `401/403`
+  - echte `POST /service/panel/power-limit`-Wirkung mit sichtbarem Curtailment
+  - echte `POST /service/panel/breaker`-Wirkung mit sichtbarem Exportverlust und Wiederherstellung
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- schreibende HMI-Pfade
+- weitere schreibende HMI-Pfade jenseits von Leistungsbegrenzung und Breaker
 
 ## Teststand
 
@@ -578,7 +584,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `112 passed`
+- `117 passed`
 
 Abgedeckt sind bisher:
 
@@ -604,15 +610,17 @@ Abgedeckt sind bisher:
   konsistenter Breaker-Ableitung
 - `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
   Wiederherstellung und Alarm-Clear
-- read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`,
-  `/meter`, `/alarms` und `/trends`, HTTP-Eventspur und Shared-Truth-Tests
-  gegen Modbus-Curtailment, Breaker-Offen, Inverter-Blockwerte,
-  Unit-21-Wetterdaten, Unit-31-Meterwerte, die lokale Alert-Spur und die
-  synthetische Trendableitung aus Baseline plus Snapshot
+- HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`,
+  `/alarms` und `/trends`, HTTP-Eventspur und Shared-Truth-Tests gegen
+  Modbus-Curtailment, Breaker-Offen, Inverter-Blockwerte, Unit-21-Wetterdaten,
+  Unit-31-Meterwerte, die lokale Alert-Spur und die synthetische
+  Trendableitung aus Baseline plus Snapshot
 - eigene HMI-Fehlerseiten fuer `404/500` mit Fehler-Events statt
   Framework-Standardbildern
 - `/service/login` und `/service/panel` mit serverseitiger Session-Grundlogik,
-  `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten und Auth-Events
+  `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten, Auth-Events und den
+  ersten schreibenden Service-Bedienungen fuer Leistungsbegrenzung und Breaker
+  inklusive korrelierter Eventspur zum Fachkern
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -653,17 +661,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt erste schreibende Service-Bedienungen fuer Leistungsbegrenzung und Breaker in denselben Session-Pfad haengen
-2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
-3. Rule-Engine/Exporter entlang der sichtbaren Bedienpfade erweitern
+1. jetzt Rule-Engine-Regeln fuer Breaker, Comm-Loss und wiederholte Login-Fehlschlaege an den sichtbaren Bedienpfad haengen
+2. danach restliche HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
+3. Exporter entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- erste schreibende Service-Bedienungen fuer Leistungsbegrenzung und Breaker mit derselben Fachwirkung wie Modbus aufsetzen
-- fokussierte Tests fuer sichtbare Zustandskonsistenz zu Modbus und
-  fehlerarme lokale Renderpfade
-- keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI
-  beobachtend lokal sauber erreichbar ist
+- Rule-Engine-Regeln fuer Breaker, Comm-Loss und wiederholte Login-Fehlschlaege auf Basis der jetzt vorhandenen HMI-/Modbus-Eventspur aufsetzen
+- fokussierte Tests fuer deduplizierte oder klar getrennte Alert-Ableitung im sichtbaren Bedienpfad
+- keine Exporter- oder weiteren Service-Schreibpfade vorziehen, bevor die Alarmableitung entlang des jetzigen Pfads sauber sitzt
 
 Nicht als naechstes tun:
 

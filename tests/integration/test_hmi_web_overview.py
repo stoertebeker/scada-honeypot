@@ -17,6 +17,7 @@ from honeypot.hmi_web.app import (
 )
 from honeypot.main import build_local_runtime
 from honeypot.plant_sim import PlantSimulator
+from honeypot.protocol_modbus import ReadOnlyRegisterMap
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
@@ -31,6 +32,24 @@ def build_config(tmp_path: Path) -> RuntimeConfig:
         event_store_path=tmp_path / "events" / "placeholder.db",
         jsonl_archive_enabled=False,
     )
+
+
+def build_service_app(
+    *,
+    snapshot: PlantSnapshot,
+    tmp_path: Path,
+    recorder: EventRecorder | None = None,
+    config: RuntimeConfig | None = None,
+):
+    runtime_config = build_config(tmp_path) if config is None else config
+    register_map = ReadOnlyRegisterMap(snapshot, event_recorder=recorder)
+    app = create_hmi_app(
+        snapshot_provider=lambda: register_map.snapshot,
+        config=runtime_config,
+        event_recorder=recorder,
+        service_controls=register_map,
+    )
+    return app, register_map
 
 
 @pytest.mark.asyncio
@@ -528,6 +547,151 @@ async def test_service_login_returns_403_when_disabled(tmp_path: Path) -> None:
 
     assert response.status_code == 403
     assert "Access Denied" in response.text
+
+
+@pytest.mark.asyncio
+async def test_service_panel_power_limit_updates_shared_truth_and_logs_control_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-power-limit.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/power-limit",
+            data={"active_power_limit_pct": "55.5"},
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_active_power_limit"
+    )
+    process_event = next(event for event in events if event.event_type == "process.setpoint.curtailment_changed")
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=power_limit_updated"
+    assert panel_response.status_code == 200
+    assert "Active power limit updated successfully." in panel_response.text
+    assert "55.5 %" in panel_response.text
+    assert "3.22 MW" in panel_response.text
+    assert register_map.snapshot.power_plant_controller.active_power_limit_pct == 55.5
+    assert register_map.snapshot.site.plant_power_mw == 3.219
+    assert control_event.result == "accepted"
+    assert control_event.requested_value["active_power_limit_pct"] == 55.5
+    assert control_event.resulting_state["active_power_limit_pct"] == 55.5
+    assert control_event.correlation_id == process_event.correlation_id
+
+
+@pytest.mark.asyncio
+async def test_service_panel_breaker_controls_shared_truth_and_log_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-breaker.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        open_response = await client.post(
+            "/service/panel/breaker",
+            data={"breaker_action": "open"},
+            follow_redirects=False,
+        )
+        open_panel_response = await client.get(open_response.headers["location"])
+        close_response = await client.post(
+            "/service/panel/breaker",
+            data={"breaker_action": "close"},
+            follow_redirects=False,
+        )
+        close_panel_response = await client.get(close_response.headers["location"])
+
+    events = store.fetch_events()
+    breaker_events = [
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted"
+        and event.action in {"breaker_open_request", "breaker_close_request"}
+    ]
+    process_events = [event for event in events if event.event_type == "process.breaker.state_changed"]
+
+    assert open_response.status_code == 303
+    assert open_response.headers["location"] == "/service/panel?status=breaker_open_requested"
+    assert "Breaker open request accepted." in open_panel_response.text
+    assert close_response.status_code == 303
+    assert close_response.headers["location"] == "/service/panel?status=breaker_close_requested"
+    assert "Breaker close request accepted." in close_panel_response.text
+    assert register_map.snapshot.grid_interconnect.breaker_state == "closed"
+    assert len(breaker_events) == 2
+    assert len(process_events) == 2
+    assert breaker_events[0].correlation_id == process_events[0].correlation_id
+    assert breaker_events[1].correlation_id == process_events[1].correlation_id
+
+
+@pytest.mark.asyncio
+async def test_service_panel_rejects_invalid_power_limit_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-power-limit-reject.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/power-limit",
+            data={"active_power_limit_pct": "150.1"},
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_active_power_limit"
+    )
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=control_rejected"
+    assert panel_response.status_code == 200
+    assert "Submitted control request was rejected by the local process model." in panel_response.text
+    assert register_map.snapshot.power_plant_controller.active_power_limit_pct == 100.0
+    assert control_event.result == "rejected"
+    assert control_event.error_code == "service_control_rejected"
+
+
+@pytest.mark.asyncio
+async def test_service_panel_write_requires_authentication(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    app, _ = build_service_app(snapshot=snapshot, tmp_path=tmp_path)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/service/panel/power-limit",
+            data={"active_power_limit_pct": "55.5"},
+        )
+
+    assert response.status_code == 401
+    assert "Authentication Required" in response.text
 
 
 @pytest.mark.asyncio
