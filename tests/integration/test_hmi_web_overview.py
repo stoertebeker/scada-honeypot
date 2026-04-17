@@ -51,6 +51,7 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert "Plant Overview" in overview_response.text
     assert "Single Line" in overview_response.text
     assert "Inverters" in overview_response.text
+    assert "Weather" in overview_response.text
     assert "5.80 MW" in overview_response.text
     assert "100.0 %" in overview_response.text
     assert "Closed" in overview_response.text
@@ -137,6 +138,40 @@ async def test_inverters_page_renders_block_values_and_logs_hmi_events(tmp_path:
 
 
 @pytest.mark.asyncio
+async def test_weather_page_renders_conditions_and_logs_hmi_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-weather.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/weather")
+
+    events = store.fetch_events()
+    weather_event = next(event for event in events if event.endpoint_or_register == "/weather")
+
+    assert response.status_code == 200
+    assert "Weather Context" in response.text
+    assert "840 W/m2" in response.text
+    assert "31.5 C" in response.text
+    assert "22.0 C" in response.text
+    assert "4.2 m/s" in response.text
+    assert "Good" in response.text
+    assert weather_event.event_type == "hmi.page.weather_viewed"
+    assert weather_event.component == "hmi-web"
+    assert weather_event.service == "web-hmi"
+    assert weather_event.requested_value == {"http_method": "GET", "http_path": "/weather"}
+    assert weather_event.resulting_value == {"http_status": 200}
+    assert weather_event.resulting_state["irradiance_w_m2"] == 840
+    assert weather_event.resulting_state["weather_quality"] == "good"
+
+
+@pytest.mark.asyncio
 async def test_overview_marks_comm_loss_block_and_alarm_context(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
@@ -182,6 +217,32 @@ async def test_inverters_page_marks_comm_loss_block_and_quality_context(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_weather_page_marks_reduced_confidence_when_weather_data_is_stale(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    degraded_snapshot = snapshot.model_copy(
+        update={
+            "site": snapshot.site.model_copy(update={"communications_health": "degraded"}),
+            "weather_station": snapshot.weather_station.model_copy(
+                update={"status": "degraded", "communication_state": "lost", "quality": "stale"}
+            ),
+        }
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: degraded_snapshot,
+        config=build_config(tmp_path),
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/weather")
+
+    assert response.status_code == 200
+    assert "Weather confidence is reduced" in response.text
+    assert "Stale" in response.text
+    assert "Lost" in response.text
+
+
+@pytest.mark.asyncio
 async def test_runtime_hmi_reads_same_truth_as_modbus_register_map(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
@@ -200,6 +261,31 @@ async def test_runtime_hmi_reads_same_truth_as_modbus_register_map(tmp_path: Pat
     assert response.status_code == 200
     assert "3.22 MW" in response.text
     assert "55.5 %" in response.text
+
+
+@pytest.mark.asyncio
+async def test_runtime_weather_page_reads_same_values_as_unit_21_registers(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    weather_result = runtime.modbus_service.register_map.read_holding_registers(unit_id=21, start_offset=99, quantity=8)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/weather")
+
+    assert response.status_code == 200
+    assert weather_result.values == (0, 0, 0, 840, 315, 220, 42, 1000)
+    assert "840 W/m2" in response.text
+    assert "31.5 C" in response.text
+    assert "22.0 C" in response.text
+    assert "4.2 m/s" in response.text
+    assert "Good" in response.text
 
 
 @pytest.mark.asyncio

@@ -141,6 +141,20 @@ class InvertersViewModel:
     active_alarms: tuple[OverviewAlarm, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class WeatherViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    snapshot_time: str
+    metrics: tuple[OverviewMetric, ...]
+    facts: tuple[OverviewFact, ...]
+    context_label: str
+    context_tone: str
+    active_alarms: tuple[OverviewAlarm, ...]
+
+
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
@@ -267,6 +281,43 @@ def create_hmi_app(
             },
             message="Inverters page rendered",
             tags=("read-only", "inverters", "web"),
+        )
+        return response
+
+    @app.get("/weather", response_class=HTMLResponse, include_in_schema=False)
+    async def weather(request: Request) -> HTMLResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        view_model = build_weather_view_model(snapshot=snapshot, config=config, texts=texts)
+        response = templates.TemplateResponse(
+            request=request,
+            name="weather.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+
+        _record_page_view(
+            request=request,
+            snapshot=snapshot,
+            session_id=session_id,
+            event_recorder=event_recorder,
+            event_type="hmi.page.weather_viewed",
+            action="view_weather",
+            asset_id=snapshot.weather_station.asset_id,
+            resulting_state={
+                "irradiance_w_m2": snapshot.weather_station.irradiance_w_m2,
+                "weather_quality": snapshot.weather_station.quality,
+                "weather_communications": snapshot.weather_station.communication_state,
+                "plant_power_mw": snapshot.site.plant_power_mw,
+            },
+            message="Weather page rendered",
+            tags=("read-only", "weather", "web"),
         )
         return response
 
@@ -464,6 +515,58 @@ def build_inverters_view_model(
     )
 
 
+def build_weather_view_model(
+    *,
+    snapshot: PlantSnapshot,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+) -> WeatherViewModel:
+    """Bereitet die sichtbaren Werte fuer die Wetter- und Verfuegbarkeitssicht auf."""
+
+    context_label, context_tone = _weather_output_context(snapshot, texts)
+    metrics = (
+        OverviewMetric(
+            "label.irradiance",
+            f"{snapshot.weather_station.irradiance_w_m2} W/m2",
+            "good" if snapshot.weather_station.irradiance_w_m2 >= 700 else "warn",
+        ),
+        OverviewMetric(
+            "label.weather_quality",
+            _enum_text(texts, snapshot.weather_station.quality),
+            _tone_for_quality(snapshot.weather_station.quality),
+        ),
+        OverviewMetric(
+            "label.communications",
+            _enum_text(texts, snapshot.weather_station.communication_state),
+            _tone_for_communications(snapshot.weather_station.communication_state),
+        ),
+        OverviewMetric(
+            "label.plant_power",
+            _format_power_mw(snapshot.site.plant_power_mw),
+            _tone_for_power(snapshot),
+        ),
+    )
+    facts = (
+        OverviewFact("label.module_temperature", f"{snapshot.weather_station.module_temperature_c:.1f} C"),
+        OverviewFact("label.ambient_temperature", f"{snapshot.weather_station.ambient_temperature_c:.1f} C"),
+        OverviewFact("label.wind_speed", f"{snapshot.weather_station.wind_speed_m_s:.1f} m/s"),
+        OverviewFact("label.breaker_state", _enum_text(texts, snapshot.site.breaker_state)),
+    )
+
+    return WeatherViewModel(
+        page_title=texts["page.weather.title"],
+        page_subtitle=texts["page.weather.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        snapshot_time=_snapshot_time(snapshot),
+        metrics=metrics,
+        facts=facts,
+        context_label=context_label,
+        context_tone=context_tone,
+        active_alarms=_active_alarm_view_models(snapshot, texts),
+    )
+
+
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
     return tuple(
         OverviewAlarm(
@@ -482,7 +585,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -499,6 +602,7 @@ def _nav_items(current_path: str) -> tuple[NavItem, ...]:
         NavItem(href="/overview", label_key="nav.overview", is_current=current == "/overview"),
         NavItem(href="/single-line", label_key="nav.single_line", is_current=current == "/single-line"),
         NavItem(href="/inverters", label_key="nav.inverters", is_current=current == "/inverters"),
+        NavItem(href="/weather", label_key="nav.weather", is_current=current == "/weather"),
     )
 
 
@@ -620,6 +724,14 @@ def _tone_for_communications(state: str) -> str:
     return "alarm"
 
 
+def _tone_for_quality(quality: str) -> str:
+    if quality == "good":
+        return "good"
+    if quality == "estimated":
+        return "warn"
+    return "alarm"
+
+
 def _tone_for_block(status: str, communication_state: str) -> str:
     if communication_state == "lost" or status == "faulted":
         return "alarm"
@@ -691,6 +803,18 @@ def _count_degraded_blocks(snapshot: PlantSnapshot) -> int:
         for block in snapshot.inverter_blocks
         if block.status != "online" or block.communication_state != "healthy" or block.quality != "good"
     )
+
+
+def _weather_output_context(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:
+    if snapshot.weather_station.communication_state == "lost" or snapshot.weather_station.quality in {"stale", "invalid"}:
+        return texts["weather.context.reduced_confidence"], "alarm"
+    if snapshot.power_plant_controller.active_power_limit_pct < 100:
+        return texts["weather.context.curtailment_limits_output"], "warn"
+    if snapshot.weather_station.irradiance_w_m2 >= 700 and snapshot.site.plant_power_mw >= 5:
+        return texts["weather.context.strong_output_supported"], "good"
+    if snapshot.weather_station.irradiance_w_m2 < 400 and snapshot.site.plant_power_mw < 3:
+        return texts["weather.context.low_irradiance_explains_output"], "good"
+    return texts["weather.context.review_alignment"], "warn"
 
 
 def _single_line_flow(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:
