@@ -76,6 +76,8 @@ class RuntimeConfig(BaseSettings):
     webhook_exporter_enabled: bool = False
     webhook_exporter_url: AnyUrl | None = None
     smtp_exporter_enabled: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=25, ge=1, le=65535)
     smtp_from: str | None = None
     smtp_to: str | None = None
     telegram_exporter_enabled: bool = False
@@ -105,6 +107,7 @@ class RuntimeConfig(BaseSettings):
 
     @field_validator(
         "webhook_exporter_url",
+        "smtp_host",
         "smtp_from",
         "smtp_to",
         "telegram_bot_token",
@@ -141,8 +144,10 @@ class RuntimeConfig(BaseSettings):
     def validate_exporter_requirements(self) -> "RuntimeConfig":
         if self.webhook_exporter_enabled and self.webhook_exporter_url is None:
             raise ValueError("WEBHOOK_EXPORTER_URL ist erforderlich, wenn der Webhook-Exporter aktiv ist")
-        if self.smtp_exporter_enabled and (self.smtp_from is None or self.smtp_to is None):
-            raise ValueError("SMTP_FROM und SMTP_TO sind erforderlich, wenn der SMTP-Exporter aktiv ist")
+        if self.smtp_exporter_enabled and (
+            self.smtp_host is None or self.smtp_from is None or self.smtp_to is None
+        ):
+            raise ValueError("SMTP_HOST, SMTP_FROM und SMTP_TO sind erforderlich, wenn der SMTP-Exporter aktiv ist")
         if self.telegram_exporter_enabled and (
             self.telegram_bot_token is None or self.telegram_chat_id is None
         ):

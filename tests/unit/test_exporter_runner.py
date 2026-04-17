@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
 from time import monotonic, sleep
 
 import httpx
@@ -8,6 +9,7 @@ from honeypot.event_core import EventRecorder
 from honeypot.exporter_runner import (
     BackgroundOutboxRunnerService,
     OutboxRunner,
+    SmtpExporter,
     TelegramExporter,
     WebhookExporter,
 )
@@ -161,6 +163,121 @@ def test_telegram_exporter_retries_on_http_error(tmp_path) -> None:
     assert delivery.status == "retry_later"
     assert delivery.retry_after_seconds == 90
     assert delivery.detail == "Telegram antwortete mit HTTP 429"
+
+
+def test_smtp_exporter_sends_alert_batch_via_client_factory(tmp_path) -> None:
+    recorder, _ = seed_webhook_alert(tmp_path)
+    alert = recorder.store.fetch_alerts()[0]
+    captured = {}
+
+    class FakeSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message: EmailMessage):
+            captured["from"] = message["From"]
+            captured["to"] = message["To"]
+            captured["subject"] = message["Subject"]
+            captured["body"] = message.get_content()
+            return {}
+
+    exporter = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        client_factory=lambda host, port, timeout: FakeSmtpClient(),
+    )
+
+    delivery = exporter.deliver_alert_batch((alert,))
+
+    assert delivery.status == "delivered"
+    assert delivery.accepted_items == 1
+    assert captured["from"] == "alerts@example.invalid"
+    assert captured["to"] == "soc@example.invalid"
+    assert "SCADA Honeypot Alert Batch" in captured["subject"]
+    assert "BREAKER_OPEN" in captured["body"]
+
+
+def test_smtp_exporter_rejects_event_batches() -> None:
+    exporter = SmtpExporter(
+        host="mail.example.invalid",
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+    )
+
+    delivery = exporter.deliver_event_batch(())
+
+    assert delivery.status == "retry_later"
+    assert delivery.accepted_items == 0
+    assert delivery.detail == "SmtpExporter unterstuetzt keine Event-Batches"
+
+
+def test_outbox_runner_requeues_batch_on_smtp_transport_error(tmp_path) -> None:
+    recorder, clock = build_recorder(tmp_path)
+    event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    alert = recorder.build_alert(
+        event=event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+    recorder.record(event, alert=alert, outbox_targets=("smtp",))
+
+    class FailingSmtpClient:
+        def __enter__(self):
+            raise OSError("connection refused")
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message: EmailMessage):
+            del message
+            return {}
+
+    runner = OutboxRunner(
+        store=recorder.store,
+        exporters={
+            "smtp": SmtpExporter(
+                host="mail.example.invalid",
+                port=2525,
+                mail_from="alerts@example.invalid",
+                rcpt_to="soc@example.invalid",
+                retry_after_seconds=75,
+                client_factory=lambda host, port, timeout: FailingSmtpClient(),
+            )
+        },
+        retry_backoff_seconds=75,
+        clock=clock,
+    )
+
+    result = runner.drain_once()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert result.leased_count == 1
+    assert result.delivered_count == 0
+    assert result.retried_count == 1
+    assert outbox_entries[0].status == "pending"
+    assert outbox_entries[0].retry_count == 1
+    assert outbox_entries[0].next_attempt_at == clock.now() + timedelta(seconds=75)
+    assert outbox_entries[0].last_error == "SMTP-Transportfehler: OSError"
 
 
 def test_outbox_runner_marks_entries_failed_when_exporter_is_missing(tmp_path) -> None:

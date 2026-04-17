@@ -47,7 +47,7 @@ Vorhanden sind:
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
 - lokale `RuleEngine`, die jetzt wiederholte Login-Fehler, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`, den kritischen Grid-Folge-Alert `GRID_PATH_UNAVAILABLE`, `COMM_LOSS_INVERTER_BLOCK` und den kritischen Folge-Alert `MULTI_BLOCK_UNAVAILABLE` beim zweiten unterschiedlichen aktiven Block-Comm-Loss abdeckt, explizite Prozessalarme priorisiert und identische aktive Rule-Alerts bis `cleared` unterdrueckt
 - `exporter_sdk` mit stabilem Exporter-Vertrag fuer Capabilities, Health und Batch-Delivery sowie einem lokalen `LocalTestExporter` ohne Netzwerkpfad fuer spaetere Runner-/Outbox-Tests
-- `exporter_runner` mit leased Outbox-Drain, `WebhookExporter`, `TelegramExporter`, Retry-Backoff und einem lokalen Hintergrunddienst; Export-Ausfaelle landen kontrolliert in `outbox.retry_count`, `next_attempt_at` und `last_error`, ohne den Kernpfad zu blockieren
+- `exporter_runner` mit leased Outbox-Drain, `WebhookExporter`, `SmtpExporter`, `TelegramExporter`, Retry-Backoff und einem lokalen Hintergrunddienst; Export-Ausfaelle landen kontrolliert in `outbox.retry_count`, `next_attempt_at` und `last_error`, ohne den Kernpfad zu blockieren
 - Release-Gate- und Hardening-Tests pruefen jetzt ruhige `401/403/404`-Seiten, fehlende `Server`-/`Date`-Header, lokale Bindings sowie Exporter-Ausfall ohne sichtbare Client-Seiteneffekte
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 11-13`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
@@ -198,6 +198,10 @@ Deployments kann bewusst auf `502` gewechselt werden.
   - `WEBHOOK_EXPORTER_ENABLED`
   - `WEBHOOK_EXPORTER_URL`
   - `SMTP_EXPORTER_ENABLED`
+  - `SMTP_HOST`
+  - `SMTP_PORT`
+  - `SMTP_FROM`
+  - `SMTP_TO`
   - `TELEGRAM_EXPORTER_ENABLED`
   - `TELEGRAM_BOT_TOKEN`
   - `TELEGRAM_CHAT_ID`

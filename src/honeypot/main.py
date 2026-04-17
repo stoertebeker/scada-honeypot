@@ -11,6 +11,7 @@ from honeypot.event_core import EventRecorder
 from honeypot.exporter_runner import (
     BackgroundOutboxRunnerService,
     OutboxRunner,
+    SmtpExporter,
     TelegramExporter,
     WebhookExporter,
 )
@@ -175,6 +176,14 @@ def _build_exporters(config: RuntimeConfig) -> dict[str, HoneypotExporter]:
     if config.webhook_exporter_enabled and config.webhook_exporter_url is not None:
         exporters["webhook"] = WebhookExporter(
             url=str(config.webhook_exporter_url),
+            retry_after_seconds=config.outbox_retry_backoff_seconds,
+        )
+    if config.smtp_exporter_enabled and config.smtp_host is not None and config.smtp_from is not None and config.smtp_to is not None:
+        exporters["smtp"] = SmtpExporter(
+            host=config.smtp_host,
+            port=config.smtp_port,
+            mail_from=config.smtp_from,
+            rcpt_to=config.smtp_to,
             retry_after_seconds=config.outbox_retry_backoff_seconds,
         )
     if config.telegram_exporter_enabled and config.telegram_bot_token is not None and config.telegram_chat_id is not None:

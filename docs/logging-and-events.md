@@ -596,7 +596,10 @@ Beispiele fuer spaetere Konfigurationswerte:
 - `WEBHOOK_EXPORTER_ENABLED`
 - `WEBHOOK_EXPORTER_URL`
 - `SMTP_EXPORTER_ENABLED`
+- `SMTP_HOST`
+- `SMTP_PORT`
 - `SMTP_FROM`
+- `SMTP_TO`
 - `TELEGRAM_EXPORTER_ENABLED`
 
 Wichtige Regeln:

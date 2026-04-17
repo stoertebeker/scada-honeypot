@@ -7,7 +7,7 @@ from time import monotonic, sleep
 
 import httpx
 
-from honeypot.exporter_runner import TelegramExporter
+from honeypot.exporter_runner import SmtpExporter, TelegramExporter
 from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
@@ -329,6 +329,96 @@ def test_build_local_runtime_drains_telegram_outbox_in_background(tmp_path: Path
     assert runtime.outbox_runner_service.drain_count >= 1
     assert captured["path"] == "/bottoken-123/sendMessage"
     assert "BREAKER_OPEN" in captured["json"]
+
+
+def test_build_local_runtime_drains_smtp_outbox_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-05",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "SMTP_EXPORTER_ENABLED=1",
+                "SMTP_HOST=mail.example.invalid",
+                "SMTP_PORT=2525",
+                "SMTP_FROM=alerts@example.invalid",
+                "SMTP_TO=soc@example.invalid",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured = {}
+
+    class FakeSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            captured["from"] = message["From"]
+            captured["to"] = message["To"]
+            captured["subject"] = message["Subject"]
+            captured["body"] = message.get_content()
+            return {}
+
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        client_factory=lambda host, port, timeout: FakeSmtpClient(),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    alert = runtime.event_recorder.build_alert(
+        event=event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+    runtime.event_recorder.record(event, alert=alert, outbox_targets=("smtp",))
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and outbox_entries[0].status == "delivered":
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert outbox_entries[0].status == "delivered"
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert captured["from"] == "alerts@example.invalid"
+    assert captured["to"] == "soc@example.invalid"
+    assert "BREAKER_OPEN" in captured["body"]
 
 
 def send_request(

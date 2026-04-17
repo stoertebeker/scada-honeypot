@@ -629,6 +629,7 @@ Dateien:
 
 - `src/honeypot/exporter_runner/runner.py`
 - `src/honeypot/exporter_runner/webhook_exporter.py`
+- `src/honeypot/exporter_runner/smtp_exporter.py`
 - `src/honeypot/exporter_runner/telegram_exporter.py`
 - `src/honeypot/exporter_runner/__init__.py`
 - `src/honeypot/storage/sqlite_store.py`
@@ -647,6 +648,11 @@ Vorhanden:
 - `WebhookExporter` als erster echter technischer Kanal:
   - liefert Event- und Alert-Batches per `POST`
   - meldet `retry_later` bei Transport- oder HTTP-Fehlern
+  - blockiert den Kernpfad nicht
+- `SmtpExporter` als dritter lokaler Zielkanal:
+  - liefert Alert-Batches als einfache SMTP-Nachricht
+  - nutzt `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` und `SMTP_TO`
+  - meldet `retry_later` bei Transportfehlern oder verweigerten Empfaengern
   - blockiert den Kernpfad nicht
 - `TelegramExporter` als zweiter echter Zielkanal:
   - liefert Alert-Batches per `sendMessage`
@@ -694,7 +700,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `169 passed`
+- `175 passed`
 
 Abgedeckt sind bisher:
 
@@ -742,8 +748,8 @@ Abgedeckt sind bisher:
   Eventspur zum Fachkern
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
-- `exporter_runner` mit Webhook- und Telegram-Exporter, Outbox-Leasing und
-  Retry-Backoff auf dem lokalen SQLite-Store
+- `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
+  und Retry-Backoff auf dem lokalen SQLite-Store
 - lokaler Runner-Hintergrundbetrieb fuer Webhook- und Telegram-Pfad ohne
   manuelles `drain_once()` im Runtime-Slice
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut und
@@ -789,16 +795,16 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den fehlenden `SMTP`-Exporter auf dieselbe Outbox-Wahrheit ziehen
-2. danach weitere Alert-Folgeregeln entlang der sichtbaren Bedienpfade ergaenzen
+1. jetzt die naechste Alert-Folgeregel entlang der sichtbaren Bedienpfade ergaenzen
+2. danach Release-Gates fuer neue Alert-/Exporter-Pfade nachziehen
 3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `SMTP` als dritten lokalen Ziel-Exporter auf denselben Outbox-/Runner-Pfad
-  setzen
-- fokussierte Tests fuer Delivery, Retry und ruhige Fehlerbilder ohne
-  Client-seitiges Leakage
+- `LOW_SITE_OUTPUT_UNEXPECTED` aus vorhandener Site-/Weather-Wahrheit
+  schwellwertbasiert ableiten, ohne Breaker- oder Curtailment-Faelle falsch zu
+  alarmieren
+- fokussierte Tests fuer Re-raise, Clear und ruhige Outbox-Ableitung
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese Gates dauerhaft gruen bleiben
 

@@ -71,6 +71,7 @@ def test_disabled_exporters_do_not_require_targets(monkeypatch, tmp_path: Path) 
         webhook_exporter_enabled=False,
         webhook_exporter_url="",
         smtp_exporter_enabled=False,
+        smtp_host="",
         smtp_from="",
         smtp_to="",
         telegram_exporter_enabled=False,
@@ -79,6 +80,7 @@ def test_disabled_exporters_do_not_require_targets(monkeypatch, tmp_path: Path) 
     )
 
     assert config.webhook_exporter_url is None
+    assert config.smtp_host is None
     assert config.smtp_from is None
     assert config.telegram_bot_token is None
 
@@ -89,3 +91,17 @@ def test_enabled_webhook_exporter_requires_url(monkeypatch, tmp_path: Path) -> N
 
     with pytest.raises(ValidationError):
         RuntimeConfig(_env_file=None, webhook_exporter_enabled=True, webhook_exporter_url="")
+
+
+def test_enabled_smtp_exporter_requires_host_from_and_to(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(
+            _env_file=None,
+            smtp_exporter_enabled=True,
+            smtp_host="",
+            smtp_from="alerts@example.invalid",
+            smtp_to="soc@example.invalid",
+        )

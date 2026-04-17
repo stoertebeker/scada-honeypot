@@ -93,6 +93,28 @@ def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: 
     assert tuple(runtime.outbox_runner.exporters) == ("webhook",)
 
 
+def test_build_local_runtime_wires_smtp_outbox_runner_when_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "SMTP_EXPORTER_ENABLED=1\n"
+            "SMTP_HOST=mail.example.invalid\n"
+            "SMTP_PORT=2525\n"
+            "SMTP_FROM=alerts@example.invalid\n"
+            "SMTP_TO=soc@example.invalid\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    assert tuple(runtime.outbox_runner.exporters) == ("smtp",)
+
+
 def test_build_local_runtime_wires_telegram_outbox_runner_when_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
