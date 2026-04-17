@@ -271,6 +271,22 @@ class SQLiteEventStore:
 
         return tuple(EventRecord.model_validate(json.loads(str(row["raw_event_json"]))) for row in rows)
 
+    def fetch_event(self, event_id: str) -> EventRecord | None:
+        normalized_event_id = _normalize_required_text(event_id, field_name="event_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT raw_event_json
+                FROM event_log
+                WHERE event_id = ?
+                """,
+                (normalized_event_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return EventRecord.model_validate(json.loads(str(row["raw_event_json"])))
+
     def fetch_alerts(self) -> tuple[AlertRecord, ...]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -283,20 +299,26 @@ class SQLiteEventStore:
             ).fetchall()
 
         return tuple(
-            AlertRecord(
-                alert_id=str(row["alert_id"]),
-                event_id=str(row["event_id"]),
-                correlation_id=str(row["correlation_id"]),
-                alarm_code=str(row["alarm_code"]),
-                severity=row["severity"],
-                state=row["state"],
-                component=str(row["component"]),
-                asset_id=str(row["asset_id"]),
-                message=row["message"],
-                created_at=_parse_timestamp(str(row["created_at"])),
-            )
+            _alert_from_row(row)
             for row in rows
         )
+
+    def fetch_alert(self, alert_id: str) -> AlertRecord | None:
+        normalized_alert_id = _normalize_required_text(alert_id, field_name="alert_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT alert_id, event_id, correlation_id, alarm_code, severity, state,
+                       component, asset_id, message, created_at
+                FROM alert_log
+                WHERE alert_id = ?
+                """,
+                (normalized_alert_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return _alert_from_row(row)
 
     def fetch_current_state(self, state_key: str) -> Any | None:
         normalized_state_key = _normalize_required_text(state_key, field_name="state_key")
@@ -325,17 +347,137 @@ class SQLiteEventStore:
                 """
             ).fetchall()
 
-        return tuple(
-            OutboxEntry(
-                outbox_id=int(row["outbox_id"]),
-                target_type=str(row["target_type"]),
-                payload_kind=row["payload_kind"],
-                payload_ref=str(row["payload_ref"]),
-                status=row["status"],
-                retry_count=int(row["retry_count"]),
-                next_attempt_at=_parse_timestamp(str(row["next_attempt_at"])),
-                last_error=row["last_error"],
-                created_at=_parse_timestamp(str(row["created_at"])),
+        return tuple(_outbox_entry_from_row(row) for row in rows)
+
+    def lease_outbox_entries(
+        self,
+        *,
+        limit: int,
+        not_before: datetime,
+    ) -> tuple[OutboxEntry, ...]:
+        if limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT outbox_id, target_type, payload_kind, payload_ref, status,
+                       retry_count, next_attempt_at, last_error, created_at
+                FROM outbox
+                WHERE status = 'pending'
+                  AND next_attempt_at <= ?
+                ORDER BY outbox_id
+                LIMIT ?
+                """,
+                (_iso_timestamp(not_before), limit),
+            ).fetchall()
+            if not rows:
+                return ()
+
+            outbox_ids = [int(row["outbox_id"]) for row in rows]
+            placeholders = ", ".join("?" for _ in outbox_ids)
+            connection.execute(
+                f"""
+                UPDATE outbox
+                SET status = 'leased'
+                WHERE outbox_id IN ({placeholders})
+                """,
+                outbox_ids,
             )
-            for row in rows
-        )
+
+        leased_entries = []
+        for row in rows:
+            leased_entries.append(
+                _outbox_entry_from_row(
+                    {
+                        **dict(row),
+                        "status": "leased",
+                    }
+                )
+            )
+        return tuple(leased_entries)
+
+    def mark_outbox_delivered(self, outbox_ids: Sequence[int]) -> None:
+        if not outbox_ids:
+            return
+        placeholders = ", ".join("?" for _ in outbox_ids)
+        with self._connect() as connection:
+            connection.execute(
+                f"""
+                UPDATE outbox
+                SET status = 'delivered',
+                    last_error = NULL
+                WHERE outbox_id IN ({placeholders})
+                """,
+                tuple(outbox_ids),
+            )
+
+    def requeue_outbox_entries(
+        self,
+        outbox_ids: Sequence[int],
+        *,
+        next_attempt_at: datetime,
+        last_error: str,
+    ) -> None:
+        if not outbox_ids:
+            return
+        placeholders = ", ".join("?" for _ in outbox_ids)
+        normalized_error = _normalize_required_text(last_error, field_name="last_error")
+        with self._connect() as connection:
+            connection.execute(
+                f"""
+                UPDATE outbox
+                SET status = 'pending',
+                    retry_count = retry_count + 1,
+                    next_attempt_at = ?,
+                    last_error = ?
+                WHERE outbox_id IN ({placeholders})
+                """,
+                (_iso_timestamp(next_attempt_at), normalized_error, *outbox_ids),
+            )
+
+    def mark_outbox_failed(self, outbox_ids: Sequence[int], *, last_error: str) -> None:
+        if not outbox_ids:
+            return
+        placeholders = ", ".join("?" for _ in outbox_ids)
+        normalized_error = _normalize_required_text(last_error, field_name="last_error")
+        with self._connect() as connection:
+            connection.execute(
+                f"""
+                UPDATE outbox
+                SET status = 'failed',
+                    retry_count = retry_count + 1,
+                    last_error = ?
+                WHERE outbox_id IN ({placeholders})
+                """,
+                (normalized_error, *outbox_ids),
+            )
+
+
+def _alert_from_row(row: sqlite3.Row) -> AlertRecord:
+    return AlertRecord(
+        alert_id=str(row["alert_id"]),
+        event_id=str(row["event_id"]),
+        correlation_id=str(row["correlation_id"]),
+        alarm_code=str(row["alarm_code"]),
+        severity=row["severity"],
+        state=row["state"],
+        component=str(row["component"]),
+        asset_id=str(row["asset_id"]),
+        message=row["message"],
+        created_at=_parse_timestamp(str(row["created_at"])),
+    )
+
+
+def _outbox_entry_from_row(row: sqlite3.Row | dict[str, Any]) -> OutboxEntry:
+    return OutboxEntry(
+        outbox_id=int(row["outbox_id"]),
+        target_type=str(row["target_type"]),
+        payload_kind=row["payload_kind"],
+        payload_ref=str(row["payload_ref"]),
+        status=row["status"],
+        retry_count=int(row["retry_count"]),
+        next_attempt_at=_parse_timestamp(str(row["next_attempt_at"])),
+        last_error=row["last_error"],
+        created_at=_parse_timestamp(str(row["created_at"])),
+    )

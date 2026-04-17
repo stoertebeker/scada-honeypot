@@ -47,6 +47,7 @@ Vorhanden sind:
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
 - minimale lokale `RuleEngine`, die jetzt wiederholte Login-Fehler, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN` und `COMM_LOSS_INVERTER_BLOCK` abdeckt und explizite Prozessalarme ohne Doppel-Eintrag im `alert_log` priorisiert
 - `exporter_sdk` mit stabilem Exporter-Vertrag fuer Capabilities, Health und Batch-Delivery sowie einem lokalen `LocalTestExporter` ohne Netzwerkpfad fuer spaetere Runner-/Outbox-Tests
+- `exporter_runner` mit leased Outbox-Drain, `WebhookExporter` und Retry-Backoff; Webhook-Ausfaelle landen kontrolliert in `outbox.retry_count`, `next_attempt_at` und `last_error`, ohne den Kernpfad zu blockieren
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 11-13`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
@@ -81,7 +82,7 @@ Noch nicht vorhanden:
 - Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten jenseits von `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends`
-- Exporter-Runner und echte Ziel-Exporter
+- weitere Ziel-Exporter, Runner-Hintergrundbetrieb und Release-Hardening
 
 ## Leitplanken
 
@@ -130,14 +131,14 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Outbox-Runner und ersten Webhook-Exporter auf den jetzt vorhandenen Exporter-Vertrag ziehen
+1. Hardening- und Release-Gate-Tests fuer Fehlerpfade, Anti-Fingerprint und lokalen Laborbetrieb schliessen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
 1. restliche HMI-Servicepfade
 2. restliche Modbus-Write-Pfade
 3. weitere Exporter
-4. Rule-Engine-Feinschliff, Hardening und Anti-Fingerprint
+4. Rule-Engine-Feinschliff
 
 ## Beispielkonfiguration
 

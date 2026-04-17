@@ -64,6 +64,29 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
     )
     assert runtime.hmi_app is not None
     assert runtime.hmi_service.address == ("127.0.0.1", 0)
+    assert runtime.outbox_runner is None
+
+
+def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "WEBHOOK_EXPORTER_ENABLED=1\n"
+            "WEBHOOK_EXPORTER_URL=https://example.invalid/hook\n"
+            "OUTBOX_BATCH_SIZE=25\n"
+            "OUTBOX_RETRY_BACKOFF_SECONDS=45\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner.batch_size == 25
+    assert runtime.outbox_runner.retry_backoff_seconds == 45
+    assert tuple(runtime.outbox_runner.exporters) == ("webhook",)
 
 
 def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:

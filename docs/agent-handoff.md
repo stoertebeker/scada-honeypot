@@ -613,6 +613,42 @@ Vorhanden:
   - lokale Batch-Erfassung fuer Events und Alerts
   - Konfigurationsvalidierung ohne echte Zielparameter
 
+### 13. Outbox-Runner und Webhook-Exporter
+
+Dateien:
+
+- `src/honeypot/exporter_runner/runner.py`
+- `src/honeypot/exporter_runner/webhook_exporter.py`
+- `src/honeypot/exporter_runner/__init__.py`
+- `src/honeypot/storage/sqlite_store.py`
+- `src/honeypot/main.py`
+- `tests/unit/test_exporter_runner.py`
+- `tests/unit/test_runtime_bootstrap.py`
+
+Vorhanden:
+
+- `OutboxRunner.drain_once()` mit:
+  - Leasing faelliger Outbox-Eintraege
+  - Payload-Aufloesung fuer `alert` und `event`
+  - Zustandswechsel `pending -> leased -> delivered`
+  - Retry-Backoff fuer `retry_later`
+  - `failed` bei fehlendem Exporter oder fehlender Payload-Aufloesung
+- `WebhookExporter` als erster echter technischer Kanal:
+  - liefert Event- und Alert-Batches per `POST`
+  - meldet `retry_later` bei Transport- oder HTTP-Fehlern
+  - blockiert den Kernpfad nicht
+- `SQLiteEventStore` kann jetzt:
+  - einzelne Events/Alerts ueber Referenzen aufloesen
+  - Outbox-Eintraege leasen
+  - Outbox-Eintraege als `delivered`, `pending` mit Backoff oder `failed` markieren
+- `build_local_runtime()` verdrahtet jetzt optional einen Outbox-Runner fuer
+  `webhook`, sobald `WEBHOOK_EXPORTER_ENABLED=1` gesetzt ist
+- Unit-Tests fuer:
+  - Webhook-Batch-POST
+  - Retry-Backoff bei HTTP-Fehlern
+  - `failed` bei fehlendem Exporter
+  - Runtime-Verdrahtung des Webhook-Runners
+
 ## Teststand
 
 Aktuell gruen:
@@ -621,7 +657,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `127 passed`
+- `131 passed`
 
 Abgedeckt sind bisher:
 
@@ -661,6 +697,8 @@ Abgedeckt sind bisher:
   inklusive korrelierter Eventspur zum Fachkern
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
+- `exporter_runner` mit Webhook-Exporter, Outbox-Leasing und Retry-Backoff auf
+  dem lokalen SQLite-Store
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -689,7 +727,7 @@ Noch **nicht** vorhanden:
 - Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
-- Outbox-Runner und echte Ziel-Exporter
+- weitere Ziel-Exporter, Runner-Hintergrundbetrieb und Release-Hardening
 
 Operative Hinweise:
 
@@ -701,15 +739,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Outbox-Runner und ersten Webhook-Exporter an den vorhandenen Exporter-Vertrag haengen
+1. jetzt Hardening- und Release-Gate-Tests fuer Fehlerpfade, Anti-Fingerprint und lokalen Laborbetrieb aufziehen
 2. danach restliche HMI-/Modbus-Servicepfade nachziehen
 3. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- Outbox-Runner plus Webhook-Exporter auf Basis des vorhandenen Exporter-Vertrags aufsetzen
-- fokussierte Tests fuer Leasing/Persistenz von Outbox-Eintraegen, Payload-Aufloesung und Retry-Backoff
-- keine externen Ziele ausser einem lokalen/emulierten Webhook vorziehen, bevor der Runner sauber liefert und Fehler ruhig behandelt
+- Hardening- und Release-Gate-Tests fuer HMI-/Modbus-Fehlerpfade, Exporter-Ruhe und Anti-Fingerprint aufsetzen
+- fokussierte Tests fuer localhost-Bindings, Header-Armut, ruhige Fehlerbilder und Exporter-Ausfall ohne sichtbare Seiteneffekte
+- keine weitere Exponierung oder Hintergrund-Runner-Daemonisierung vorziehen, bevor diese Gates gruen sind
 
 Nicht als naechstes tun:
 

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
+from honeypot.exporter_runner import OutboxRunner, WebhookExporter
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.rule_engine import RuleEngine
@@ -47,6 +48,7 @@ class LocalRuntime:
     hmi_app: FastAPI
     hmi_service: LocalHmiHttpService
     modbus_service: ReadOnlyModbusTcpService
+    outbox_runner: OutboxRunner | None = None
 
     def start(self) -> "LocalRuntime":
         try:
@@ -124,6 +126,20 @@ def build_local_runtime(
         port=config.hmi_port if hmi_port is None else hmi_port,
         log_level=config.log_level,
     )
+    outbox_runner = None
+    if config.webhook_exporter_enabled and config.webhook_exporter_url is not None:
+        outbox_runner = OutboxRunner(
+            store=event_store,
+            exporters={
+                "webhook": WebhookExporter(
+                    url=str(config.webhook_exporter_url),
+                    retry_after_seconds=config.outbox_retry_backoff_seconds,
+                )
+            },
+            batch_size=config.outbox_batch_size,
+            retry_backoff_seconds=config.outbox_retry_backoff_seconds,
+            clock=event_recorder.clock,
+        )
     return LocalRuntime(
         config=config,
         manifest=manifest,
@@ -133,6 +149,7 @@ def build_local_runtime(
         hmi_app=hmi_app,
         hmi_service=hmi_service,
         modbus_service=modbus_service,
+        outbox_runner=outbox_runner,
     )
 
 
