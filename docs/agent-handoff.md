@@ -253,6 +253,9 @@ Vorhanden:
     - `COMM_LOSS_INVERTER_BLOCK`
 - `EventRecorder.record()` fuehrt explizite Prozess-Alerts und Rule-basierte
   Alerts jetzt dedupliziert zusammen, ohne doppelte Eintraege im `alert_log`
+- identische aktive Rule-Alerts werden jetzt gegen die vorhandene
+  `alert_log`-Historie unterdrueckt, bis derselbe Alarm fuer dieselbe Signatur
+  als `cleared` gesehen wurde
 - best-effort Verhalten fuer Archivfehler: `SQLite` bleibt Primärwahrheit und
   wird bei Archivproblemen nicht blockiert
 - Guardrails gegen leere `state_key`- und `target_type`-Werte
@@ -691,7 +694,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `155 passed`
+- `159 passed`
 
 Abgedeckt sind bisher:
 
@@ -764,7 +767,8 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alarmfolgen
+- Rule-Engine-Feinschliff fuer mehrstufige Alarmfolgen und spaetere
+  Suppression-Strategien jenseits identischer aktiver Alerts
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
 - weitere Ziel-Exporter, Rule-Engine-Feinschliff und restliche Servicepfade
@@ -779,13 +783,13 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt weitere Ziel-Exporter auf den bestehenden Outbox-Pfad ziehen
-2. danach Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
+1. jetzt Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
+2. danach weitere Ziel-Exporter oder Alert-Folgeregeln ergaenzen
 3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- Rule-Engine-Feinschliff fuer Dedupe/Suppression auf dieselbe Event- und
+- eine erste mehrstufige Alert-Folgeregel auf dieselbe Event- und
   Outbox-Wahrheit setzen
 - fokussierte Tests fuer Konsistenz zwischen Outbox, Retry-Verhalten, Eventspur und bestehender Release-Gate-Suite
 - keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben

@@ -175,7 +175,10 @@ class EventRecorder:
 
         derived_alerts = self.rule_engine.evaluate(
             event,
-            context=RuleContext(current_state={} if current_state_updates is None else dict(current_state_updates)),
+            context=RuleContext(
+                current_state={} if current_state_updates is None else dict(current_state_updates),
+                alert_history=self.store.fetch_alerts(),
+            ),
         )
         return tuple(self._build_alert_from_rule(event, derived_alert) for derived_alert in derived_alerts)
 

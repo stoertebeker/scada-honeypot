@@ -237,6 +237,96 @@ def test_record_keeps_explicit_process_alert_and_dedupes_matching_rule_alert(tmp
     assert alerts[0].alarm_code == "BREAKER_OPEN"
 
 
+def test_record_suppresses_duplicate_rule_alert_while_matching_alert_is_active(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    first_event = recorder.build_event(
+        event_type="process.setpoint.reactive_power_target_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="ppc-01",
+        action="set_reactive_power_target",
+        result="accepted",
+        resulting_state={"reactive_power_target": 0.25},
+        tags=("control-path", "ppc", "reactive-power"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_rule_repeat",
+            "correlation_id": "corr_rule_repeat",
+        }
+    )
+
+    first_record = recorder.record(first_event, outbox_targets=("webhook",))
+    second_record = recorder.record(second_event, outbox_targets=("webhook",))
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert first_record.alert is not None
+    assert len(first_record.alerts) == 1
+    assert second_record.alert is None
+    assert second_record.alerts == ()
+    assert len(alerts) == 1
+    assert len(outbox_entries) == 1
+    assert alerts[0].alarm_code == SETPOINT_ALERT_CODE
+
+
+def test_record_allows_rule_alert_again_after_matching_alert_was_cleared(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    event = recorder.build_event(
+        event_type="process.setpoint.reactive_power_target_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="ppc-01",
+        action="set_reactive_power_target",
+        result="accepted",
+        resulting_state={"reactive_power_target": 0.25},
+        tags=("control-path", "ppc", "reactive-power"),
+    )
+
+    first_record = recorder.record(event, outbox_targets=("webhook",))
+    first_alert = recorder.store.fetch_alerts()[0]
+    cleared_event = event.model_copy(
+        update={
+            "event_id": "evt_rule_cleared",
+            "correlation_id": "corr_rule_cleared",
+        }
+    )
+    cleared_alert = first_alert.model_copy(
+        update={
+            "alert_id": "alt_rule_cleared",
+            "event_id": cleared_event.event_id,
+            "correlation_id": cleared_event.correlation_id,
+            "state": "cleared",
+            "created_at": cleared_event.timestamp,
+        }
+    )
+    recorder.record(cleared_event, alert=cleared_alert)
+
+    second_event = event.model_copy(
+        update={
+            "event_id": "evt_rule_after_clear",
+            "correlation_id": "corr_rule_after_clear",
+        }
+    )
+    second_record = recorder.record(second_event, outbox_targets=("webhook",))
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    assert first_record.alert is not None
+    assert second_record.alert is not None
+    assert len(second_record.alerts) == 1
+    assert len(alerts) == 3
+    assert second_record.alert.alarm_code == SETPOINT_ALERT_CODE
+    assert second_record.alert.state == "active_unacknowledged"
+    assert len(outbox_entries) == 2
+
+
 def test_record_writes_event_to_jsonl_archive_when_enabled(tmp_path) -> None:
     archive_path = tmp_path / "logs" / "events.jsonl"
     recorder = build_recorder(tmp_path, archive_path=archive_path)

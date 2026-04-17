@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from honeypot.event_core.models import EventRecord
+from honeypot.event_core.models import AlertRecord, EventRecord
 from honeypot.rule_engine import (
     LOGIN_FAILURE_THRESHOLD,
     REPEATED_LOGIN_FAILURE_ALERT_CODE,
@@ -188,3 +188,58 @@ def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success
     assert engine.evaluate(success_event) == ()
     post_reset = engine.evaluate(failure_event.model_copy(update={"event_id": "evt_rule_test_4"}))
     assert post_reset == ()
+
+
+def test_rule_engine_suppresses_matching_active_alert_from_history() -> None:
+    engine = RuleEngine.default_v1()
+    event = build_event()
+    existing_alert = AlertRecord(
+        alert_id="alt_rule_test",
+        event_id="evt_existing",
+        correlation_id="corr_existing",
+        alarm_code=SETPOINT_ALERT_CODE,
+        severity="high",
+        state="active_acknowledged",
+        component=event.component,
+        asset_id=event.asset_id,
+        message="Erfolgreiche Setpoint-Aenderung: set_reactive_power_target auf ppc-01",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        event,
+        context=RuleContext(
+            current_state={"ppc": {"active_power_limit_pct": 100}},
+            alert_history=(existing_alert,),
+        ),
+    )
+
+    assert derived_alerts == ()
+
+
+def test_rule_engine_allows_alert_again_after_matching_history_was_cleared() -> None:
+    engine = RuleEngine.default_v1()
+    event = build_event()
+    cleared_alert = AlertRecord(
+        alert_id="alt_rule_test_cleared",
+        event_id="evt_existing",
+        correlation_id="corr_existing",
+        alarm_code=SETPOINT_ALERT_CODE,
+        severity="high",
+        state="cleared",
+        component=event.component,
+        asset_id=event.asset_id,
+        message="Erfolgreiche Setpoint-Aenderung: set_reactive_power_target auf ppc-01",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        event,
+        context=RuleContext(
+            current_state={"ppc": {"active_power_limit_pct": 100}},
+            alert_history=(cleared_alert,),
+        ),
+    )
+
+    assert len(derived_alerts) == 1
+    assert derived_alerts[0].alarm_code == SETPOINT_ALERT_CODE

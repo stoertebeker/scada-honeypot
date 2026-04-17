@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
-from honeypot.event_core.models import AlertSeverity, AlertState, EventRecord
+from honeypot.event_core.models import AlertRecord, AlertSeverity, AlertState, EventRecord
 
 ALERT_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 SETPOINT_ALERT_CODE = "SETPOINT_CHANGE_ACCEPTED"
@@ -28,6 +28,7 @@ class RuleContext:
     """Leichter Auswertungskontext ohne direkte Store-Abhaengigkeit."""
 
     current_state: Mapping[str, Any] = field(default_factory=dict)
+    alert_history: tuple[AlertRecord, ...] = ()
 
 
 class EventRule(Protocol):
@@ -196,6 +197,12 @@ class RuleEngine:
             for derived_alert in rule.evaluate(event, context=resolved_context):
                 if ALERT_SEVERITY_ORDER[derived_alert.severity] < ALERT_SEVERITY_ORDER[self.min_severity]:
                     continue
+                if self._is_suppressed(
+                    event=event,
+                    derived_alert=derived_alert,
+                    context=resolved_context,
+                ):
+                    continue
                 dedupe_key = (
                     derived_alert.alarm_code,
                     derived_alert.severity,
@@ -208,3 +215,25 @@ class RuleEngine:
                 collected.append(derived_alert)
 
         return tuple(collected)
+
+    def _is_suppressed(
+        self,
+        *,
+        event: EventRecord,
+        derived_alert: DerivedAlert,
+        context: RuleContext,
+    ) -> bool:
+        latest_matching_alert: AlertRecord | None = None
+        for alert in context.alert_history:
+            if (
+                alert.alarm_code == derived_alert.alarm_code
+                and alert.severity == derived_alert.severity
+                and alert.component == event.component
+                and alert.asset_id == event.asset_id
+                and alert.message == derived_alert.message
+            ):
+                latest_matching_alert = alert
+
+        if latest_matching_alert is None:
+            return False
+        return latest_matching_alert.state != "cleared"
