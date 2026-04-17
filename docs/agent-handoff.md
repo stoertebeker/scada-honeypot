@@ -19,7 +19,7 @@ Wichtiger Kurs:
 
 - `asset_domain`, `plant_sim`, `event_core` und der erste schreibbare
   `protocol_modbus`-Slice fuer `Unit 1` stehen jetzt als gemeinsamer Fachkern
-- read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter` und `/alarms`
+- read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms` und `/trends`
   steht jetzt als App auf derselben Snapshot-Wahrheit; keine zweite Wahrheit
   neben Modbus bauen
 - Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
@@ -423,7 +423,7 @@ Vorhanden:
   - Adressfehler -> `02`
   - ungueltige `FC06`-/`FC16`-Werte -> `03`
 
-### 11. Read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter` und `/alarms`
+### 11. Read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms` und `/trends`
 
 Dateien:
 
@@ -436,6 +436,7 @@ Dateien:
 - `src/honeypot/hmi_web/templates/weather.html`
 - `src/honeypot/hmi_web/templates/meter.html`
 - `src/honeypot/hmi_web/templates/alarms.html`
+- `src/honeypot/hmi_web/templates/trends.html`
 - `resources/locales/attacker-ui/en.json`
 - `src/honeypot/main.py`
 - `tests/integration/test_hmi_web_overview.py`
@@ -452,6 +453,7 @@ Vorhanden:
   - `/weather`
   - `/meter`
   - `/alarms`
+  - `/trends`
 - `LocalHmiHttpService` startet diese App als echten lokalen HTTP-Dienst auf
   `HMI_BIND_HOST/HMI_PORT`
 - die HMI liest pro Request dieselbe Snapshot-Wahrheit wie Modbus ueber einen
@@ -502,9 +504,14 @@ Vorhanden:
   - Zustand und Ack-Status klar getrennt
   - First-Seen- und Last-Changed-Zeit aus der lokalen Alert-Spur
   - Filter fuer Severity, State und Sortierung
+- `trends` zeigt sichtbar:
+  - kurze Verlaufsspuren fuer Parkleistung, Leistungslimit, Einstrahlung und Exportleistung
+  - Blockleistungs-Traces fuer alle drei Inverter-Bloecke
+  - Baseline-gegen-Current-Sicht ohne zweite Wahrheit
+  - Trendkontext fuer Curtailment, Breaker-Offen und degradierte Kommunikation
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
-- `overview`, `single-line`, `inverters`, `weather`, `meter` und `alarms` nutzen keine
+- `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends` nutzen keine
   UI-Schattenwerte:
   - Curtailment aus Modbus ist direkt in der HMI sichtbar
   - Breaker-Offen aus `Unit 41` ist direkt im Einlinienschema sichtbar
@@ -512,6 +519,7 @@ Vorhanden:
   - Wetterwerte aus `Unit 21` sind direkt in der HMI sichtbar
   - Revenue-Meter-Werte und Breaker-Wirkung aus `Unit 31`/`Unit 41` sind direkt in der HMI sichtbar
   - Alarm-Historie und Ack-Zustand lesen dieselbe Alert-Spur wie `plant_sim` und Modbus-Schreibpfade
+  - Trenddaten leiten sich aus derselben Baseline-Fixture und dem aktuellen Snapshot ab
 - HMI-Aufrufe schreiben jetzt HTTP-Eventspur in den lokalen Store mit:
   - `component = hmi-web`
   - `service = web-hmi`
@@ -531,12 +539,13 @@ Vorhanden:
   - echter `GET /weather` ueber denselben Snapshot-Pfad
   - echter `GET /meter` ueber denselben Snapshot-Pfad
   - echter `GET /alarms` ueber denselben Snapshot-/Alert-Store-Pfad
+  - echter `GET /trends` ueber denselben Baseline-/Snapshot-Pfad
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- weitere Seiten wie `trends`
+- HMI-Fehlerseiten fuer `404/500`
 - Service-Login oder schreibende HMI-Pfade
 - eigene HMI-Fehlerseiten fuer `404/500`
 
@@ -548,7 +557,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `100 passed`
+- `102 passed`
 
 Abgedeckt sind bisher:
 
@@ -575,9 +584,10 @@ Abgedeckt sind bisher:
 - `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
   Wiederherstellung und Alarm-Clear
 - read-only HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`,
-  `/meter` und `/alarms`, HTTP-Eventspur und Shared-Truth-Tests gegen
-  Modbus-Curtailment, Breaker-Offen, Inverter-Blockwerte, Unit-21-Wetterdaten,
-  Unit-31-Meterwerte und die lokale Alert-Spur
+  `/meter`, `/alarms` und `/trends`, HTTP-Eventspur und Shared-Truth-Tests
+  gegen Modbus-Curtailment, Breaker-Offen, Inverter-Blockwerte,
+  Unit-21-Wetterdaten, Unit-31-Meterwerte, die lokale Alert-Spur und die
+  synthetische Trendableitung aus Baseline plus Snapshot
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -618,14 +628,13 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt `trends` als naechste read-only HMI-Seite auf dieselbe Snapshot-Wahrheit setzen
+1. jetzt HMI-Fehlerseiten fuer `404/500` auf denselben lokalen Runtime-Pfad setzen
 2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
 3. Rule-Engine/Exporter entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- naechste read-only HMI-Seite auf dieselbe Snapshot-Wahrheit setzen,
-  bevorzugt `trends`
+- HMI-Fehlerseiten fuer `404/500` ohne Framework-Spuren nachziehen
 - fokussierte Tests fuer sichtbare Zustandskonsistenz zu Modbus und
   fehlerarme lokale Renderpfade
 - keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI

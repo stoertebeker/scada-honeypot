@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from honeypot.asset_domain import PlantSnapshot
+from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
 from honeypot.time_core import ensure_utc_datetime
@@ -207,6 +207,31 @@ class AlarmsViewModel:
     state_filters: tuple[AlarmFilterLink, ...]
     sort_filters: tuple[AlarmFilterLink, ...]
     empty_label: str
+
+
+@dataclass(frozen=True, slots=True)
+class TrendSeriesView:
+    asset_id: str
+    title: str
+    current_value: str
+    baseline_value: str
+    polyline_points: str
+    tone: str
+    min_label: str
+    max_label: str
+
+
+@dataclass(frozen=True, slots=True)
+class TrendsViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    snapshot_time: str
+    metrics: tuple[OverviewMetric, ...]
+    series: tuple[TrendSeriesView, ...]
+    context_label: str
+    context_tone: str
 
 
 def create_hmi_app(
@@ -460,6 +485,43 @@ def create_hmi_app(
             },
             message="Alarms page rendered",
             tags=("read-only", "alarms", "web"),
+        )
+        return response
+
+    @app.get("/trends", response_class=HTMLResponse, include_in_schema=False)
+    async def trends(request: Request) -> HTMLResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        view_model = build_trends_view_model(snapshot=snapshot, config=config, texts=texts)
+        response = templates.TemplateResponse(
+            request=request,
+            name="trends.html",
+            context=_template_context(
+                config=config,
+                texts=texts,
+                current_path=request.url.path,
+                page=view_model,
+            ),
+        )
+        if set_cookie:
+            _set_session_cookie(response, session_id)
+
+        _record_page_view(
+            request=request,
+            snapshot=snapshot,
+            session_id=session_id,
+            event_recorder=event_recorder,
+            event_type="hmi.page.trends_viewed",
+            action="view_trends",
+            asset_id=snapshot.power_plant_controller.asset_id,
+            resulting_state={
+                "series_count": len(view_model.series),
+                "plant_power_mw": snapshot.site.plant_power_mw,
+                "active_power_limit_pct": snapshot.power_plant_controller.active_power_limit_pct,
+                "export_power_kw": snapshot.revenue_meter.export_power_kw,
+            },
+            message="Trends page rendered",
+            tags=("read-only", "trends", "web"),
         )
         return response
 
@@ -862,6 +924,97 @@ def build_alarms_view_model(
     )
 
 
+def build_trends_view_model(
+    *,
+    snapshot: PlantSnapshot,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+) -> TrendsViewModel:
+    """Bereitet eine kleine glaubhafte Verlaufssicht aus Baseline und aktuellem Snapshot auf."""
+
+    baseline_snapshot = PlantSnapshot.from_fixture(load_plant_fixture(snapshot.fixture_name))
+    context_label, context_tone = _trends_context(snapshot, baseline_snapshot, texts)
+    metrics = (
+        OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
+        OverviewMetric(
+            "label.power_limit",
+            f"{snapshot.power_plant_controller.active_power_limit_pct:.1f} %",
+            _tone_for_limit(snapshot),
+        ),
+        OverviewMetric(
+            "label.export_power",
+            _format_power_kw(snapshot.revenue_meter.export_power_kw),
+            "good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
+        ),
+        OverviewMetric(
+            "label.active_alarms",
+            str(snapshot.site.active_alarm_count),
+            "alarm" if snapshot.site.active_alarm_count else "good",
+        ),
+    )
+    series = (
+        _trend_series_view(
+            asset_id="site",
+            title=texts["trend.plant_power"],
+            baseline_value=baseline_snapshot.site.plant_power_mw,
+            current_value=snapshot.site.plant_power_mw,
+            value_formatter=_format_power_mw,
+            tone=_tone_for_power(snapshot),
+        ),
+        _trend_series_view(
+            asset_id=snapshot.power_plant_controller.asset_id,
+            title=texts["trend.power_limit"],
+            baseline_value=baseline_snapshot.power_plant_controller.active_power_limit_pct,
+            current_value=snapshot.power_plant_controller.active_power_limit_pct,
+            value_formatter=lambda value: f"{value:.1f} %",
+            tone=_tone_for_limit(snapshot),
+        ),
+        _trend_series_view(
+            asset_id=snapshot.weather_station.asset_id,
+            title=texts["trend.irradiance"],
+            baseline_value=float(baseline_snapshot.weather_station.irradiance_w_m2),
+            current_value=float(snapshot.weather_station.irradiance_w_m2),
+            value_formatter=lambda value: f"{value:.0f} W/m2",
+            tone="good" if snapshot.weather_station.irradiance_w_m2 >= 700 else "warn",
+        ),
+        _trend_series_view(
+            asset_id=snapshot.revenue_meter.asset_id,
+            title=texts["trend.export_power"],
+            baseline_value=baseline_snapshot.revenue_meter.export_power_kw / 1000,
+            current_value=snapshot.revenue_meter.export_power_kw / 1000,
+            value_formatter=lambda value: f"{value:.2f} MW",
+            tone="good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
+        ),
+        *tuple(
+            _trend_series_view(
+                asset_id=current_block.asset_id,
+                title=f"{texts['trend.block_power']} {current_block.asset_id.upper()}",
+                baseline_value=baseline_block.block_power_kw,
+                current_value=current_block.block_power_kw,
+                value_formatter=lambda value: f"{value:.1f} kW",
+                tone=_tone_for_block(current_block.status, current_block.communication_state),
+            )
+            for baseline_block, current_block in zip(
+                baseline_snapshot.inverter_blocks,
+                snapshot.inverter_blocks,
+                strict=True,
+            )
+        ),
+    )
+
+    return TrendsViewModel(
+        page_title=texts["page.trends.title"],
+        page_subtitle=texts["page.trends.subtitle"],
+        site_name=config.site_name,
+        site_code=config.site_code,
+        snapshot_time=_snapshot_time(snapshot),
+        metrics=metrics,
+        series=series,
+        context_label=context_label,
+        context_tone=context_tone,
+    )
+
+
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
     return tuple(
         OverviewAlarm(
@@ -880,7 +1033,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel | TrendsViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -900,6 +1053,7 @@ def _nav_items(current_path: str) -> tuple[NavItem, ...]:
         NavItem(href="/weather", label_key="nav.weather", is_current=current == "/weather"),
         NavItem(href="/meter", label_key="nav.meter", is_current=current == "/meter"),
         NavItem(href="/alarms", label_key="nav.alarms", is_current=current == "/alarms"),
+        NavItem(href="/trends", label_key="nav.trends", is_current=current == "/trends"),
     )
 
 
@@ -1275,6 +1429,64 @@ def _alarm_sort_links(
             )
         )
     return tuple(links)
+
+
+def _trend_series_view(
+    *,
+    asset_id: str,
+    title: str,
+    baseline_value: float,
+    current_value: float,
+    value_formatter: Callable[[float], str],
+    tone: str,
+) -> TrendSeriesView:
+    values = _interpolate_values(baseline_value, current_value, steps=6)
+    min_value = min(values)
+    max_value = max(values)
+    return TrendSeriesView(
+        asset_id=asset_id,
+        title=title,
+        current_value=value_formatter(current_value),
+        baseline_value=value_formatter(baseline_value),
+        polyline_points=_sparkline_points(values),
+        tone=tone,
+        min_label=value_formatter(min_value),
+        max_label=value_formatter(max_value),
+    )
+
+
+def _interpolate_values(start_value: float, end_value: float, *, steps: int) -> tuple[float, ...]:
+    if steps < 2:
+        raise ValueError("steps muss mindestens 2 sein")
+    delta = end_value - start_value
+    return tuple(round(start_value + delta * (index / (steps - 1)), 3) for index in range(steps))
+
+
+def _sparkline_points(values: tuple[float, ...], *, width: int = 280, height: int = 90, padding: int = 10) -> str:
+    min_value = min(values)
+    max_value = max(values)
+    span = max(max_value - min_value, 1e-9)
+    x_step = (width - padding * 2) / max(len(values) - 1, 1)
+    points = []
+    for index, value in enumerate(values):
+        x = padding + x_step * index
+        y = height - padding - ((value - min_value) / span) * (height - padding * 2)
+        points.append(f"{x:.1f},{y:.1f}")
+    return " ".join(points)
+
+
+def _trends_context(
+    snapshot: PlantSnapshot,
+    baseline_snapshot: PlantSnapshot,
+    texts: dict[str, str],
+) -> tuple[str, str]:
+    if snapshot.grid_interconnect.breaker_state != "closed":
+        return texts["trends.context.breaker_open"], "alarm"
+    if snapshot.power_plant_controller.active_power_limit_pct < baseline_snapshot.power_plant_controller.active_power_limit_pct:
+        return texts["trends.context.curtailment_visible"], "warn"
+    if snapshot.site.communications_health != "healthy":
+        return texts["trends.context.comms_degraded"], "warn"
+    return texts["trends.context.baseline_aligned"], "good"
 
 
 def _weather_output_context(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:
