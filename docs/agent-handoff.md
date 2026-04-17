@@ -649,6 +649,22 @@ Vorhanden:
   - `failed` bei fehlendem Exporter
   - Runtime-Verdrahtung des Webhook-Runners
 
+### 14. Release-Gate- und Hardening-Suite
+
+Dateien:
+
+- `tests/integration/test_release_gates.py`
+
+Vorhanden:
+
+- Release-Gates fuer:
+  - ruhige `401`, `403` und `404`
+  - fehlende `Server`-/`Date`-Header im lokalen HMI-Dienst
+  - keine sichtbaren Framework-Signaturen in Fehlerseiten
+  - Exporter-Ausfall ohne sichtbare Client-Seiteneffekte
+  - stabilen lokalen Modbus-/HMI-Betrieb trotz Outbox-Retry
+- Die Gates pruefen echte localhost-Pfade, nicht nur ASGI-Shortcuts
+
 ## Teststand
 
 Aktuell gruen:
@@ -657,7 +673,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `131 passed`
+- `134 passed`
 
 Abgedeckt sind bisher:
 
@@ -699,6 +715,8 @@ Abgedeckt sind bisher:
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-Exporter, Outbox-Leasing und Retry-Backoff auf
   dem lokalen SQLite-Store
+- Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut und
+  Exporter-Ausfall ohne sichtbare Seiteneffekte
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -727,7 +745,7 @@ Noch **nicht** vorhanden:
 - Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
-- weitere Ziel-Exporter, Runner-Hintergrundbetrieb und Release-Hardening
+- weitere Ziel-Exporter, Runner-Hintergrundbetrieb und restliche Servicepfade
 
 Operative Hinweise:
 
@@ -739,15 +757,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Hardening- und Release-Gate-Tests fuer Fehlerpfade, Anti-Fingerprint und lokalen Laborbetrieb aufziehen
-2. danach restliche HMI-/Modbus-Servicepfade nachziehen
+1. jetzt restliche HMI-/Modbus-Servicepfade fuer weitere Setpoints und aktive Units nachziehen
+2. danach weitere Ziel-Exporter und Runner-Hintergrundbetrieb ergaenzen
 3. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- Hardening- und Release-Gate-Tests fuer HMI-/Modbus-Fehlerpfade, Exporter-Ruhe und Anti-Fingerprint aufsetzen
-- fokussierte Tests fuer localhost-Bindings, Header-Armut, ruhige Fehlerbilder und Exporter-Ausfall ohne sichtbare Seiteneffekte
-- keine weitere Exponierung oder Hintergrund-Runner-Daemonisierung vorziehen, bevor diese Gates gruen sind
+- restliche HMI-/Modbus-Servicepfade fuer weitere Setpoints und aktive Units auf denselben Shared-Truth-Kurs setzen
+- fokussierte Tests fuer Konsistenz zwischen schreibender HMI, Modbus, Eventspur und bestehender Release-Gate-Suite
+- keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben
 
 Nicht als naechstes tun:
 
