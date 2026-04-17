@@ -52,8 +52,8 @@ Vorhanden sind:
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 11-13`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
-- `Unit 11-13` bilden jetzt die drei `inverter_block_*` als gemeinsame read-only Status-/Alarmmatrix mit korrekten Unit-IDs, Asset-Tags, `block_power_kw`, `availability_pct_x10` und lokaler Alarmdiagnose ab
-- `Unit 12` spiegelt einen Kommunikationsverlust jetzt sichtbar in `communication_state`, `data_quality`, `local_alarm_count` und `alarm_comm_loss_state`; Inverter-Write-Pfade bleiben in diesem Slice bewusst noch aus
+- `Unit 11-13` bilden jetzt die drei `inverter_block_*` mit gemeinsamer Status-/Alarmmatrix, verdrahteten Setpoints `block_enable_request`, `block_power_limit_pct_x10`, `block_reset_request` und korrekten Unit-IDs, Asset-Tags sowie lokaler Alarmdiagnose ab
+- `Unit 12` spiegelt Kommunikationsverlust, Disable/Enable, Blockleistungsbegrenzung und Reset jetzt sichtbar in `communication_state`, `data_quality`, `local_alarm_count`, `block_power_kw` und der korrelierten Eventspur
 - read-only HMI fuer `/`, `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms` und `/trends` steht als `FastAPI`-/`Jinja2`-App auf derselben Snapshot-Wahrheit wie Modbus
 - `overview` zeigt Parkleistung, Leistungsbegrenzung, Blindleistungsziel, Breaker-Zustand, Kommunikationslage, Blockstatus, Wetterwerte und die wichtigsten aktiven Alarme
 - `/single-line` zeigt jetzt das einfache Einlinienschema fuer PV-Park, PPC, Inverter-Bloecke, Revenue Meter und Grid Interconnect mitsamt Breaker- und Leistungsflusszustand

@@ -27,7 +27,11 @@ UNIT_1_ACTIVE_POWER_LIMIT_OFFSET = 199
 UNIT_1_REACTIVE_POWER_TARGET_OFFSET = 200
 UNIT_1_PLANT_MODE_REQUEST_OFFSET = 201
 UNIT_11_13_STATUS_BLOCK = range(99, 111)
+UNIT_11_13_SETPOINT_BLOCK = range(199, 249)
 UNIT_11_13_ALARM_BLOCK = range(299, 305)
+UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET = 199
+UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET = 200
+UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET = 201
 UNIT_21_STATUS_BLOCK = range(99, 107)
 UNIT_21_ALARM_BLOCK = range(299, 302)
 UNIT_31_STATUS_BLOCK = range(99, 110)
@@ -155,6 +159,8 @@ class ReadOnlyRegisterMap:
         self._event_recorder = event_recorder
         self._simulator = PlantSimulator.from_snapshot(snapshot, event_recorder=event_recorder)
         self._plant_mode_request_override: int | None = None
+        self._block_enable_request_overrides: dict[int, int] = {}
+        self._block_power_limit_request_overrides: dict[int, int] = {}
 
     @property
     def snapshot(self) -> PlantSnapshot:
@@ -215,6 +221,8 @@ class ReadOnlyRegisterMap:
                 UNIT_1_PLANT_MODE_REQUEST_OFFSET,
                 snapshot=self._snapshot,
                 plant_mode_request_override=self._plant_mode_request_override,
+                block_enable_request_overrides=self._block_enable_request_overrides,
+                block_power_limit_request_overrides=self._block_power_limit_request_overrides,
             )
 
     def set_plant_mode_request(
@@ -303,6 +311,8 @@ class ReadOnlyRegisterMap:
                 unit_id,
                 self._snapshot,
                 plant_mode_request_override=self._plant_mode_request_override,
+                block_enable_request_overrides=self._block_enable_request_overrides,
+                block_power_limit_request_overrides=self._block_power_limit_request_overrides,
             )
         return RegisterReadResult(
             values=tuple(unit_registers.get(offset, 0) for offset in range(start_offset, end_offset + 1)),
@@ -373,11 +383,15 @@ class ReadOnlyRegisterMap:
                     offset,
                     snapshot=self._snapshot,
                     plant_mode_request_override=self._plant_mode_request_override,
+                    block_enable_request_overrides=self._block_enable_request_overrides,
+                    block_power_limit_request_overrides=self._block_power_limit_request_overrides,
                 )
                 for offset in offsets
             )
             working_snapshot = self._snapshot
             working_mode_request_override = self._plant_mode_request_override
+            working_block_enable_request_overrides = dict(self._block_enable_request_overrides)
+            working_block_power_limit_request_overrides = dict(self._block_power_limit_request_overrides)
 
             for offset, value in zip(offsets, values):
                 if unit_id == 1:
@@ -409,6 +423,8 @@ class ReadOnlyRegisterMap:
                             offset,
                             snapshot=working_snapshot,
                             plant_mode_request_override=working_mode_request_override,
+                            block_enable_request_overrides=working_block_enable_request_overrides,
+                            block_power_limit_request_overrides=working_block_power_limit_request_overrides,
                         )
                         working_mode_request_override = value
                         self._record_plant_mode_request_change(
@@ -418,6 +434,49 @@ class ReadOnlyRegisterMap:
                             event_context=event_context,
                         )
                         continue
+
+                if unit_id in (11, 12, 13):
+                    asset_id = ASSET_ID[unit_id]
+                    current_block_enable_request = working_block_enable_request_overrides.get(
+                        unit_id,
+                        0 if _is_block_disabled(_inverter_block_for_unit(working_snapshot, unit_id)) else 1,
+                    )
+                    current_block_power_limit_request = working_block_power_limit_request_overrides.get(unit_id, 1000)
+
+                    try:
+                        if offset == UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET:
+                            working_block_enable_request_overrides[unit_id] = value
+                            working_snapshot = self._simulator.apply_block_enable_request(
+                                working_snapshot,
+                                asset_id=asset_id,
+                                block_enable_request=bool(value),
+                                block_power_limit_pct=current_block_power_limit_request / 10,
+                                event_context=event_context,
+                            )
+                            continue
+
+                        if offset == UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET:
+                            working_block_power_limit_request_overrides[unit_id] = value
+                            working_snapshot = self._simulator.apply_block_power_limit(
+                                working_snapshot,
+                                asset_id=asset_id,
+                                block_enable_request=bool(current_block_enable_request),
+                                block_power_limit_pct=value / 10,
+                                event_context=event_context,
+                            )
+                            continue
+
+                        if offset == UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET and value == 1:
+                            working_snapshot = self._simulator.reset_block(
+                                working_snapshot,
+                                asset_id=asset_id,
+                                block_enable_request=bool(current_block_enable_request),
+                                block_power_limit_pct=current_block_power_limit_request / 10,
+                                event_context=event_context,
+                            )
+                            continue
+                    except PlantSimulationError as exc:
+                        raise ModbusRegisterError(ILLEGAL_DATA_VALUE, str(exc)) from exc
 
                 if unit_id == 41 and value == 1:
                     try:
@@ -436,6 +495,8 @@ class ReadOnlyRegisterMap:
 
             self._snapshot = working_snapshot
             self._plant_mode_request_override = working_mode_request_override
+            self._block_enable_request_overrides = working_block_enable_request_overrides
+            self._block_power_limit_request_overrides = working_block_power_limit_request_overrides
             resulting_state = self._write_result_state(unit_id)
             resulting_values = tuple(
                 self._current_setpoint_value(
@@ -443,6 +504,8 @@ class ReadOnlyRegisterMap:
                     offset,
                     snapshot=self._snapshot,
                     plant_mode_request_override=self._plant_mode_request_override,
+                    block_enable_request_overrides=self._block_enable_request_overrides,
+                    block_power_limit_request_overrides=self._block_power_limit_request_overrides,
                 )
                 for offset in offsets
             )
@@ -478,7 +541,7 @@ class ReadOnlyRegisterMap:
         if unit_id == 1:
             return _validate_unit_1_write_sequence(offsets=offsets, values=values, allow_fc06=allow_fc06)
         if unit_id in (11, 12, 13):
-            raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "inverter_block ist im aktuellen Slice read-only")
+            return _validate_unit_11_13_write_sequence(offsets=offsets, values=values, allow_fc06=allow_fc06)
         if unit_id == 21:
             raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, "weather_station ist in V1 read-only")
         if unit_id == 31:
@@ -494,6 +557,8 @@ class ReadOnlyRegisterMap:
         *,
         snapshot: PlantSnapshot,
         plant_mode_request_override: int | None,
+        block_enable_request_overrides: dict[int, int],
+        block_power_limit_request_overrides: dict[int, int],
     ) -> int:
         if unit_id == 1:
             if offset == UNIT_1_ACTIVE_POWER_LIMIT_OFFSET:
@@ -503,6 +568,16 @@ class ReadOnlyRegisterMap:
             if offset == UNIT_1_PLANT_MODE_REQUEST_OFFSET:
                 return _plant_mode_request(snapshot, plant_mode_request_override=plant_mode_request_override)
             raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"offset {offset} ist kein PPC-Setpoint")
+
+        if unit_id in (11, 12, 13):
+            block = _inverter_block_for_unit(snapshot, unit_id)
+            if offset == UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET:
+                return block_enable_request_overrides.get(unit_id, 0 if _is_block_disabled(block) else 1)
+            if offset == UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET:
+                return block_power_limit_request_overrides.get(unit_id, 1000)
+            if offset == UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET:
+                return 0
+            raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"offset {offset} ist kein Inverter-Setpoint")
 
         if unit_id == 41 and offset in (
             UNIT_41_BREAKER_OPEN_REQUEST_OFFSET,
@@ -521,6 +596,22 @@ class ReadOnlyRegisterMap:
                     plant_mode_request_override=self._plant_mode_request_override,
                 ),
                 "operating_mode": self._snapshot.site.operating_mode,
+                "plant_power_mw": self._snapshot.site.plant_power_mw,
+                "active_alarm_codes": list(self._snapshot.active_alarm_codes),
+            }
+
+        if unit_id in (11, 12, 13):
+            block = _inverter_block_for_unit(self._snapshot, unit_id)
+            return {
+                "block_enable_request": self._block_enable_request_overrides.get(
+                    unit_id,
+                    0 if _is_block_disabled(block) else 1,
+                ),
+                "block_power_limit_pct": self._block_power_limit_request_overrides.get(unit_id, 1000) / 10,
+                "status": block.status,
+                "communication_state": block.communication_state,
+                "availability_pct": block.availability_pct,
+                "block_power_kw": block.block_power_kw,
                 "plant_power_mw": self._snapshot.site.plant_power_mw,
                 "active_alarm_codes": list(self._snapshot.active_alarm_codes),
             }
@@ -589,6 +680,7 @@ def _is_supported_offset(unit_id: int, offset: int) -> bool:
         return (
             offset in IDENTITY_BLOCK
             or offset in UNIT_11_13_STATUS_BLOCK
+            or offset in UNIT_11_13_SETPOINT_BLOCK
             or offset in UNIT_11_13_ALARM_BLOCK
         )
     if unit_id == 21:
@@ -618,11 +710,18 @@ def _build_registers_for_unit(
     snapshot: PlantSnapshot,
     *,
     plant_mode_request_override: int | None = None,
+    block_enable_request_overrides: dict[int, int] | None = None,
+    block_power_limit_request_overrides: dict[int, int] | None = None,
 ) -> dict[int, int]:
     if unit_id == 1:
         return _build_unit_1_registers(snapshot, plant_mode_request_override=plant_mode_request_override)
     if unit_id in (11, 12, 13):
-        return _build_unit_11_13_registers(snapshot, unit_id=unit_id)
+        return _build_unit_11_13_registers(
+            snapshot,
+            unit_id=unit_id,
+            block_enable_request_overrides=block_enable_request_overrides,
+            block_power_limit_request_overrides=block_power_limit_request_overrides,
+        )
     if unit_id == 21:
         return _build_unit_21_registers(snapshot)
     if unit_id == 31:
@@ -696,7 +795,13 @@ def _build_unit_41_registers(snapshot: PlantSnapshot) -> dict[int, int]:
     return registers
 
 
-def _build_unit_11_13_registers(snapshot: PlantSnapshot, *, unit_id: int) -> dict[int, int]:
+def _build_unit_11_13_registers(
+    snapshot: PlantSnapshot,
+    *,
+    unit_id: int,
+    block_enable_request_overrides: dict[int, int] | None,
+    block_power_limit_request_overrides: dict[int, int] | None,
+) -> dict[int, int]:
     block = _inverter_block_for_unit(snapshot, unit_id)
     comm_loss_state = _inverter_comm_loss_alarm_state(block)
     block_fault_state = _inverter_block_fault_alarm_state(block)
@@ -705,6 +810,16 @@ def _build_unit_11_13_registers(snapshot: PlantSnapshot, *, unit_id: int) -> dic
     primary_alarm_code, primary_alarm_severity = _inverter_primary_alarm(
         comm_loss_state=comm_loss_state,
         overtemp_state=overtemp_state,
+    )
+    block_enable_request = (
+        block_enable_request_overrides.get(unit_id, 0 if _is_block_disabled(block) else 1)
+        if block_enable_request_overrides is not None
+        else (0 if _is_block_disabled(block) else 1)
+    )
+    block_power_limit_request = (
+        block_power_limit_request_overrides.get(unit_id, 1000)
+        if block_power_limit_request_overrides is not None
+        else 1000
     )
 
     registers = _build_identity_registers(unit_id)
@@ -725,6 +840,9 @@ def _build_unit_11_13_registers(snapshot: PlantSnapshot, *, unit_id: int) -> dic
                 block_unavailable_state,
                 overtemp_state,
             ),
+            199: block_enable_request,
+            200: block_power_limit_request,
+            201: 0,
             299: primary_alarm_code,
             300: primary_alarm_severity,
             301: comm_loss_state,
@@ -863,6 +981,10 @@ def _inverter_block_for_unit(snapshot: PlantSnapshot, unit_id: int):
     return snapshot.inverter_blocks[index]
 
 
+def _is_block_disabled(block) -> bool:
+    return block.status == "offline" and block.availability_pct == 0
+
+
 def _inverter_comm_loss_alarm_state(block) -> int:
     if block.communication_state == "lost":
         return ALARM_STATE["active_unacknowledged"]
@@ -952,6 +1074,45 @@ def _validate_unit_1_write_sequence(
             raise ModbusRegisterError(
                 ILLEGAL_DATA_VALUE,
                 "plant_mode_request muss einer der Werte 0, 1 oder 2 sein",
+            )
+    return offsets
+
+
+def _validate_unit_11_13_write_sequence(
+    *,
+    offsets: tuple[int, ...],
+    values: tuple[int, ...],
+    allow_fc06: bool,
+) -> tuple[int, ...]:
+    if allow_fc06 and len(offsets) != 1:
+        raise ModbusRegisterError(ILLEGAL_DATA_VALUE, "FC06 erlaubt genau ein Register")
+    if not allow_fc06 and offsets[-1] > UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET:
+        raise ModbusRegisterError(
+            ILLEGAL_DATA_ADDRESS,
+            "FC16 ist im aktuellen Inverter-Slice nur fuer 40200-40202 aktiv",
+        )
+
+    for offset, value in zip(offsets, values):
+        if offset not in (
+            UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET,
+            UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET,
+            UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET,
+        ):
+            raise ModbusRegisterError(
+                ILLEGAL_DATA_ADDRESS,
+                f"offset {offset} ist im aktuellen Inverter-Slice nicht schreibbar",
+            )
+        if value < 0 or value > 0xFFFF:
+            raise ModbusRegisterError(ILLEGAL_DATA_VALUE, "Registerwerte muessen als u16 uebertragen werden")
+        if offset in (UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET, UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET) and value not in (0, 1):
+            raise ModbusRegisterError(
+                ILLEGAL_DATA_VALUE,
+                "block_enable_request und block_reset_request muessen 0 oder 1 sein",
+            )
+        if offset == UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET and value > 1000:
+            raise ModbusRegisterError(
+                ILLEGAL_DATA_VALUE,
+                "block_power_limit_pct_x10 muss im Bereich 0..1000 liegen",
             )
     return offsets
 

@@ -60,6 +60,7 @@ class PlantSimulator:
     """Leitet aus einem Referenzzustand deterministische Szenarien ab."""
 
     nominal_capacity_kw: float
+    baseline_block_power_kw: dict[str, float]
     event_recorder: EventRecorder | None = None
     default_event_context: SimulationEventContext = field(default_factory=SimulationEventContext)
 
@@ -87,6 +88,9 @@ class PlantSimulator:
 
         return cls(
             nominal_capacity_kw=baseline_output_kw / baseline_irradiance_factor,
+            baseline_block_power_kw={
+                block.asset_id: max(block.block_power_kw, 0.0) for block in snapshot.inverter_blocks
+            },
             event_recorder=event_recorder,
             default_event_context=(
                 SimulationEventContext() if default_event_context is None else default_event_context
@@ -269,6 +273,159 @@ class PlantSimulator:
         )
         return resulting_snapshot
 
+    def apply_block_enable_request(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        asset_id: str,
+        block_enable_request: bool,
+        block_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Aktualisiert den Enable-Request eines Inverter-Blocks mit sichtbarer Wirkung."""
+
+        previous_block = _require_block(snapshot, asset_id)
+        previous_value = 0 if _is_block_disabled(previous_block) else 1
+        normalized_enable_request = 1 if block_enable_request else 0
+        resulting_snapshot = self._apply_inverter_block_control_state(
+            snapshot,
+            asset_id=asset_id,
+            block_enable_request=block_enable_request,
+            block_power_limit_pct=block_power_limit_pct,
+        )
+        resulting_block = _require_block(resulting_snapshot, asset_id)
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.setpoint.block_enable_request_changed",
+            category="process",
+            severity="medium",
+            asset_id=asset_id,
+            action="set_block_enable_request",
+            requested_value=normalized_enable_request,
+            previous_value=previous_value,
+            resulting_value=normalized_enable_request,
+            resulting_state={
+                "block_enable_request": normalized_enable_request,
+                "block_power_limit_pct": round(block_power_limit_pct, 1),
+                "status": resulting_block.status,
+                "communication_state": resulting_block.communication_state,
+                "availability_pct": resulting_block.availability_pct,
+                "block_power_kw": resulting_block.block_power_kw,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+            },
+            alarm_code=None,
+            tags=("control-path", "inverter-block", "enable"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
+    def apply_block_power_limit(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        asset_id: str,
+        block_enable_request: bool,
+        block_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Aktualisiert die Blockleistungsbegrenzung eines Inverter-Blocks."""
+
+        if not 0 <= block_power_limit_pct <= 100:
+            raise PlantSimulationError("block_power_limit_pct muss im Bereich 0..100 liegen")
+
+        previous_block = _require_block(snapshot, asset_id)
+        previous_limit_pct = _derived_block_power_limit_pct(
+            snapshot=snapshot,
+            asset_id=asset_id,
+            baseline_block_power_kw=self.baseline_block_power_kw,
+        )
+        normalized_limit_pct = round(block_power_limit_pct, 1)
+        resulting_snapshot = self._apply_inverter_block_control_state(
+            snapshot,
+            asset_id=asset_id,
+            block_enable_request=block_enable_request,
+            block_power_limit_pct=normalized_limit_pct,
+        )
+        resulting_block = _require_block(resulting_snapshot, asset_id)
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.setpoint.block_power_limit_changed",
+            category="process",
+            severity="medium",
+            asset_id=asset_id,
+            action="set_block_power_limit",
+            requested_value=normalized_limit_pct,
+            previous_value=previous_limit_pct,
+            resulting_value=normalized_limit_pct,
+            resulting_state={
+                "block_enable_request": 1 if block_enable_request else 0,
+                "block_power_limit_pct": normalized_limit_pct,
+                "status": resulting_block.status,
+                "availability_pct": resulting_block.availability_pct,
+                "block_power_kw": resulting_block.block_power_kw,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+            },
+            alarm_code=None,
+            tags=("control-path", "inverter-block", "power-limit"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
+    def reset_block(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        asset_id: str,
+        block_enable_request: bool,
+        block_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Fuehrt einen simulierten Block-Reset mit sichtbarer Wiederherstellung aus."""
+
+        previous_block = _require_block(snapshot, asset_id)
+        resulting_snapshot = self._apply_inverter_block_control_state(
+            snapshot,
+            asset_id=asset_id,
+            block_enable_request=block_enable_request,
+            block_power_limit_pct=block_power_limit_pct,
+            reset_requested=True,
+        )
+        resulting_block = _require_block(resulting_snapshot, asset_id)
+        alarm_code = "COMM_LOSS_INVERTER_BLOCK" if previous_block.communication_state == "lost" else None
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.control.block_reset_requested",
+            category="process",
+            severity="medium",
+            asset_id=asset_id,
+            action="block_reset_request",
+            requested_value=1,
+            previous_value={
+                "status": previous_block.status,
+                "communication_state": previous_block.communication_state,
+                "quality": previous_block.quality,
+            },
+            resulting_value="applied",
+            resulting_state={
+                "block_enable_request": 1 if block_enable_request else 0,
+                "block_power_limit_pct": round(block_power_limit_pct, 1),
+                "status": resulting_block.status,
+                "communication_state": resulting_block.communication_state,
+                "quality": resulting_block.quality,
+                "availability_pct": resulting_block.availability_pct,
+                "block_power_kw": resulting_block.block_power_kw,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=alarm_code,
+            tags=("control-path", "inverter-block", "reset"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
     def open_breaker(
         self,
         snapshot: PlantSnapshot,
@@ -332,6 +489,130 @@ class PlantSimulator:
             event_context=event_context,
         )
         return resulting_snapshot
+
+    def _apply_inverter_block_control_state(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        asset_id: str,
+        block_enable_request: bool,
+        block_power_limit_pct: float,
+        reset_requested: bool = False,
+    ) -> PlantSnapshot:
+        if not 0 <= block_power_limit_pct <= 100:
+            raise PlantSimulationError("block_power_limit_pct muss im Bereich 0..100 liegen")
+
+        _require_block(snapshot, asset_id)
+        effective_total_power_kw = 0.0 if snapshot.site.breaker_state == "open" else round(
+            self.estimate_available_power_kw(snapshot) * (snapshot.site.plant_power_limit_pct / 100),
+            1,
+        )
+        target_limit_factor = round(block_power_limit_pct / 100, 3)
+        weighted_powers = _distribute_power_kw_for_controls(
+            snapshot.inverter_blocks,
+            total_power_kw=effective_total_power_kw,
+            baseline_block_power_kw=self.baseline_block_power_kw,
+            target_asset_id=asset_id,
+            block_enable_request=block_enable_request,
+            target_limit_factor=target_limit_factor,
+        )
+
+        inverter_blocks = []
+        for block in snapshot.inverter_blocks:
+            is_target = block.asset_id == asset_id
+            if reset_requested and is_target:
+                base_block = block.model_copy(
+                    update={
+                        "status": "online",
+                        "communication_state": "healthy",
+                    }
+                )
+            else:
+                base_block = block
+
+            block_power_kw = weighted_powers[block.asset_id]
+            if is_target and not block_enable_request:
+                status = "offline"
+                communication_state = "degraded"
+                availability_pct = 0
+            elif is_target and _is_block_disabled(base_block):
+                status = "online"
+                communication_state = "healthy"
+                availability_pct = 100 if block_power_kw > 0 else 0
+            else:
+                status = base_block.status
+                communication_state = base_block.communication_state
+                availability_pct = 100 if block_power_kw > 0 and status != "offline" else base_block.availability_pct
+
+            if is_target and block_enable_request and reset_requested:
+                availability_pct = 100 if block_power_kw > 0 else 0
+            if is_target and block_enable_request and block_power_kw == 0 and snapshot.site.breaker_state != "open":
+                availability_pct = 0 if target_limit_factor == 0 else availability_pct
+
+            inverter_blocks.append(
+                base_block.model_copy(
+                    update={
+                        "status": status,
+                        "communication_state": communication_state,
+                        "quality": determine_data_quality(status=status, communication_state=communication_state),
+                        "availability_pct": availability_pct,
+                        "block_power_kw": block_power_kw,
+                    }
+                )
+            )
+
+        final_blocks = tuple(inverter_blocks)
+        if snapshot.site.breaker_state == "open":
+            availability_state = "unavailable"
+            site_power_mw = 0.0
+            export_power_kw = 0.0
+            operating_mode = "faulted"
+        else:
+            available_count = sum(1 for block in final_blocks if block.availability_pct > 0)
+            site_power_mw = round(sum(block.block_power_kw for block in final_blocks) / 1000, 3)
+            export_power_kw = round(sum(block.block_power_kw for block in final_blocks), 1)
+            if available_count == 0:
+                availability_state = "unavailable"
+            elif any(
+                block.status != "online" or block.communication_state != "healthy" or block.availability_pct < 100
+                for block in final_blocks
+            ):
+                availability_state = "partially_available"
+            else:
+                availability_state = "available"
+            if snapshot.site.operating_mode == "maintenance":
+                operating_mode = "maintenance"
+            elif snapshot.site.plant_power_limit_pct < 100:
+                operating_mode = "curtailed"
+            else:
+                operating_mode = "normal"
+
+        site = snapshot.site.model_copy(
+            update={
+                "operating_mode": operating_mode,
+                "availability_state": availability_state,
+                "plant_power_mw": site_power_mw,
+                "communications_health": (
+                    "degraded"
+                    if any(block.communication_state != "healthy" for block in final_blocks)
+                    else "healthy"
+                ),
+            }
+        )
+        revenue_meter = snapshot.revenue_meter.model_copy(update={"export_power_kw": export_power_kw})
+        alarms = _replace_scenario_alarms(
+            snapshot.alarms,
+            "PLANT_CURTAILED" if snapshot.site.plant_power_limit_pct < 100 else None,
+            "BREAKER_OPEN" if snapshot.site.breaker_state == "open" else None,
+            "COMM_LOSS_INVERTER_BLOCK" if any(block.communication_state == "lost" for block in final_blocks) else None,
+        )
+        return _build_snapshot(
+            snapshot,
+            site=site,
+            inverter_blocks=final_blocks,
+            revenue_meter=revenue_meter,
+            alarms=alarms,
+        )
 
     def close_breaker(
         self,
@@ -566,6 +847,41 @@ def _with_rebalanced_block_power(snapshot: PlantSnapshot, total_power_kw: float)
     )
 
 
+def _distribute_power_kw_for_controls(
+    blocks: tuple,
+    *,
+    total_power_kw: float,
+    baseline_block_power_kw: dict[str, float],
+    target_asset_id: str,
+    block_enable_request: bool,
+    target_limit_factor: float,
+) -> dict[str, float]:
+    weights = [max(baseline_block_power_kw.get(block.asset_id, block.block_power_kw), 1.0) for block in blocks]
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        return {block.asset_id: 0.0 for block in blocks}
+
+    distribution: dict[str, float] = {}
+    remaining_power_kw = round(total_power_kw, 1)
+    for index, block in enumerate(blocks):
+        weight = weights[index]
+        if index == len(blocks) - 1:
+            base_share = round(remaining_power_kw, 1)
+        else:
+            base_share = round(total_power_kw * (weight / total_weight), 1)
+            remaining_power_kw = round(remaining_power_kw - base_share, 1)
+
+        if block.asset_id != target_asset_id:
+            distribution[block.asset_id] = base_share
+            continue
+
+        if not block_enable_request:
+            distribution[block.asset_id] = 0.0
+            continue
+        distribution[block.asset_id] = round(base_share * target_limit_factor, 1)
+    return distribution
+
+
 def _distribute_power_kw(blocks: tuple, total_power_kw: float) -> tuple[float, ...]:
     if not blocks:
         return ()
@@ -735,3 +1051,33 @@ def _asset_id_for_alarm(snapshot: PlantSnapshot, code: str) -> str:
             if block.communication_state == "lost":
                 return block.asset_id
     return snapshot.power_plant_controller.asset_id
+
+
+def _require_block(snapshot: PlantSnapshot, asset_id: str):
+    for block in snapshot.inverter_blocks:
+        if block.asset_id == asset_id:
+            return block
+    raise PlantSimulationError(f"unbekannter inverter_block: {asset_id}")
+
+
+def _is_block_disabled(block) -> bool:
+    return block.status == "offline" and block.availability_pct == 0
+
+
+def _derived_block_power_limit_pct(
+    *,
+    snapshot: PlantSnapshot,
+    asset_id: str,
+    baseline_block_power_kw: dict[str, float],
+) -> float:
+    block = _require_block(snapshot, asset_id)
+    if _is_block_disabled(block):
+        return 0.0
+    baseline_power_kw = max(baseline_block_power_kw.get(asset_id, block.block_power_kw), 0.0)
+    if baseline_power_kw <= 0:
+        return 100.0
+    global_limit_factor = snapshot.site.plant_power_limit_pct / 100
+    if global_limit_factor <= 0:
+        return 100.0
+    derived_limit_pct = (block.block_power_kw / (baseline_power_kw * global_limit_factor)) * 100
+    return round(max(0.0, min(100.0, derived_limit_pct)), 1)

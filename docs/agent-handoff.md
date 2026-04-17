@@ -357,14 +357,17 @@ Vorhanden:
   - saubere Differenzierung ueber `unit_id_echo`, `asset_instance` und
     `asset_tag_ascii`
   - `block_power_kw` als `s32` und `availability_pct_x10`
+  - Setpoints `40200 block_enable_request`, `40201 block_power_limit_pct_x10`
+    und `40202 block_reset_request`
   - lokale Alarmdiagnose `40300-40305`
-  - bewusst noch keine verdrahteten Inverter-Write-Pfade
 - dokumentiertes Fehlerverhalten im Slice:
   - `FC04` -> `01 Illegal Function`
   - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
   - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
   - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
-  - jeder Write auf `Unit 11-13 / 40200-40249` -> `02 Illegal Data Address`
+  - Wert ausserhalb `0..1` auf `Unit 11-13 / 40200` oder `40202` -> `03 Illegal Data Value`
+  - Wert ausserhalb `0..1000` auf `Unit 11-13 / 40201` -> `03 Illegal Data Value`
+  - `Unit 11-13 / FC16` ausserhalb `40200-40202` -> `02 Illegal Data Address`
   - jeder Write auf `Unit 21 / 40200-40249` -> `02 Illegal Data Address`
   - jeder Write auf `Unit 31 / 40200-40249` -> `02 Illegal Data Address`
   - Wert ausserhalb `0..1` auf `Unit 41 / 40200-40201` -> `03 Illegal Data Value`
@@ -675,7 +678,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `138 passed`
+- `145 passed`
 
 Abgedeckt sind bisher:
 
@@ -694,7 +697,8 @@ Abgedeckt sind bisher:
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
-- `inverter_block`-Slices mit gemeinsamer read-only Status-/Alarmmatrix,
+- `inverter_block`-Slices mit Status-/Alarmmatrix, Write-Pfaden fuer
+  `block_enable_request`, `block_power_limit_pct_x10`, `block_reset_request`,
   korrekter Unit-Differenzierung und lokaler Comm-Loss-Sicht
 - `weather_station`-Slice mit Fallback auf `fixture.weather`, abgeleiteter
   Confidence-Sicht und strikt read-only Verhalten

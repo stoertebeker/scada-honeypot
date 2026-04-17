@@ -362,39 +362,143 @@ def test_unit_11_and_13_fc03_return_distinct_inverter_identity_and_status(runnin
     assert any(event.asset_id == "invb-03" and event.requested_value["register_start"] == 40100 for event in events)
 
 
-def test_unit_12_fc06_rejects_write_to_current_read_only_slice(running_service) -> None:
+def test_unit_12_fc06_can_disable_and_reenable_block(running_service) -> None:
     service, store = running_service
 
-    rejected_response = send_request(
+    disable_response = send_request(
         service.address,
         transaction_id=43,
         unit_id=12,
         function_code=WRITE_SINGLE_REGISTER,
-        body=pack(">HH", 199, 1),
+        body=pack(">HH", 199, 0),
     )
-    readback_response = send_request(
+    disabled_setpoint_response = send_request(
         service.address,
         transaction_id=44,
         unit_id=12,
         function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 199, 3),
+    )
+    disabled_status_response = send_request(
+        service.address,
+        transaction_id=45,
+        unit_id=12,
+        function_code=READ_HOLDING_REGISTERS,
         body=pack(">HH", 99, 12),
     )
+    enable_response = send_request(
+        service.address,
+        transaction_id=46,
+        unit_id=12,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 199, 1),
+    )
 
-    _, _, _, rejected_pdu = parse_response(rejected_response)
-    _, _, _, readback_pdu = parse_response(readback_response)
+    _, _, _, disable_pdu = parse_response(disable_response)
+    _, _, _, disabled_setpoint_pdu = parse_response(disabled_setpoint_response)
+    _, _, _, disabled_status_pdu = parse_response(disabled_status_response)
+    _, _, _, enable_pdu = parse_response(enable_response)
     events = store.fetch_events()
-    rejected_event = next(
+    disable_protocol_event = next(
         event
         for event in events
-        if event.action == "fc06"
-        and event.result == "rejected"
+        if event.event_type == "protocol.modbus.single_register_write"
         and event.asset_id == "invb-02"
         and event.requested_value["register_start"] == 40200
     )
+    disable_process_event = next(event for event in events if event.action == "set_block_enable_request" and event.requested_value == 0)
+    enable_process_event = next(
+        event
+        for event in events
+        if event.action == "set_block_enable_request" and event.requested_value == 1
+    )
 
-    assert rejected_pdu == bytes([WRITE_SINGLE_REGISTER | 0x80, ILLEGAL_DATA_ADDRESS])
-    assert unpack(">12H", readback_pdu[2:]) == (0, 0, 0, 1000, 0, 1920, 0, 0, 0, 0, 0, 0)
-    assert rejected_event.error_code == "modbus_exception_02"
+    assert unpack(">BHH", disable_pdu) == (WRITE_SINGLE_REGISTER, 199, 0)
+    assert unpack(">3H", disabled_setpoint_pdu[2:]) == (0, 1000, 0)
+    assert unpack(">12H", disabled_status_pdu[2:]) == (1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1)
+    assert unpack(">BHH", enable_pdu) == (WRITE_SINGLE_REGISTER, 199, 1)
+    assert disable_protocol_event.previous_value == 1
+    assert disable_protocol_event.resulting_value == 0
+    assert disable_protocol_event.correlation_id == disable_process_event.correlation_id
+    assert enable_process_event.resulting_state["status"] == "online"
+
+
+def test_unit_12_fc16_updates_block_limit_and_reset_clears_comm_loss(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
+    store = SQLiteEventStore(tmp_path / "tmp" / "inverter-control.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(comm_loss_snapshot.start_time))
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(comm_loss_snapshot, event_recorder=recorder),
+        bind_host="127.0.0.1",
+        port=0,
+        event_recorder=recorder,
+    ).start_in_thread()
+
+    try:
+        limit_response = send_request(
+            service.address,
+            transaction_id=47,
+            unit_id=12,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            body=pack(">HHBH", 200, 1, 2, 500),
+        )
+        setpoint_response = send_request(
+            service.address,
+            transaction_id=48,
+            unit_id=12,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 199, 3),
+        )
+        status_response = send_request(
+            service.address,
+            transaction_id=49,
+            unit_id=12,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 99, 12),
+        )
+        reset_response = send_request(
+            service.address,
+            transaction_id=50,
+            unit_id=12,
+            function_code=WRITE_MULTIPLE_REGISTERS,
+            body=pack(">HHBH", 201, 1, 2, 1),
+        )
+        alarm_response = send_request(
+            service.address,
+            transaction_id=51,
+            unit_id=12,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 299, 6),
+        )
+    finally:
+        service.stop()
+
+    _, _, _, limit_pdu = parse_response(limit_response)
+    _, _, _, setpoint_pdu = parse_response(setpoint_response)
+    _, _, _, status_pdu = parse_response(status_response)
+    _, _, _, reset_pdu = parse_response(reset_response)
+    _, _, _, alarm_pdu = parse_response(alarm_response)
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    protocol_limit_event = next(
+        event
+        for event in events
+        if event.event_type == "protocol.modbus.multiple_register_write"
+        and event.requested_value["register_start"] == 40201
+    )
+    process_limit_event = next(event for event in events if event.action == "set_block_power_limit")
+    process_reset_event = next(event for event in events if event.action == "block_reset_request")
+    cleared_alert = next(alert for alert in alerts if alert.alarm_code == "COMM_LOSS_INVERTER_BLOCK" and alert.state == "cleared")
+
+    assert unpack(">BHH", limit_pdu) == (WRITE_MULTIPLE_REGISTERS, 200, 1)
+    assert unpack(">3H", setpoint_pdu[2:]) == (1, 500, 0)
+    assert unpack(">12H", status_pdu[2:]) == (2, 2, 2, 1000, 0, 960, 0, 0, 0, 0, 0, 1)
+    assert unpack(">BHH", reset_pdu) == (WRITE_MULTIPLE_REGISTERS, 201, 1)
+    assert unpack(">6H", alarm_pdu[2:]) == (0, 0, 0, 0, 0, 0)
+    assert protocol_limit_event.correlation_id == process_limit_event.correlation_id
+    assert process_reset_event.resulting_state["communication_state"] == "healthy"
+    assert cleared_alert.asset_id == "invb-02"
 
 
 def test_unit_12_reflects_comm_loss_in_status_and_alarm_block(tmp_path: Path) -> None:

@@ -91,6 +91,46 @@ def test_comm_loss_marks_target_block_stale_without_zeroing_site_power() -> None
     assert degraded_snapshot.active_alarm_codes == ("COMM_LOSS_INVERTER_BLOCK",)
 
 
+def test_block_enable_request_zeroes_target_block_and_reduces_site_power() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    disabled_snapshot = simulator.apply_block_enable_request(
+        snapshot,
+        asset_id="invb-02",
+        block_enable_request=False,
+        block_power_limit_pct=100,
+    )
+
+    disabled_block = next(block for block in disabled_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    assert disabled_block.status == "offline"
+    assert disabled_block.availability_pct == 0
+    assert disabled_block.block_power_kw == pytest.approx(0.0)
+    assert disabled_snapshot.site.availability_state == "partially_available"
+    assert disabled_snapshot.site.plant_power_mw == pytest.approx(3.88)
+    assert disabled_snapshot.revenue_meter.export_power_kw == pytest.approx(3880.0)
+
+
+def test_block_reset_restores_comm_loss_block_without_forcing_plant_mode() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    degraded_snapshot = simulator.lose_block_communications(snapshot, asset_id="invb-02")
+    reset_snapshot = simulator.reset_block(
+        degraded_snapshot,
+        asset_id="invb-02",
+        block_enable_request=True,
+        block_power_limit_pct=50,
+    )
+
+    reset_block = next(block for block in reset_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    assert reset_block.status == "online"
+    assert reset_block.communication_state == "healthy"
+    assert reset_block.block_power_kw == pytest.approx(960.0)
+    assert reset_snapshot.site.operating_mode == "normal"
+    assert reset_snapshot.alarm_by_code("COMM_LOSS_INVERTER_BLOCK").state == "cleared"
+
+
 def test_acknowledge_alarm_keeps_alarm_active_until_condition_clears() -> None:
     snapshot = build_snapshot()
     simulator = PlantSimulator.from_snapshot(snapshot)
@@ -222,3 +262,35 @@ def test_comm_loss_records_system_event_and_degraded_block_state(tmp_path) -> No
     assert site_state["communications_health"] == "degraded"
     assert alerts[0].alarm_code == "COMM_LOSS_INVERTER_BLOCK"
     assert alerts[0].state == "active_unacknowledged"
+
+
+def test_block_power_limit_and_reset_record_process_events(tmp_path) -> None:
+    snapshot = build_snapshot()
+    simulator, store = build_recording_simulator(snapshot, tmp_path)
+
+    limited_snapshot = simulator.apply_block_power_limit(
+        snapshot,
+        asset_id="invb-02",
+        block_enable_request=True,
+        block_power_limit_pct=50,
+    )
+    degraded_snapshot = simulator.lose_block_communications(limited_snapshot, asset_id="invb-02")
+    simulator.reset_block(
+        degraded_snapshot,
+        asset_id="invb-02",
+        block_enable_request=True,
+        block_power_limit_pct=50,
+    )
+
+    events = store.fetch_events()
+    alerts = store.fetch_alerts()
+    block_state = next(block for block in store.fetch_current_state("inverter_blocks") if block["asset_id"] == "invb-02")
+    power_limit_event = next(event for event in events if event.action == "set_block_power_limit")
+    reset_event = next(event for event in events if event.action == "block_reset_request")
+    cleared_alert = next(alert for alert in alerts if alert.alarm_code == "COMM_LOSS_INVERTER_BLOCK" and alert.state == "cleared")
+
+    assert power_limit_event.resulting_value == 50
+    assert power_limit_event.resulting_state["block_power_kw"] == pytest.approx(960.0)
+    assert reset_event.resulting_state["communication_state"] == "healthy"
+    assert block_state["block_power_kw"] == pytest.approx(960.0)
+    assert cleared_alert.state == "cleared"

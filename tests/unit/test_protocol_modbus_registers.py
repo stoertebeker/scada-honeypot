@@ -58,6 +58,14 @@ def test_unit_11_and_13_identity_and_status_blocks_distinguish_inverter_blocks()
     assert unit_13_status.values == (0, 0, 0, 1000, 0, 1945, 0, 0, 0, 0, 0, 0)
 
 
+def test_unit_12_setpoint_block_defaults_to_enabled_and_unlimited() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    result = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
+
+    assert result.values == (1, 1000, 0)
+
+
 def test_unit_12_comm_loss_sets_local_alarm_count_and_alarm_block() -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
@@ -198,16 +206,74 @@ def test_fc16_rejects_invalid_plant_mode_request_values() -> None:
     assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE
 
 
-def test_unit_12_rejects_any_write_in_current_read_only_slice() -> None:
+def test_unit_12_fc06_disable_and_reenable_updates_block_state() -> None:
     register_map = ReadOnlyRegisterMap(build_snapshot())
 
-    with pytest.raises(ModbusRegisterError) as fc06_exc:
-        register_map.write_single_register(unit_id=12, start_offset=199, value=1)
-    with pytest.raises(ModbusRegisterError) as fc16_exc:
-        register_map.write_multiple_registers(unit_id=12, start_offset=199, values=(1,))
+    disable_result = register_map.write_single_register(unit_id=12, start_offset=199, value=0)
+    disabled_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
+    disabled_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    reenable_result = register_map.write_single_register(unit_id=12, start_offset=199, value=1)
+    reenabled_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
+    reenabled_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
 
-    assert fc06_exc.value.exception_code == ILLEGAL_DATA_ADDRESS
-    assert fc16_exc.value.exception_code == ILLEGAL_DATA_ADDRESS
+    assert disable_result.register_address == 40200
+    assert disable_result.previous_value == 1
+    assert disable_result.resulting_value == 0
+    assert disable_result.resulting_state["status"] == "offline"
+    assert disable_result.resulting_state["block_power_kw"] == pytest.approx(0.0)
+    assert disabled_setpoints.values == (0, 1000, 0)
+    assert disabled_status.values[0:4] == (1, 1, 1, 0)
+    assert disabled_status.values[5] == 0
+    assert reenable_result.previous_value == 0
+    assert reenable_result.resulting_value == 1
+    assert reenable_result.resulting_state["status"] == "online"
+    assert reenabled_setpoints.values == (1, 1000, 0)
+    assert reenabled_status.values[0:4] == (0, 0, 0, 1000)
+    assert reenabled_status.values[5] == 1920
+
+
+def test_unit_12_fc16_updates_power_limit_and_reset_clears_comm_loss() -> None:
+    snapshot = build_snapshot()
+    comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
+    register_map = ReadOnlyRegisterMap(comm_loss_snapshot)
+
+    limit_result = register_map.write_multiple_registers(unit_id=12, start_offset=200, values=(500,))
+    limited_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
+    limited_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    reset_result = register_map.write_multiple_registers(unit_id=12, start_offset=201, values=(1,))
+    reset_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
+    reset_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    reset_alarm = register_map.read_holding_registers(unit_id=12, start_offset=299, quantity=6)
+
+    assert limit_result.start_register_address == 40201
+    assert limit_result.previous_values == (1000,)
+    assert limit_result.resulting_values == (500,)
+    assert limit_result.resulting_state["block_power_limit_pct"] == pytest.approx(50.0)
+    assert limited_setpoints.values == (1, 500, 0)
+    assert limited_status.values[5] == 960
+    assert reset_result.start_register_address == 40202
+    assert reset_result.previous_values == (0,)
+    assert reset_result.resulting_values == (0,)
+    assert reset_result.resulting_state["communication_state"] == "healthy"
+    assert reset_setpoints.values == (1, 500, 0)
+    assert reset_status.values[0:4] == (0, 0, 0, 1000)
+    assert reset_status.values[5] == 960
+    assert reset_alarm.values == (0, 0, 0, 0, 0, 0)
+
+
+def test_unit_12_rejects_invalid_inverter_write_values() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    with pytest.raises(ModbusRegisterError) as enable_exc:
+        register_map.write_single_register(unit_id=12, start_offset=199, value=2)
+    with pytest.raises(ModbusRegisterError) as limit_exc:
+        register_map.write_single_register(unit_id=12, start_offset=200, value=1001)
+    with pytest.raises(ModbusRegisterError) as reset_exc:
+        register_map.write_multiple_registers(unit_id=12, start_offset=201, values=(2,))
+
+    assert enable_exc.value.exception_code == ILLEGAL_DATA_VALUE
+    assert limit_exc.value.exception_code == ILLEGAL_DATA_VALUE
+    assert reset_exc.value.exception_code == ILLEGAL_DATA_VALUE
 
 
 def test_unit_21_rejects_any_write_in_read_only_slice() -> None:
