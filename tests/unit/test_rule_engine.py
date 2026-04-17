@@ -5,8 +5,10 @@ import pytest
 from honeypot.event_core.models import AlertRecord, EventRecord
 from honeypot.rule_engine import (
     COMM_LOSS_ALERT_CODE,
+    DEFAULT_CAPACITY_MW,
     GRID_PATH_UNAVAILABLE_ALERT_CODE,
     LOGIN_FAILURE_THRESHOLD,
+    LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
     REPEATED_LOGIN_FAILURE_ALERT_CODE,
     RuleContext,
@@ -50,6 +52,31 @@ def build_event(
         tags=tags,
         alarm_code=alarm_code,
     )
+
+
+def build_low_output_state(
+    *,
+    plant_power_mw: float,
+    irradiance_w_m2: int = 892,
+    plant_power_limit_pct: float = 100,
+    breaker_state: str = "closed",
+    export_path_available: bool = True,
+    alarms: tuple[dict[str, str], ...] = (),
+) -> dict[str, object]:
+    return {
+        "site": {
+            "plant_power_mw": plant_power_mw,
+            "plant_power_limit_pct": plant_power_limit_pct,
+            "breaker_state": breaker_state,
+        },
+        "weather_station": {
+            "irradiance_w_m2": irradiance_w_m2,
+        },
+        "grid_interconnect": {
+            "export_path_available": export_path_available,
+        },
+        "alarms": alarms,
+    }
 
 
 def test_rule_engine_registers_rules_once_and_rejects_duplicate_ids() -> None:
@@ -113,6 +140,7 @@ def test_default_v1_registers_documented_initial_rules() -> None:
         "successful_setpoint_change",
         "breaker_open",
         "grid_path_unavailable",
+        "low_site_output_unexpected",
         "inverter_comm_loss",
         "multi_block_unavailable",
     )
@@ -247,6 +275,109 @@ def test_grid_path_unavailable_rule_allows_re_raise_after_clear() -> None:
     )
 
     assert {alert.alarm_code for alert in derived_alerts} == {"BREAKER_OPEN", GRID_PATH_UNAVAILABLE_ALERT_CODE}
+
+
+def test_low_site_output_rule_derives_follow_up_alert_for_large_shortfall() -> None:
+    engine = RuleEngine.default_v1(capacity_mw=DEFAULT_CAPACITY_MW, low_output_threshold_pct=35)
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="process.setpoint.block_enable_request_changed",
+            action="set_block_enable_request",
+            asset_id="invb-02",
+            resulting_value=0,
+            tags=("control-path", "inverter-block", "enable"),
+        ),
+        context=RuleContext(current_state=build_low_output_state(plant_power_mw=1.9)),
+    )
+
+    low_output_alert = next(
+        alert for alert in derived_alerts if alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE
+    )
+
+    assert {alert.alarm_code for alert in derived_alerts} == {
+        SETPOINT_ALERT_CODE,
+        LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+    }
+    assert low_output_alert.severity == "high"
+    assert low_output_alert.asset_id == SITE_AGGREGATE_ASSET_ID
+    assert low_output_alert.message == "Parkleistung deutlich unter erwarteter Verfuegbarkeit"
+
+
+def test_low_site_output_rule_skips_breaker_and_curtailment_states() -> None:
+    engine = RuleEngine.default_v1(capacity_mw=DEFAULT_CAPACITY_MW, low_output_threshold_pct=35)
+
+    breaker_alerts = engine.evaluate(
+        build_event(
+            event_type="process.breaker.state_changed",
+            action="breaker_open_request",
+            asset_id="grid-01",
+            resulting_value="open",
+            tags=("control-path", "grid", "breaker"),
+        ),
+        context=RuleContext(
+            current_state=build_low_output_state(
+                plant_power_mw=0.0,
+                breaker_state="open",
+                export_path_available=False,
+            )
+        ),
+    )
+    curtailed_alerts = engine.evaluate(
+        build_event(
+            event_type="process.setpoint.curtailment_changed",
+            action="set_active_power_limit",
+            asset_id="ppc-01",
+            resulting_value=60,
+            tags=("control-path", "ppc", "curtailment"),
+        ),
+        context=RuleContext(
+            current_state=build_low_output_state(
+                plant_power_mw=3.48,
+                plant_power_limit_pct=60,
+                alarms=(
+                    {"code": "PLANT_CURTAILED", "state": "active_unacknowledged"},
+                ),
+            )
+        ),
+    )
+
+    assert not any(alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE for alert in breaker_alerts)
+    assert not any(alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE for alert in curtailed_alerts)
+
+
+def test_low_site_output_rule_clears_follow_up_alert_after_recovery() -> None:
+    engine = RuleEngine.default_v1(capacity_mw=DEFAULT_CAPACITY_MW, low_output_threshold_pct=35)
+    existing_alert = AlertRecord(
+        alert_id="alt_low_output_active",
+        event_id="evt_low_output_active",
+        correlation_id="corr_low_output_active",
+        alarm_code=LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+        severity="high",
+        state="active_unacknowledged",
+        component="plant-sim",
+        asset_id=SITE_AGGREGATE_ASSET_ID,
+        message="Parkleistung deutlich unter erwarteter Verfuegbarkeit",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="process.control.block_reset_requested",
+            action="block_reset_request",
+            asset_id="invb-02",
+            resulting_value="applied",
+            tags=("control-path", "inverter-block", "reset"),
+        ),
+        context=RuleContext(
+            current_state=build_low_output_state(plant_power_mw=5.8),
+            alert_history=(existing_alert,),
+        ),
+    )
+
+    assert len(derived_alerts) == 1
+    assert derived_alerts[0].alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE
+    assert derived_alerts[0].state == "cleared"
 
 
 def test_inverter_comm_loss_rule_derives_alert_for_lost_block_event() -> None:

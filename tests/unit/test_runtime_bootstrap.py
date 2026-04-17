@@ -61,6 +61,7 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
         "successful_setpoint_change",
         "breaker_open",
         "grid_path_unavailable",
+        "low_site_output_unexpected",
         "inverter_comm_loss",
         "multi_block_unavailable",
     )

@@ -120,6 +120,9 @@ Fuer V1 wird festgelegt:
   - `BREAKER_OPEN`
   - `GRID_PATH_UNAVAILABLE` als kritischer Folge-Alert bei sichtbarem
     Exportpfadverlust
+  - `LOW_SITE_OUTPUT_UNEXPECTED` als hoher Folge-Alert, wenn die Parkleistung
+    trotz geschlossenem Breaker, verfuegbarem Exportpfad und ohne aktive
+    Curtailment deutlich unter der Einstrahlungserwartung liegt
   - `COMM_LOSS_INVERTER_BLOCK`
   - `MULTI_BLOCK_UNAVAILABLE` als kritischer Folge-Alert beim zweiten
     gleichzeitigen Block-Kommunikationsverlust

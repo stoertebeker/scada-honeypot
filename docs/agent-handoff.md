@@ -700,7 +700,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `175 passed`
+- `180 passed`
 
 Abgedeckt sind bisher:
 
@@ -715,7 +715,9 @@ Abgedeckt sind bisher:
 - `JSONL`-Archivpfad fuer Eventanalyse
 - minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer wiederholte
   Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`, den
-  kritischen Grid-Folge-Alert `GRID_PATH_UNAVAILABLE`,
+  kritischen Grid-Folge-Alert `GRID_PATH_UNAVAILABLE`, den hohen Folge-Alert
+  `LOW_SITE_OUTPUT_UNEXPECTED` bei deutlicher Minderleistung ohne Breaker-
+  oder Curtailment-Erklaerung,
   `COMM_LOSS_INVERTER_BLOCK` und den kritischen Folge-Alert
   `MULTI_BLOCK_UNAVAILABLE` beim zweiten unterschiedlichen aktiven
   Block-Comm-Loss
@@ -750,7 +752,7 @@ Abgedeckt sind bisher:
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
   und Retry-Backoff auf dem lokalen SQLite-Store
-- lokaler Runner-Hintergrundbetrieb fuer Webhook- und Telegram-Pfad ohne
+- lokaler Runner-Hintergrundbetrieb fuer Webhook-, SMTP- und Telegram-Pfad ohne
   manuelles `drain_once()` im Runtime-Slice
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut und
   Exporter-Ausfall ohne sichtbare Seiteneffekte
@@ -795,24 +797,24 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt die naechste Alert-Folgeregel entlang der sichtbaren Bedienpfade ergaenzen
-2. danach Release-Gates fuer neue Alert-/Exporter-Pfade nachziehen
+1. jetzt Release-Gates fuer neue Alert-/Exporter-Pfade nachziehen
+2. dabei Duplicate-/Suppressionschutz fuer neue Folge-Alerts und ruhige SMTP-Fehlerpfade absichern
 3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- `LOW_SITE_OUTPUT_UNEXPECTED` aus vorhandener Site-/Weather-Wahrheit
-  schwellwertbasiert ableiten, ohne Breaker- oder Curtailment-Faelle falsch zu
-  alarmieren
-- fokussierte Tests fuer Re-raise, Clear und ruhige Outbox-Ableitung
+- Release-Gates fuer `GRID_PATH_UNAVAILABLE`, `LOW_SITE_OUTPUT_UNEXPECTED`
+  und ruhige `SMTP`-Fehlerpfade nachziehen
+- fokussierte Integrations-Tests gegen Alert-Flooding, Outbox-Retry und ruhige
+  Client-Pfade
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese Gates dauerhaft gruen bleiben
 
 Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
-- keine Exporter oder externe Auslieferung vorziehen, bevor die
-  Rule-Engine-Grundlage steht
+- keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
+  Release-Gates fuer die neuen Folge-Alerts dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 

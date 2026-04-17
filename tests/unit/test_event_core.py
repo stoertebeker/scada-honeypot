@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 from honeypot.event_core import EventRecorder
 from honeypot.rule_engine import (
     COMM_LOSS_ALERT_CODE,
+    DEFAULT_CAPACITY_MW,
     GRID_PATH_UNAVAILABLE_ALERT_CODE,
+    LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
     RuleEngine,
     SETPOINT_ALERT_CODE,
@@ -19,6 +21,31 @@ def build_recorder(tmp_path, *, archive_path=None, rule_engine=None):
     store = SQLiteEventStore(tmp_path / "tmp" / "honeypot-events.db")
     archive = None if archive_path is None else JsonlEventArchive(archive_path)
     return EventRecorder(store=store, clock=clock, archive=archive, rule_engine=rule_engine)
+
+
+def build_low_output_state(
+    *,
+    plant_power_mw: float,
+    irradiance_w_m2: int = 892,
+    plant_power_limit_pct: float = 100,
+    breaker_state: str = "closed",
+    export_path_available: bool = True,
+    alarms=(),
+):
+    return {
+        "site": {
+            "plant_power_mw": plant_power_mw,
+            "plant_power_limit_pct": plant_power_limit_pct,
+            "breaker_state": breaker_state,
+        },
+        "weather_station": {
+            "irradiance_w_m2": irradiance_w_m2,
+        },
+        "grid_interconnect": {
+            "export_path_available": export_path_available,
+        },
+        "alarms": list(alarms),
+    }
 
 
 def test_build_event_normalizes_required_contract_fields(tmp_path) -> None:
@@ -542,6 +569,91 @@ def test_record_re_raises_grid_path_follow_up_after_cleared_history(tmp_path) ->
 
     assert len(grid_path_alerts) == 1
     assert grid_path_alerts[0].state == "active_unacknowledged"
+
+
+def test_record_derives_low_output_follow_up_alert_without_breaker_or_curtailment(tmp_path) -> None:
+    recorder = build_recorder(
+        tmp_path,
+        rule_engine=RuleEngine.default_v1(capacity_mw=DEFAULT_CAPACITY_MW, low_output_threshold_pct=35),
+    )
+    event = recorder.build_event(
+        event_type="process.setpoint.block_enable_request_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="set_block_enable_request",
+        result="accepted",
+        resulting_value=0,
+        tags=("control-path", "inverter-block", "enable"),
+    )
+
+    recorded = recorder.record(
+        event,
+        current_state_updates=build_low_output_state(plant_power_mw=1.9),
+        outbox_targets=("webhook",),
+    )
+    alerts = recorder.store.fetch_alerts()
+    outbox_entries = recorder.store.fetch_outbox_entries()
+
+    low_output_alert = next(alert for alert in recorded.alerts if alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE)
+
+    assert {alert.alarm_code for alert in recorded.alerts} == {
+        SETPOINT_ALERT_CODE,
+        LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+    }
+    assert low_output_alert.state == "active_unacknowledged"
+    assert len(alerts) == 2
+    assert len(outbox_entries) == 2
+
+
+def test_record_clears_low_output_follow_up_after_site_recovers(tmp_path) -> None:
+    recorder = build_recorder(
+        tmp_path,
+        rule_engine=RuleEngine.default_v1(capacity_mw=DEFAULT_CAPACITY_MW, low_output_threshold_pct=35),
+    )
+    first_event = recorder.build_event(
+        event_type="process.setpoint.block_enable_request_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="set_block_enable_request",
+        result="accepted",
+        event_id="evt_low_output_active",
+        correlation_id="corr_low_output_active",
+        resulting_value=0,
+        tags=("control-path", "inverter-block", "enable"),
+    )
+    cleared_event = first_event.model_copy(
+        update={
+            "event_id": "evt_low_output_cleared",
+            "correlation_id": "corr_low_output_cleared",
+            "event_type": "process.control.block_reset_requested",
+            "action": "block_reset_request",
+            "resulting_value": "applied",
+        }
+    )
+
+    recorder.record(first_event, current_state_updates=build_low_output_state(plant_power_mw=1.9), outbox_targets=("webhook",))
+    cleared_record = recorder.record(
+        cleared_event,
+        current_state_updates=build_low_output_state(plant_power_mw=5.8),
+        outbox_targets=("webhook",),
+    )
+    alerts = recorder.store.fetch_alerts()
+
+    low_output_alerts = tuple(alert for alert in alerts if alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE)
+
+    assert len(cleared_record.alerts) == 1
+    assert cleared_record.alert is not None
+    assert cleared_record.alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE
+    assert cleared_record.alert.state == "cleared"
+    assert len(low_output_alerts) == 2
 
 
 def test_record_suppresses_duplicate_multi_block_follow_up_while_aggregate_alert_is_active(tmp_path) -> None:

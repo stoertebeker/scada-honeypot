@@ -124,7 +124,11 @@ def build_local_runtime(
         store=event_store,
         clock=SystemClock(),
         archive=(JsonlEventArchive(config.jsonl_archive_path) if config.jsonl_archive_enabled else None),
-        rule_engine=RuleEngine.default_v1(min_severity=config.alert_min_severity),
+        rule_engine=RuleEngine.default_v1(
+            min_severity=config.alert_min_severity,
+            capacity_mw=config.capacity_mw,
+            low_output_threshold_pct=config.alarm_threshold_low_output_pct,
+        ),
     )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
     hmi_app = create_hmi_app(

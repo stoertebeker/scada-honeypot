@@ -13,9 +13,12 @@ REPEATED_LOGIN_FAILURE_ALERT_CODE = "REPEATED_LOGIN_FAILURE"
 COMM_LOSS_ALERT_CODE = "COMM_LOSS_INVERTER_BLOCK"
 MULTI_BLOCK_UNAVAILABLE_ALERT_CODE = "MULTI_BLOCK_UNAVAILABLE"
 GRID_PATH_UNAVAILABLE_ALERT_CODE = "GRID_PATH_UNAVAILABLE"
+LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE = "LOW_SITE_OUTPUT_UNEXPECTED"
 SITE_AGGREGATE_ASSET_ID = "site"
 LOGIN_FAILURE_THRESHOLD = 3
 MULTI_BLOCK_UNAVAILABLE_THRESHOLD = 2
+DEFAULT_CAPACITY_MW = 6.5
+DEFAULT_LOW_OUTPUT_THRESHOLD_PCT = 35
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,6 +235,137 @@ class GridPathUnavailableRule:
         return latest_matching_alert
 
 
+@dataclass(frozen=True, slots=True)
+class LowSiteOutputUnexpectedRule:
+    """Leitet einen Folge-Alert ab, wenn die Parkleistung deutlich unter der Erwartung liegt."""
+
+    capacity_mw: float = DEFAULT_CAPACITY_MW
+    threshold_pct: int = DEFAULT_LOW_OUTPUT_THRESHOLD_PCT
+    aggregate_asset_id: str = SITE_AGGREGATE_ASSET_ID
+    rule_id: str = "low_site_output_unexpected"
+
+    def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
+        if event.category not in {"process", "system"}:
+            return ()
+
+        site_state = context.current_state.get("site", {})
+        weather_state = context.current_state.get("weather_station", {})
+        grid_state = context.current_state.get("grid_interconnect", {})
+        alarms_state = context.current_state.get("alarms", ())
+        if not isinstance(site_state, Mapping) or not isinstance(weather_state, Mapping):
+            return ()
+
+        actual_power_mw = self._as_float(site_state.get("plant_power_mw"))
+        irradiance_w_m2 = self._as_float(weather_state.get("irradiance_w_m2"))
+        if actual_power_mw is None or irradiance_w_m2 is None:
+            return ()
+
+        latest_alert = self._latest_matching_alert(event=event, context=context)
+        condition_active = self._is_low_output_condition_active(
+            actual_power_mw=actual_power_mw,
+            irradiance_w_m2=irradiance_w_m2,
+            site_state=site_state,
+            grid_state=grid_state,
+            alarms_state=alarms_state,
+        )
+        if condition_active:
+            return (
+                DerivedAlert(
+                    alarm_code=LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+                    severity="high",
+                    message=self._message,
+                    asset_id=self.aggregate_asset_id,
+                ),
+            )
+
+        if latest_alert is None or latest_alert.state == "cleared":
+            return ()
+        return (
+            DerivedAlert(
+                alarm_code=LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+                severity="high",
+                state="cleared",
+                message=self._message,
+                asset_id=self.aggregate_asset_id,
+            ),
+        )
+
+    @property
+    def _message(self) -> str:
+        return "Parkleistung deutlich unter erwarteter Verfuegbarkeit"
+
+    def _is_low_output_condition_active(
+        self,
+        *,
+        actual_power_mw: float,
+        irradiance_w_m2: float,
+        site_state: Mapping[str, Any],
+        grid_state: Mapping[str, Any],
+        alarms_state: Any,
+    ) -> bool:
+        expected_power_mw = self.capacity_mw * (min(max(irradiance_w_m2, 0.0), 1000.0) / 1000.0)
+        if expected_power_mw <= 0:
+            return False
+        if self._has_explanatory_state(site_state=site_state, grid_state=grid_state, alarms_state=alarms_state):
+            return False
+
+        shortfall_pct = ((expected_power_mw - actual_power_mw) / expected_power_mw) * 100
+        return shortfall_pct >= self.threshold_pct
+
+    def _has_explanatory_state(
+        self,
+        *,
+        site_state: Mapping[str, Any],
+        grid_state: Mapping[str, Any],
+        alarms_state: Any,
+    ) -> bool:
+        if site_state.get("breaker_state") != "closed":
+            return True
+        if isinstance(grid_state, Mapping) and grid_state.get("export_path_available") is False:
+            return True
+        if self._has_active_alarm(alarms_state, "PLANT_CURTAILED"):
+            return True
+        plant_power_limit_pct = self._as_float(site_state.get("plant_power_limit_pct"))
+        return plant_power_limit_pct is not None and plant_power_limit_pct < 100
+
+    def _latest_matching_alert(
+        self,
+        *,
+        event: EventRecord,
+        context: RuleContext,
+    ) -> AlertRecord | None:
+        latest_matching_alert: AlertRecord | None = None
+        for alert in context.alert_history:
+            if (
+                alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE
+                and alert.component == event.component
+                and alert.asset_id == self.aggregate_asset_id
+                and alert.message == self._message
+            ):
+                latest_matching_alert = alert
+        return latest_matching_alert
+
+    def _has_active_alarm(self, alarms_state: Any, code: str) -> bool:
+        if not isinstance(alarms_state, (list, tuple)):
+            return False
+        for alarm in alarms_state:
+            if not isinstance(alarm, Mapping):
+                continue
+            if alarm.get("code") != code:
+                continue
+            if alarm.get("state") in {"active_unacknowledged", "active_acknowledged"}:
+                return True
+        return False
+
+    def _as_float(self, value: Any) -> float | None:
+        if isinstance(value, bool) or value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+
 @dataclass(slots=True)
 class RepeatedServiceLoginFailureRule:
     """Leitet ab der Schwellzahl wiederholter Login-Fehler einen Auth-Alert ab."""
@@ -278,12 +412,24 @@ class RuleEngine:
     _rules: dict[str, EventRule] = field(default_factory=dict, init=False, repr=False)
 
     @classmethod
-    def default_v1(cls, *, min_severity: AlertSeverity = "medium") -> "RuleEngine":
+    def default_v1(
+        cls,
+        *,
+        min_severity: AlertSeverity = "medium",
+        capacity_mw: float = DEFAULT_CAPACITY_MW,
+        low_output_threshold_pct: int = DEFAULT_LOW_OUTPUT_THRESHOLD_PCT,
+    ) -> "RuleEngine":
         engine = cls(min_severity=min_severity)
         engine.register(RepeatedServiceLoginFailureRule())
         engine.register(SuccessfulSetpointChangeRule())
         engine.register(BreakerOpenRule())
         engine.register(GridPathUnavailableRule())
+        engine.register(
+            LowSiteOutputUnexpectedRule(
+                capacity_mw=capacity_mw,
+                threshold_pct=low_output_threshold_pct,
+            )
+        )
         engine.register(InverterCommLossRule())
         engine.register(MultiBlockUnavailableRule())
         return engine

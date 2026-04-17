@@ -671,7 +671,9 @@ Fuer V1 festgezogen:
 - Exporter laufen im selben Prozess ueber entkoppelte Outbox-/Runner-Logik
 - erste Alert-Regeln sind wiederholte Login-Fehler, erfolgreiche
   Setpoint-Aenderung, `BREAKER_OPEN`, der kritische Grid-Folge-Alert
-  `GRID_PATH_UNAVAILABLE`, `COMM_LOSS_INVERTER_BLOCK` und der kritische
+  `GRID_PATH_UNAVAILABLE`, der hohe Folge-Alert
+  `LOW_SITE_OUTPUT_UNEXPECTED` bei deutlicher Minderleistung ohne Breaker- oder
+  Curtailment-Erklaerung, `COMM_LOSS_INVERTER_BLOCK` und der kritische
   Folge-Alert `MULTI_BLOCK_UNAVAILABLE` bei mehreren gleichzeitig aktiven
   Block-Kommunikationsverlusten
 
