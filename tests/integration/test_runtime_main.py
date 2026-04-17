@@ -120,6 +120,15 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
                 data={"plant_mode_request": "2"},
             )
             plant_mode_panel_response = client.get(plant_mode_response.headers["location"])
+            block_response = client.post(
+                "/service/panel/inverter-block",
+                data={
+                    "asset_id": "invb-02",
+                    "block_enable_request": "0",
+                    "block_power_limit_pct": "65.5",
+                },
+            )
+            block_panel_response = client.get(block_response.headers["location"])
             breaker_response = client.post(
                 "/service/panel/breaker",
                 data={"breaker_action": "open"},
@@ -138,6 +147,8 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
             "process.setpoint.curtailment_changed",
             "process.setpoint.reactive_power_target_changed",
             "process.setpoint.plant_mode_request_changed",
+            "process.setpoint.block_enable_request_changed",
+            "process.setpoint.block_power_limit_changed",
             "process.breaker.state_changed",
         }
     ]
@@ -153,15 +164,19 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
     assert plant_mode_response.status_code == 303
     assert plant_mode_panel_response.status_code == 200
     assert "Plant mode request updated successfully." in plant_mode_panel_response.text
+    assert block_response.status_code == 303
+    assert block_panel_response.status_code == 200
+    assert "Inverter block control updated successfully." in block_panel_response.text
     assert breaker_response.status_code == 303
     assert breaker_panel_response.status_code == 200
     assert "Breaker open request accepted." in breaker_panel_response.text
     assert runtime.modbus_service.register_map.snapshot.site.plant_power_mw == 0.0
     assert runtime.modbus_service.register_map.snapshot.site.reactive_power_setpoint == 0.25
     assert runtime.modbus_service.register_map.read_holding_registers(unit_id=1, start_offset=201, quantity=1).values == (2,)
+    assert runtime.modbus_service.register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=2).values == (0, 655)
     assert runtime.modbus_service.register_map.snapshot.grid_interconnect.breaker_state == "open"
-    assert len(control_events) == 4
-    assert len(process_events) == 4
+    assert len(control_events) == 5
+    assert len(process_events) == 6
     assert hmi_address is not None
     assert_port_closed(hmi_address)
 

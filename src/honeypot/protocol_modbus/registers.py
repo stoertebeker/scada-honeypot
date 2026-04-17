@@ -286,6 +286,79 @@ class ReadOnlyRegisterMap:
         except ModbusRegisterError as exc:
             raise ValueError(str(exc)) from exc
 
+    def get_block_enable_request(self, *, asset_id: str) -> int:
+        """Liest den aktuell gelatchten Enable-Request eines Inverter-Blocks."""
+
+        try:
+            unit_id = _unit_id_for_inverter_asset(asset_id)
+            with self._lock:
+                return self._current_setpoint_value(
+                    unit_id,
+                    UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET,
+                    snapshot=self._snapshot,
+                    plant_mode_request_override=self._plant_mode_request_override,
+                    block_enable_request_overrides=self._block_enable_request_overrides,
+                    block_power_limit_request_overrides=self._block_power_limit_request_overrides,
+                )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+    def get_block_power_limit_pct(self, *, asset_id: str) -> float:
+        """Liest das aktuell gelatchte Leistungslimit eines Inverter-Blocks."""
+
+        try:
+            unit_id = _unit_id_for_inverter_asset(asset_id)
+            with self._lock:
+                raw_limit = self._current_setpoint_value(
+                    unit_id,
+                    UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET,
+                    snapshot=self._snapshot,
+                    plant_mode_request_override=self._plant_mode_request_override,
+                    block_enable_request_overrides=self._block_enable_request_overrides,
+                    block_power_limit_request_overrides=self._block_power_limit_request_overrides,
+                )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+        return raw_limit / 10
+
+    def set_block_control_state(
+        self,
+        *,
+        asset_id: str,
+        block_enable_request: bool,
+        block_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterMultiWriteResult:
+        """Setzt Enable- und Leistungslimit eines Inverter-Blocks atomar ueber FC16."""
+
+        try:
+            return self.write_multiple_registers(
+                unit_id=_unit_id_for_inverter_asset(asset_id),
+                start_offset=UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET,
+                values=(1 if block_enable_request else 0, int(round(block_power_limit_pct * 10))),
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+    def request_block_reset(
+        self,
+        *,
+        asset_id: str,
+        event_context: SimulationEventContext | None = None,
+    ) -> RegisterWriteResult:
+        """Fordert den self-clearing Reset-Puls eines Inverter-Blocks ueber FC06 an."""
+
+        try:
+            return self.write_single_register(
+                unit_id=_unit_id_for_inverter_asset(asset_id),
+                start_offset=UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET,
+                value=1,
+                event_context=event_context,
+            )
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
     def read_holding_registers(
         self,
         *,
@@ -979,6 +1052,13 @@ def _inverter_block_for_unit(snapshot: PlantSnapshot, unit_id: int):
     if index < 0 or index >= len(snapshot.inverter_blocks):
         raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"unit_id {unit_id} ist im aktuellen Snapshot nicht verfuegbar")
     return snapshot.inverter_blocks[index]
+
+
+def _unit_id_for_inverter_asset(asset_id: str) -> int:
+    for unit_id in (11, 12, 13):
+        if ASSET_ID[unit_id] == asset_id:
+            return unit_id
+    raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"asset_id {asset_id} ist kein V1-Inverter-Block")
 
 
 def _is_block_disabled(block) -> bool:

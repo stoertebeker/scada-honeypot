@@ -137,6 +137,41 @@ def test_record_without_outbox_targets_still_persists_local_truth(tmp_path) -> N
     assert recorder.store.count_rows("outbox") == 0
 
 
+def test_fetch_events_preserves_insert_order_for_identical_timestamps(tmp_path) -> None:
+    recorder = build_recorder(tmp_path)
+    first_event = recorder.build_event(
+        event_type="process.setpoint.block_enable_request_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="set_block_enable_request",
+        result="accepted",
+        requested_value=0,
+    )
+    second_event = recorder.build_event(
+        event_type="protocol.modbus.single_register_write",
+        category="protocol",
+        severity="info",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="protocol-modbus",
+        asset_id="invb-02",
+        action="write_single_register",
+        result="accepted",
+        requested_value={"register_start": 40200},
+    )
+
+    recorder.record(first_event)
+    recorder.record(second_event)
+
+    events = recorder.store.fetch_events()
+
+    assert [event.event_id for event in events] == [first_event.event_id, second_event.event_id]
+
+
 def test_record_derives_rule_based_alert_and_outbox_when_configured(tmp_path) -> None:
     recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
     event = recorder.build_event(

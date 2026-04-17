@@ -63,8 +63,8 @@ Vorhanden sind:
 - `/alarms` zeigt jetzt Alarmcode, Kategorie, Severity, Asset-Bezug, Zustand, Ack-Status sowie First-Seen/Last-Changed aus derselben lokalen Eventspur wie die Fachlogik
 - `/trends` zeigt jetzt kurze synthetische Verlaufsspuren fuer Parkleistung, Leistungslimit, Einstrahlung, Exportleistung und Blockleistung je Inverter auf Basis derselben Baseline- und Snapshot-Wahrheit
 - eigene HMI-Fehlerseiten fuer `404` und `500` sind jetzt aktiv; sie zeigen keine Framework-Standardbilder und schreiben denselben Fehlerpfad in die lokale Eventspur
-- `/service/login` und `/service/panel` stehen jetzt mit serverseitiger Service-Session, `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten und schreibenden Bedienungen fuer Leistungsbegrenzung, Blindleistungsziel, `plant_mode_request` sowie Breaker Open/Close auf derselben Fachwirkung wie Modbus
-- Service-Bedienungen im Panel schreiben jetzt korrelierte HMI-Control-Events und triggern ueber denselben Shared-Truth-Pfad sichtbare Curtailment-, Blindleistungs- und Breaker-Wirkung; `plant_mode_request` bleibt dabei bewusst ein gelatchter Bedienwunsch wie in `Unit 1 / 40202`
+- `/service/login` und `/service/panel` stehen jetzt mit serverseitiger Service-Session, `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten und schreibenden Bedienungen fuer Leistungsbegrenzung, Blindleistungsziel, `plant_mode_request`, Inverter-Block-Enable/Limit/Reset sowie Breaker Open/Close auf derselben Fachwirkung wie Modbus
+- Service-Bedienungen im Panel schreiben jetzt korrelierte HMI-Control-Events und triggern ueber denselben Shared-Truth-Pfad sichtbare Curtailment-, Blindleistungs-, Inverter-Block- und Breaker-Wirkung; `plant_mode_request` bleibt dabei bewusst ein gelatchter Bedienwunsch wie in `Unit 1 / 40202`, Block-Reset bleibt ein self-clearing Puls wie in `Unit 11-13 / 40202`
 - HMI-Aufrufe und Service-Bedienungen schreiben jetzt eine saubere HTTP-/HMI-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main` bootstrapt jetzt `normal_operation`, `SQLiteEventStore`, den Modbus-Listener auf `127.0.0.1:1502` und die HMI auf `127.0.0.1:8080`
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
@@ -132,14 +132,14 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. restliche HMI-/Modbus-Servicepfade fuer weitere Setpoints und aktive Units schliessen
+1. weitere Exporter-Ziele, Runner-Hintergrundbetrieb und Rule-Engine-Feinschliff auf die jetzt geschlossenen Servicepfade ziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. restliche HMI-Servicepfade
-2. restliche Modbus-Write-Pfade
-3. weitere Exporter
-4. weitere Exporter und Runner-Hintergrundbetrieb
+1. weitere Ziel-Exporter
+2. weiterer Runner-Hintergrundbetrieb
+3. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade
+4. spaetere Erweiterungen jenseits des aktuellen V1-Service-Slices
 
 ## Beispielkonfiguration
 

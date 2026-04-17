@@ -264,6 +264,17 @@ class ServiceLoginViewModel:
 
 
 @dataclass(frozen=True, slots=True)
+class ServiceInverterControl:
+    asset_id: str
+    status_label: str
+    communication_label: str
+    power_label: str
+    enable_request_value: str
+    power_limit_pct_value: str
+    tone: str
+
+
+@dataclass(frozen=True, slots=True)
 class ServicePanelViewModel:
     page_title: str
     page_subtitle: str
@@ -281,6 +292,7 @@ class ServicePanelViewModel:
     breaker_state_label: str
     breaker_open_enabled: bool
     breaker_close_enabled: bool
+    inverter_controls: tuple[ServiceInverterControl, ...]
     metrics: tuple[OverviewMetric, ...]
     allowed_actions: tuple[str, ...]
 
@@ -313,6 +325,26 @@ class ServiceControlPort(Protocol):
         self,
         *,
         plant_mode_request: int,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
+
+    def get_block_enable_request(self, *, asset_id: str) -> int: ...
+
+    def get_block_power_limit_pct(self, *, asset_id: str) -> float: ...
+
+    def set_block_control_state(
+        self,
+        *,
+        asset_id: str,
+        block_enable_request: bool,
+        block_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
+
+    def request_block_reset(
+        self,
+        *,
+        asset_id: str,
         event_context: SimulationEventContext | None = None,
     ) -> Any: ...
 
@@ -829,6 +861,11 @@ def create_hmi_app(
             status_tone=status_tone,
             controls_available=service_controls is not None,
             plant_mode_request_value=plant_mode_request_value,
+            inverter_controls=_service_panel_inverter_controls(
+                snapshot=snapshot,
+                texts=texts,
+                service_controls=service_controls,
+            ),
         )
         response = templates.TemplateResponse(
             request=request,
@@ -1231,6 +1268,340 @@ def create_hmi_app(
             set_cookie=set_cookie,
             service_session=service_session,
             status_code="plant_mode_updated",
+        )
+
+    @app.post("/service/panel/inverter-block", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_inverter_block(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        before_snapshot = snapshot_provider()
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id="inverter-block",
+                action="set_block_control_state",
+                result="rejected",
+                requested_value={
+                    "asset_id": None,
+                    "block_enable_request": None,
+                    "block_power_limit_pct": None,
+                },
+                resulting_state={"controls_available": False},
+                message="Service inverter block control path unavailable",
+                tags=("service", "control", "inverter-block", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_unavailable",
+            )
+
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        asset_id = (form.get("asset_id", [""])[0]).strip()
+
+        try:
+            before_block = _require_inverter_block(before_snapshot, asset_id)
+            current_enable_request = service_controls.get_block_enable_request(asset_id=asset_id)
+            current_power_limit_pct = service_controls.get_block_power_limit_pct(asset_id=asset_id)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id or "inverter-block",
+                action="set_block_control_state",
+                result="rejected",
+                requested_value={
+                    "asset_id": asset_id,
+                    "block_enable_request": form.get("block_enable_request", [""])[0],
+                    "block_power_limit_pct": form.get("block_power_limit_pct", [""])[0],
+                },
+                resulting_state={"asset_id": asset_id},
+                message="Service inverter block control used an invalid asset id",
+                tags=("service", "control", "inverter-block", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        raw_enable_request = (form.get("block_enable_request", [""])[0]).strip()
+        raw_power_limit_pct = (form.get("block_power_limit_pct", [""])[0]).strip()
+        try:
+            block_enable_request_value = int(raw_enable_request)
+            if block_enable_request_value not in {0, 1}:
+                raise ValueError
+            block_power_limit_pct = float(raw_power_limit_pct)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id,
+                action="set_block_control_state",
+                result="rejected",
+                requested_value={
+                    "asset_id": asset_id,
+                    "block_enable_request": raw_enable_request,
+                    "block_power_limit_pct": raw_power_limit_pct,
+                },
+                previous_value={
+                    "block_enable_request": current_enable_request,
+                    "block_power_limit_pct": current_power_limit_pct,
+                },
+                resulting_state={
+                    "block_enable_request": current_enable_request,
+                    "block_power_limit_pct": current_power_limit_pct,
+                    "status": before_block.status,
+                    "communication_state": before_block.communication_state,
+                },
+                message="Service inverter block control request could not be parsed",
+                tags=("service", "control", "inverter-block", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        event_context = SimulationEventContext(
+            source_ip=source_ip,
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = service_controls.set_block_control_state(
+                asset_id=asset_id,
+                block_enable_request=bool(block_enable_request_value),
+                block_power_limit_pct=block_power_limit_pct,
+                event_context=event_context,
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id,
+                action="set_block_control_state",
+                result="rejected",
+                requested_value={
+                    "asset_id": asset_id,
+                    "block_enable_request": block_enable_request_value,
+                    "block_power_limit_pct": block_power_limit_pct,
+                },
+                previous_value={
+                    "block_enable_request": current_enable_request,
+                    "block_power_limit_pct": current_power_limit_pct,
+                },
+                resulting_state={
+                    "block_enable_request": current_enable_request,
+                    "block_power_limit_pct": current_power_limit_pct,
+                    "status": before_block.status,
+                    "communication_state": before_block.communication_state,
+                    "block_power_kw": before_block.block_power_kw,
+                },
+                message=f"Service inverter block control request rejected: {exc}",
+                tags=("service", "control", "inverter-block", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_rejected",
+            )
+
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action="set_block_control_state",
+            result="accepted",
+            requested_value={
+                "asset_id": asset_id,
+                "block_enable_request": block_enable_request_value,
+                "block_power_limit_pct": block_power_limit_pct,
+            },
+            previous_value={
+                "block_enable_request": current_enable_request,
+                "block_power_limit_pct": current_power_limit_pct,
+            },
+            resulting_value={
+                "asset_id": asset_id,
+                "block_enable_request": result.resulting_state.get("block_enable_request"),
+                "block_power_limit_pct": result.resulting_state.get("block_power_limit_pct"),
+            },
+            resulting_state=result.resulting_state,
+            message="Service inverter block control request accepted",
+            tags=("service", "control", "inverter-block", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            status_code="block_control_updated",
+        )
+
+    @app.post("/service/panel/inverter-block/reset", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_inverter_block_reset(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        before_snapshot = snapshot_provider()
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id="inverter-block",
+                action="block_reset_request",
+                result="rejected",
+                requested_value={"asset_id": None, "block_reset_request": None},
+                resulting_state={"controls_available": False},
+                message="Service inverter block reset path unavailable",
+                tags=("service", "control", "inverter-block", "reset", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_unavailable",
+            )
+
+        raw_body = (await request.body()).decode("utf-8")
+        form = parse_qs(raw_body, keep_blank_values=True)
+        asset_id = (form.get("asset_id", [""])[0]).strip()
+
+        try:
+            before_block = _require_inverter_block(before_snapshot, asset_id)
+            current_enable_request = service_controls.get_block_enable_request(asset_id=asset_id)
+            current_power_limit_pct = service_controls.get_block_power_limit_pct(asset_id=asset_id)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id or "inverter-block",
+                action="block_reset_request",
+                result="rejected",
+                requested_value={"asset_id": asset_id, "block_reset_request": 1},
+                resulting_state={"asset_id": asset_id},
+                message="Service inverter block reset used an invalid asset id",
+                tags=("service", "control", "inverter-block", "reset", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
+
+        event_context = SimulationEventContext(
+            source_ip=source_ip,
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = service_controls.request_block_reset(
+                asset_id=asset_id,
+                event_context=event_context,
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id,
+                action="block_reset_request",
+                result="rejected",
+                requested_value={"asset_id": asset_id, "block_reset_request": 1},
+                previous_value={
+                    "status": before_block.status,
+                    "communication_state": before_block.communication_state,
+                    "quality": before_block.quality,
+                },
+                resulting_state={
+                    "block_enable_request": current_enable_request,
+                    "block_power_limit_pct": current_power_limit_pct,
+                    "status": before_block.status,
+                    "communication_state": before_block.communication_state,
+                    "quality": before_block.quality,
+                },
+                message=f"Service inverter block reset request rejected: {exc}",
+                tags=("service", "control", "inverter-block", "reset", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_rejected",
+            )
+
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action="block_reset_request",
+            result="accepted",
+            requested_value={"asset_id": asset_id, "block_reset_request": 1},
+            previous_value={
+                "status": before_block.status,
+                "communication_state": before_block.communication_state,
+                "quality": before_block.quality,
+            },
+            resulting_value={"asset_id": asset_id, "block_reset_request": "pulse"},
+            resulting_state=result.resulting_state,
+            message="Service inverter block reset request accepted",
+            tags=("service", "control", "inverter-block", "reset", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            status_code="block_reset_requested",
         )
 
     @app.post("/service/panel/breaker", response_class=HTMLResponse, include_in_schema=False)
@@ -1871,6 +2242,7 @@ def build_service_panel_view_model(
     status_tone: str,
     controls_available: bool,
     plant_mode_request_value: int,
+    inverter_controls: tuple[ServiceInverterControl, ...],
 ) -> ServicePanelViewModel:
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
@@ -1917,15 +2289,45 @@ def build_service_panel_view_model(
         breaker_state_label=_enum_text(texts, snapshot.grid_interconnect.breaker_state),
         breaker_open_enabled=snapshot.grid_interconnect.breaker_state != "open",
         breaker_close_enabled=snapshot.grid_interconnect.breaker_state != "closed",
+        inverter_controls=inverter_controls,
         metrics=metrics,
         allowed_actions=(
             texts["service.action.power_limit"],
             texts["service.action.reactive_power"],
             texts["service.action.plant_mode"],
             texts["service.action.breaker"],
-            texts["service.action.block_enable_reset"],
+            texts["service.action.block_control"],
+            texts["service.action.block_reset"],
         ),
     )
+
+
+def _service_panel_inverter_controls(
+    *,
+    snapshot: PlantSnapshot,
+    texts: dict[str, str],
+    service_controls: ServiceControlPort | None,
+) -> tuple[ServiceInverterControl, ...]:
+    controls: list[ServiceInverterControl] = []
+    for block in snapshot.inverter_blocks:
+        if service_controls is None:
+            enable_request = 0 if block.status == "offline" and block.availability_pct == 0 else 1
+            power_limit_pct = 100.0
+        else:
+            enable_request = service_controls.get_block_enable_request(asset_id=block.asset_id)
+            power_limit_pct = service_controls.get_block_power_limit_pct(asset_id=block.asset_id)
+        controls.append(
+            ServiceInverterControl(
+                asset_id=block.asset_id,
+                status_label=_enum_text(texts, block.status),
+                communication_label=_enum_text(texts, block.communication_state),
+                power_label=_format_power_kw(block.block_power_kw),
+                enable_request_value=str(enable_request),
+                power_limit_pct_value=f"{power_limit_pct:.1f}",
+                tone=_tone_for_block(block.status, block.communication_state),
+            )
+        )
+    return tuple(controls)
 
 
 def _active_alarm_view_models(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[OverviewAlarm, ...]:
@@ -2019,6 +2421,8 @@ def _service_panel_status(*, request: Request, texts: dict[str, str]) -> tuple[s
         "power_limit_updated": ("service.status.power_limit_updated", "good"),
         "reactive_power_updated": ("service.status.reactive_power_updated", "good"),
         "plant_mode_updated": ("service.status.plant_mode_updated", "good"),
+        "block_control_updated": ("service.status.block_control_updated", "good"),
+        "block_reset_requested": ("service.status.block_reset_requested", "good"),
         "breaker_open_requested": ("service.status.breaker_open_requested", "good"),
         "breaker_close_requested": ("service.status.breaker_close_requested", "good"),
         "control_invalid": ("service.status.control_invalid", "alarm"),
@@ -2037,6 +2441,13 @@ def _default_plant_mode_request(snapshot: PlantSnapshot) -> int:
     if snapshot.site.operating_mode == "curtailed" or snapshot.site.plant_power_limit_pct < 100:
         return 1
     return 0
+
+
+def _require_inverter_block(snapshot: PlantSnapshot, asset_id: str):
+    for block in snapshot.inverter_blocks:
+        if block.asset_id == asset_id:
+            return block
+    raise ValueError(f"asset_id {asset_id} ist im Snapshot kein Inverter-Block")
 
 
 def _service_panel_redirect_response(

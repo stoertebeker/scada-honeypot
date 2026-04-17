@@ -213,6 +213,38 @@
       margin-top: 8px;
     }
 
+    .block-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .block-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: rgba(217, 229, 234, 0.16);
+    }
+
+    .block-card.good { border-left: 4px solid var(--good); }
+    .block-card.warn { border-left: 4px solid var(--warn); }
+    .block-card.alarm { border-left: 4px solid var(--alarm); }
+
+    .block-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px 12px;
+      align-items: baseline;
+    }
+
+    .block-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+    }
+
     @media (max-width: 900px) {
       .shell { padding: 16px; }
     }
@@ -340,6 +372,53 @@
           </form>
         </div>
         <p class="hint">{{ t("service.breaker_hint") }}</p>
+        {% else %}
+        <p class="hint">{{ t("service.status.control_unavailable") }}</p>
+        {% endif %}
+      </article>
+
+      <article class="panel">
+        <h2>{{ t("section.service_control.inverter_blocks") }}</h2>
+        {% if page.controls_available %}
+        <div class="block-grid">
+          {% for block in page.inverter_controls %}
+          <article class="block-card {{ block.tone }}">
+            <div class="block-head">
+              <p class="block-title">{{ block.asset_id }}</p>
+              <p class="hint">{{ t("label.power_limit") }}: {{ block.power_limit_pct_value }} %</p>
+            </div>
+            <p class="hint">{{ t("table.status") }}: {{ block.status_label }} / {{ t("table.communication") }}: {{ block.communication_label }} / {{ t("table.power") }}: {{ block.power_label }}</p>
+            <form method="post" action="/service/panel/inverter-block">
+              <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
+              <label>
+                {{ t("label.block_enable_request") }}
+                <select name="block_enable_request">
+                  <option value="1" {% if block.enable_request_value == "1" %}selected{% endif %}>{{ t("state.available") }}</option>
+                  <option value="0" {% if block.enable_request_value == "0" %}selected{% endif %}>{{ t("state.unavailable") }}</option>
+                </select>
+              </label>
+              <label>
+                {{ t("label.block_power_limit_percent") }}
+                <input
+                  type="number"
+                  name="block_power_limit_pct"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value="{{ block.power_limit_pct_value }}"
+                  required
+                >
+              </label>
+              <button type="submit">{{ t("action.apply_block_control") }}</button>
+            </form>
+            <form method="post" action="/service/panel/inverter-block/reset">
+              <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
+              <button type="submit" class="warn">{{ t("action.reset_block") }}</button>
+            </form>
+          </article>
+          {% endfor %}
+        </div>
+        <p class="hint">{{ t("service.inverter_block_hint") }}</p>
         {% else %}
         <p class="hint">{{ t("service.status.control_unavailable") }}</p>
         {% endif %}

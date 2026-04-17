@@ -265,7 +265,7 @@ class SQLiteEventStore:
                 """
                 SELECT raw_event_json
                 FROM event_log
-                ORDER BY timestamp, event_id
+                ORDER BY rowid
                 """
             ).fetchall()
 

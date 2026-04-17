@@ -433,7 +433,7 @@ Vorhanden:
   - Adressfehler -> `02`
   - ungueltige `FC06`-/`FC16`-Werte -> `03`
 
-### 11. HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms`, `/trends` und den ersten Service-Control-Pfad
+### 11. HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms`, `/trends` und den erweiterten Service-Control-Pfad
 
 Dateien:
 
@@ -531,7 +531,7 @@ Vorhanden:
   - ruhige Fehlermeldung bei Login-Fehlschlag
   - serverseitige Session mit `20` Minuten Idle-Timeout
   - geschuetzten Service-Bereich mit `401` fuer unauthentifiziert und `403` bei deaktiviertem Login
-  - schreibende Bedienungen fuer `active_power_limit_pct`, `reactive_power_target`, `plant_mode_request` sowie `breaker_open_request` / `breaker_close_request`
+  - schreibende Bedienungen fuer `active_power_limit_pct`, `reactive_power_target`, `plant_mode_request`, `block_enable_request`, `block_power_limit_pct_x10`, `block_reset_request` sowie `breaker_open_request` / `breaker_close_request`
   - ruhige Statusrueckmeldung nach akzeptierten oder abgelehnten Bedienungen
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
@@ -579,13 +579,15 @@ Vorhanden:
   - echte `POST /service/panel/power-limit`-Wirkung mit sichtbarem Curtailment
   - echte `POST /service/panel/reactive-power`-Wirkung mit sichtbarem Blindleistungsziel
   - echte `POST /service/panel/plant-mode`-Wirkung mit gelatchtem `plant_mode_request`
+  - echte `POST /service/panel/inverter-block`-Wirkung mit sichtbarem Disable/Limit je Block
+  - echte `POST /service/panel/inverter-block/reset`-Wirkung mit sichtbarer Comm-Loss-Wiederherstellung
   - echte `POST /service/panel/breaker`-Wirkung mit sichtbarem Exportverlust und Wiederherstellung
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- weitere schreibende HMI-Pfade jenseits von Leistungsbegrenzung, Blindleistungsziel, `plant_mode_request` und Breaker
+- weitere schreibende HMI-Pfade jenseits des aktuellen PPC-/Inverter-/Breaker-Slices
 
 ### 12. Exporter-SDK-Grundlage
 
@@ -678,7 +680,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `145 passed`
+- `149 passed`
 
 Abgedeckt sind bisher:
 
@@ -764,19 +766,19 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt restliche HMI-/Modbus-Servicepfade fuer weitere Setpoints und aktive Units nachziehen
-2. danach weitere Ziel-Exporter und Runner-Hintergrundbetrieb ergaenzen
-3. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
+1. jetzt weitere Ziel-Exporter und Runner-Hintergrundbetrieb auf den bestehenden Outbox-Pfad ziehen
+2. danach Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
+3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- restliche HMI-/Modbus-Servicepfade fuer weitere Setpoints und aktive Units auf denselben Shared-Truth-Kurs setzen
-- fokussierte Tests fuer Konsistenz zwischen schreibender HMI, Modbus, Eventspur und bestehender Release-Gate-Suite
+- einen weiteren Ziel-Exporter oder Runner-Hintergrundpfad auf dieselbe Outbox-Wahrheit setzen
+- fokussierte Tests fuer Konsistenz zwischen Outbox, Retry-Verhalten, Eventspur und bestehender Release-Gate-Suite
 - keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben
 
 Nicht als naechstes tun:
 
-- keine schreibenden HMI-Pfade vorziehen
+- keine neue Aussenkante vorziehen
 - keine Exporter oder externe Auslieferung vorziehen, bevor die
   Rule-Engine-Grundlage steht
 

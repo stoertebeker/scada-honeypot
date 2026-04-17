@@ -728,6 +728,105 @@ async def test_service_panel_breaker_controls_shared_truth_and_log_events(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_service_panel_inverter_block_controls_shared_truth_and_log_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-inverter-block.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/inverter-block",
+            data={
+                "asset_id": "invb-02",
+                "block_enable_request": "0",
+                "block_power_limit_pct": "65.5",
+            },
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_block_control_state"
+    )
+    process_events = [
+        event
+        for event in events
+        if event.event_type in {"process.setpoint.block_enable_request_changed", "process.setpoint.block_power_limit_changed"}
+        and event.asset_id == "invb-02"
+    ]
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=block_control_updated"
+    assert panel_response.status_code == 200
+    assert "Inverter block control updated successfully." in panel_response.text
+    assert register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=2).values == (0, 655)
+    assert register_map.snapshot.inverter_blocks[1].asset_id == "invb-02"
+    assert register_map.snapshot.inverter_blocks[1].status == "offline"
+    assert register_map.snapshot.inverter_blocks[1].block_power_kw == 0.0
+    assert control_event.result == "accepted"
+    assert control_event.requested_value["asset_id"] == "invb-02"
+    assert control_event.requested_value["block_enable_request"] == 0
+    assert control_event.requested_value["block_power_limit_pct"] == 65.5
+    assert control_event.resulting_state["block_enable_request"] == 0
+    assert control_event.resulting_state["block_power_limit_pct"] == 65.5
+    assert len(process_events) == 2
+    assert {event.correlation_id for event in process_events} == {control_event.correlation_id}
+
+
+@pytest.mark.asyncio
+async def test_service_panel_inverter_block_reset_recovers_comm_loss_and_logs_control_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-inverter-reset.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(comm_loss_snapshot.start_time))
+    app, register_map = build_service_app(snapshot=comm_loss_snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/inverter-block/reset",
+            data={"asset_id": "invb-02"},
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "block_reset_request"
+    )
+    process_event = next(event for event in events if event.event_type == "process.control.block_reset_requested")
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=block_reset_requested"
+    assert panel_response.status_code == 200
+    assert "Inverter block reset pulse accepted." in panel_response.text
+    assert register_map.read_holding_registers(unit_id=12, start_offset=201, quantity=1).values == (0,)
+    assert register_map.snapshot.inverter_blocks[1].communication_state == "healthy"
+    assert register_map.snapshot.inverter_blocks[1].quality == "good"
+    assert control_event.result == "accepted"
+    assert control_event.requested_value["asset_id"] == "invb-02"
+    assert control_event.resulting_state["communication_state"] == "healthy"
+    assert control_event.correlation_id == process_event.correlation_id
+
+
+@pytest.mark.asyncio
 async def test_service_panel_rejects_invalid_power_limit_without_state_change(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-service-power-limit-reject.db")
@@ -834,6 +933,47 @@ async def test_service_panel_rejects_invalid_plant_mode_without_state_change(tmp
     assert panel_response.status_code == 200
     assert "Submitted control request was rejected by the local process model." in panel_response.text
     assert register_map.read_holding_registers(unit_id=1, start_offset=201, quantity=1).values == (0,)
+    assert control_event.result == "rejected"
+    assert control_event.error_code == "service_control_rejected"
+
+
+@pytest.mark.asyncio
+async def test_service_panel_rejects_invalid_inverter_block_control_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-inverter-reject.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/inverter-block",
+            data={
+                "asset_id": "invb-02",
+                "block_enable_request": "1",
+                "block_power_limit_pct": "120.0",
+            },
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_block_control_state"
+    )
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=control_rejected"
+    assert panel_response.status_code == 200
+    assert "Submitted control request was rejected by the local process model." in panel_response.text
+    assert register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=2).values == (1, 1000)
     assert control_event.result == "rejected"
     assert control_event.error_code == "service_control_rejected"
 
