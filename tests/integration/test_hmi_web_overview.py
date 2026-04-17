@@ -322,6 +322,60 @@ async def test_trends_page_renders_snapshot_derived_traces_and_logs_hmi_events(t
 
 
 @pytest.mark.asyncio
+async def test_hmi_404_page_uses_custom_template_and_logs_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-404.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/missing-page")
+
+    events = store.fetch_events()
+    error_event = next(event for event in events if event.endpoint_or_register == "/missing-page")
+
+    assert response.status_code == 404
+    assert "Page Unavailable" in response.text
+    assert "The requested page is not available." in response.text
+    assert "{\"detail\":\"Not Found\"}" not in response.text
+    assert error_event.event_type == "hmi.error.not_found"
+    assert error_event.error_code == "hmi_404"
+    assert error_event.resulting_value == {"http_status": 404}
+
+
+@pytest.mark.asyncio
+async def test_hmi_500_page_uses_custom_template_and_logs_event(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-500.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/overview")
+
+    events = store.fetch_events()
+    error_event = next(event for event in events if event.endpoint_or_register == "/overview")
+
+    assert response.status_code == 500
+    assert "View Temporarily Unavailable" in response.text
+    assert "The page could not be loaded." in response.text
+    assert "RuntimeError" not in response.text
+    assert error_event.event_type == "hmi.error.internal"
+    assert error_event.error_code == "hmi_500"
+    assert error_event.resulting_value == {"http_status": 500}
+
+
+@pytest.mark.asyncio
 async def test_overview_marks_comm_loss_block_and_alarm_context(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
@@ -558,3 +612,23 @@ async def test_runtime_trends_page_reads_curtailment_from_shared_truth(tmp_path:
     assert "3.22 MW" in response.text
     assert "55.5 %" in response.text
     assert "1073.9 kW" in response.text
+
+
+@pytest.mark.asyncio
+async def test_runtime_hmi_404_page_uses_custom_template(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/not-present")
+
+    assert response.status_code == 404
+    assert "Page Unavailable" in response.text
+    assert "The requested page is not available." in response.text

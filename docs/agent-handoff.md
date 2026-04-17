@@ -437,6 +437,7 @@ Dateien:
 - `src/honeypot/hmi_web/templates/meter.html`
 - `src/honeypot/hmi_web/templates/alarms.html`
 - `src/honeypot/hmi_web/templates/trends.html`
+- `src/honeypot/hmi_web/templates/error_page.html`
 - `resources/locales/attacker-ui/en.json`
 - `src/honeypot/main.py`
 - `tests/integration/test_hmi_web_overview.py`
@@ -509,6 +510,10 @@ Vorhanden:
   - Blockleistungs-Traces fuer alle drei Inverter-Bloecke
   - Baseline-gegen-Current-Sicht ohne zweite Wahrheit
   - Trendkontext fuer Curtailment, Breaker-Offen und degradierte Kommunikation
+- eigene Fehlerseiten zeigen sichtbar:
+  - `404` ohne Framework-Defaultbild
+  - `500` ohne technische Fehltexte
+  - dieselbe Navigations- und HMI-Sprache wie die uebrigen Seiten
 - sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
   `resources/locales/attacker-ui/en.json`
 - `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends` nutzen keine
@@ -528,6 +533,8 @@ Vorhanden:
   - `requested_value.http_path`
   - `resulting_value.http_status`
   - `session_id`
+- `404`- und `500`-Seiten schreiben jetzt zusaetzlich eigene Fehler-Events mit
+  kontrolliertem `error_code`
 - Anti-Fingerprint-Minimum:
   - `FastAPI`-Docs/OpenAPI sind deaktiviert
   - `uvicorn`-`Server`- und `Date`-Header sind im lokalen HMI-Dienst
@@ -540,14 +547,14 @@ Vorhanden:
   - echter `GET /meter` ueber denselben Snapshot-Pfad
   - echter `GET /alarms` ueber denselben Snapshot-/Alert-Store-Pfad
   - echter `GET /trends` ueber denselben Baseline-/Snapshot-Pfad
+  - echter `GET` auf unbekannte HMI-Routen mit eigener `404`-Seite
+  - interner Renderfehler mit eigener `500`-Seite
   - HTTP-Eventspur aus dem Runtime-Pfad
   - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
 
 Noch bewusst **nicht** enthalten:
 
-- HMI-Fehlerseiten fuer `404/500`
 - Service-Login oder schreibende HMI-Pfade
-- eigene HMI-Fehlerseiten fuer `404/500`
 
 ## Teststand
 
@@ -557,7 +564,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `102 passed`
+- `105 passed`
 
 Abgedeckt sind bisher:
 
@@ -588,6 +595,8 @@ Abgedeckt sind bisher:
   gegen Modbus-Curtailment, Breaker-Offen, Inverter-Blockwerte,
   Unit-21-Wetterdaten, Unit-31-Meterwerte, die lokale Alert-Spur und die
   synthetische Trendableitung aus Baseline plus Snapshot
+- eigene HMI-Fehlerseiten fuer `404/500` mit Fehler-Events statt
+  Framework-Standardbildern
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -628,13 +637,13 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt HMI-Fehlerseiten fuer `404/500` auf denselben lokalen Runtime-Pfad setzen
+1. jetzt `/service/login` mit ruhiger Session-Grundlogik und kontrolliertem `401/403`-Verhalten aufsetzen
 2. danach HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
 3. Rule-Engine/Exporter entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- HMI-Fehlerseiten fuer `404/500` ohne Framework-Spuren nachziehen
+- `/service/login` mit kontrollierter Session-Grundlogik und ohne Framework-Standardformulare aufsetzen
 - fokussierte Tests fuer sichtbare Zustandskonsistenz zu Modbus und
   fehlerarme lokale Renderpfade
 - keine Service-Login- oder Schreibpfade vorziehen, bevor die HMI

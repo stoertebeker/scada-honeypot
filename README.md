@@ -59,6 +59,7 @@ Vorhanden sind:
 - `/meter` zeigt jetzt Exportleistung, Exportpfad, Breaker-Zustand, Meter-Qualitaet sowie Netzkennwerte auf derselben Snapshot-Wahrheit wie `Unit 31`
 - `/alarms` zeigt jetzt Alarmcode, Kategorie, Severity, Asset-Bezug, Zustand, Ack-Status sowie First-Seen/Last-Changed aus derselben lokalen Eventspur wie die Fachlogik
 - `/trends` zeigt jetzt kurze synthetische Verlaufsspuren fuer Parkleistung, Leistungslimit, Einstrahlung, Exportleistung und Blockleistung je Inverter auf Basis derselben Baseline- und Snapshot-Wahrheit
+- eigene HMI-Fehlerseiten fuer `404` und `500` sind jetzt aktiv; sie zeigen keine Framework-Standardbilder und schreiben denselben Fehlerpfad in die lokale Eventspur
 - HMI-Aufrufe schreiben jetzt eine saubere HTTP-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main` bootstrapt jetzt `normal_operation`, `SQLiteEventStore`, den Modbus-Listener auf `127.0.0.1:1502` und die HMI auf `127.0.0.1:8080`
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
@@ -77,7 +78,6 @@ Noch nicht vorhanden:
 - weitere Rule-Engine-Regeln, Dedupe/Suppression und echte Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten jenseits von `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends`
-- eigene HMI-Fehlerseiten fuer `404/500`
 - Exporter-Implementierung
 
 ## Leitplanken
@@ -127,7 +127,7 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. HMI-Fehlerseiten fuer `404/500` auf den bestehenden read-only Kurs setzen
+1. `/service/login` mit ruhiger Session-Grundlogik auf den bestehenden HMI-Kurs setzen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

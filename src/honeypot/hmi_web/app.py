@@ -12,6 +12,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
@@ -234,6 +235,17 @@ class TrendsViewModel:
     context_tone: str
 
 
+@dataclass(frozen=True, slots=True)
+class ErrorViewModel:
+    page_title: str
+    page_subtitle: str
+    site_name: str
+    site_code: str
+    status_code: int
+    error_label: str
+    error_message: str
+
+
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
@@ -250,6 +262,40 @@ def create_hmi_app(
         redoc_url=None,
         openapi_url=None,
     )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def hmi_http_exception(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
+        if exc.status_code != 404:
+            raise exc
+        return _render_error_page(
+            request=request,
+            templates=templates,
+            config=config,
+            texts=texts,
+            event_recorder=event_recorder,
+            status_code=404,
+            page_title=texts["error.404.title"],
+            page_subtitle=texts["error.404.subtitle"],
+            error_message=texts["error.404.message"],
+            event_type="hmi.error.not_found",
+            error_code="hmi_404",
+        )
+
+    @app.exception_handler(Exception)
+    async def hmi_internal_exception(request: Request, exc: Exception) -> HTMLResponse:
+        return _render_error_page(
+            request=request,
+            templates=templates,
+            config=config,
+            texts=texts,
+            event_recorder=event_recorder,
+            status_code=500,
+            page_title=texts["error.500.title"],
+            page_subtitle=texts["error.500.subtitle"],
+            error_message=texts["error.500.message"],
+            event_type="hmi.error.internal",
+            error_code="hmi_500",
+        )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/overview", response_class=HTMLResponse, include_in_schema=False)
@@ -1033,7 +1079,7 @@ def _template_context(
     config: RuntimeConfig,
     texts: dict[str, str],
     current_path: str,
-    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel | TrendsViewModel,
+    page: OverviewViewModel | SingleLineViewModel | InvertersViewModel | WeatherViewModel | MeterViewModel | AlarmsViewModel | TrendsViewModel | ErrorViewModel,
 ) -> dict[str, Any]:
     return {
         "config": config,
@@ -1086,6 +1132,49 @@ def _set_session_cookie(response: HTMLResponse, session_id: str) -> None:
     )
 
 
+def _render_error_page(
+    *,
+    request: Request,
+    templates: Jinja2Templates,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+    event_recorder: EventRecorder | None,
+    status_code: int,
+    page_title: str,
+    page_subtitle: str,
+    error_message: str,
+    event_type: str,
+    error_code: str,
+) -> HTMLResponse:
+    response = templates.TemplateResponse(
+        request=request,
+        name="error_page.html",
+        context=_template_context(
+            config=config,
+            texts=texts,
+            current_path=request.url.path,
+            page=ErrorViewModel(
+                page_title=page_title,
+                page_subtitle=page_subtitle,
+                site_name=config.site_name,
+                site_code=config.site_code,
+                status_code=status_code,
+                error_label=texts["label.error_status"],
+                error_message=error_message,
+            ),
+        ),
+        status_code=status_code,
+    )
+    _record_error_page(
+        request=request,
+        event_recorder=event_recorder,
+        status_code=status_code,
+        event_type=event_type,
+        error_code=error_code,
+    )
+    return response
+
+
 def _record_page_view(
     *,
     request: Request,
@@ -1125,6 +1214,40 @@ def _record_page_view(
         resulting_state=resulting_state,
         message=message,
         tags=tags,
+    )
+    event_recorder.record(event)
+
+
+def _record_error_page(
+    *,
+    request: Request,
+    event_recorder: EventRecorder | None,
+    status_code: int,
+    event_type: str,
+    error_code: str,
+) -> None:
+    if event_recorder is None:
+        return
+
+    path = request.url.path
+    event = event_recorder.build_event(
+        event_type=event_type,
+        category="hmi",
+        severity="medium" if status_code == 404 else "high",
+        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        actor_type="remote_client",
+        component=HMI_COMPONENT,
+        asset_id=HMI_COMPONENT,
+        action="error_page",
+        result="served",
+        protocol=HMI_PROTOCOL,
+        service=HMI_SERVICE,
+        endpoint_or_register=path,
+        requested_value={"http_method": request.method, "http_path": path},
+        resulting_value={"http_status": status_code},
+        error_code=error_code,
+        message=f"HMI error page rendered for status {status_code}",
+        tags=("error", "web"),
     )
     event_recorder.record(event)
 
