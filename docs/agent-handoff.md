@@ -620,12 +620,13 @@ Vorhanden:
   - lokale Batch-Erfassung fuer Events und Alerts
   - Konfigurationsvalidierung ohne echte Zielparameter
 
-### 13. Outbox-Runner und Webhook-Exporter
+### 13. Outbox-Runner, Webhook- und Telegram-Exporter
 
 Dateien:
 
 - `src/honeypot/exporter_runner/runner.py`
 - `src/honeypot/exporter_runner/webhook_exporter.py`
+- `src/honeypot/exporter_runner/telegram_exporter.py`
 - `src/honeypot/exporter_runner/__init__.py`
 - `src/honeypot/storage/sqlite_store.py`
 - `src/honeypot/main.py`
@@ -644,6 +645,11 @@ Vorhanden:
   - liefert Event- und Alert-Batches per `POST`
   - meldet `retry_later` bei Transport- oder HTTP-Fehlern
   - blockiert den Kernpfad nicht
+- `TelegramExporter` als zweiter echter Zielkanal:
+  - liefert Alert-Batches per `sendMessage`
+  - nutzt `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` statt Host-/Systempfad
+  - meldet `retry_later` bei Transport- oder HTTP-Fehlern
+  - blockiert den Kernpfad nicht
 - `SQLiteEventStore` kann jetzt:
   - einzelne Events/Alerts ueber Referenzen aufloesen
   - Outbox-Eintraege leasen
@@ -651,10 +657,11 @@ Vorhanden:
 - `BackgroundOutboxRunnerService` fuehrt denselben Outbox-Drain jetzt lokal im
   Thread aus und bleibt strikt im selben Prozess
 - `build_local_runtime()` verdrahtet jetzt optional Outbox-Runner **und**
-  Hintergrunddienst fuer `webhook`, sobald `WEBHOOK_EXPORTER_ENABLED=1` gesetzt
-  ist
+  Hintergrunddienst fuer `webhook` und `telegram`, sobald die jeweiligen
+  Exporter aktiviert sind
 - Unit-Tests fuer:
   - Webhook-Batch-POST
+  - Telegram-Alert-POST
   - Retry-Backoff bei HTTP-Fehlern
   - `failed` bei fehlendem Exporter
   - Hintergrund-Drain ohne manuellen `drain_once()`
@@ -684,7 +691,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `151 passed`
+- `155 passed`
 
 Abgedeckt sind bisher:
 
@@ -726,10 +733,10 @@ Abgedeckt sind bisher:
   Eventspur zum Fachkern
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
-- `exporter_runner` mit Webhook-Exporter, Outbox-Leasing und Retry-Backoff auf
-  dem lokalen SQLite-Store
-- lokaler Runner-Hintergrundbetrieb fuer den Webhook-Pfad ohne manuelles
-  `drain_once()` im Runtime-Slice
+- `exporter_runner` mit Webhook- und Telegram-Exporter, Outbox-Leasing und
+  Retry-Backoff auf dem lokalen SQLite-Store
+- lokaler Runner-Hintergrundbetrieb fuer Webhook- und Telegram-Pfad ohne
+  manuelles `drain_once()` im Runtime-Slice
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut und
   Exporter-Ausfall ohne sichtbare Seiteneffekte
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
@@ -778,7 +785,8 @@ Direkter Kurs fuer den naechsten Agenten:
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- einen weiteren Ziel-Exporter auf dieselbe Outbox-Wahrheit setzen
+- Rule-Engine-Feinschliff fuer Dedupe/Suppression auf dieselbe Event- und
+  Outbox-Wahrheit setzen
 - fokussierte Tests fuer Konsistenz zwischen Outbox, Retry-Verhalten, Eventspur und bestehender Release-Gate-Suite
 - keine weitere Exponierung oder Runner-Daemonisierung vorziehen, bevor diese Gates dauerhaft gruen bleiben
 

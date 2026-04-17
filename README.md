@@ -47,7 +47,7 @@ Vorhanden sind:
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
 - minimale lokale `RuleEngine`, die jetzt wiederholte Login-Fehler, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN` und `COMM_LOSS_INVERTER_BLOCK` abdeckt und explizite Prozessalarme ohne Doppel-Eintrag im `alert_log` priorisiert
 - `exporter_sdk` mit stabilem Exporter-Vertrag fuer Capabilities, Health und Batch-Delivery sowie einem lokalen `LocalTestExporter` ohne Netzwerkpfad fuer spaetere Runner-/Outbox-Tests
-- `exporter_runner` mit leased Outbox-Drain, `WebhookExporter`, Retry-Backoff und einem lokalen Hintergrunddienst; Webhook-Ausfaelle landen kontrolliert in `outbox.retry_count`, `next_attempt_at` und `last_error`, ohne den Kernpfad zu blockieren
+- `exporter_runner` mit leased Outbox-Drain, `WebhookExporter`, `TelegramExporter`, Retry-Backoff und einem lokalen Hintergrunddienst; Export-Ausfaelle landen kontrolliert in `outbox.retry_count`, `next_attempt_at` und `last_error`, ohne den Kernpfad zu blockieren
 - Release-Gate- und Hardening-Tests pruefen jetzt ruhige `401/403/404`-Seiten, fehlende `Server`-/`Date`-Header, lokale Bindings sowie Exporter-Ausfall ohne sichtbare Client-Seiteneffekte
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 11-13`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
@@ -132,12 +132,12 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. weitere Exporter-Ziele und Rule-Engine-Feinschliff auf die jetzt geschlossenen Servicepfade ziehen
+1. Rule-Engine-Feinschliff und weitere Exporter-Ziele auf die jetzt geschlossenen Servicepfade ziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. weitere Ziel-Exporter
-2. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade
+1. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade
+2. weitere Ziel-Exporter
 3. restliche Servicepfade und spaetere V1-Erweiterungen
 
 ## Beispielkonfiguration
@@ -199,6 +199,8 @@ Deployments kann bewusst auf `502` gewechselt werden.
   - `WEBHOOK_EXPORTER_URL`
   - `SMTP_EXPORTER_ENABLED`
   - `TELEGRAM_EXPORTER_ENABLED`
+  - `TELEGRAM_BOT_TOKEN`
+  - `TELEGRAM_CHAT_ID`
 
 ## Security-Hinweis
 

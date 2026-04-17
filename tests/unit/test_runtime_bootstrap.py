@@ -91,6 +91,26 @@ def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: 
     assert tuple(runtime.outbox_runner.exporters) == ("webhook",)
 
 
+def test_build_local_runtime_wires_telegram_outbox_runner_when_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "TELEGRAM_EXPORTER_ENABLED=1\n"
+            "TELEGRAM_BOT_TOKEN=token-123\n"
+            "TELEGRAM_CHAT_ID=chat-99\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    assert tuple(runtime.outbox_runner.exporters) == ("telegram",)
+
+
 def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     del tmp_path
     fake_runtime = _FakeRuntime()

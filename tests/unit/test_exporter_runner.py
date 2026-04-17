@@ -5,7 +5,12 @@ from time import monotonic, sleep
 import httpx
 
 from honeypot.event_core import EventRecorder
-from honeypot.exporter_runner import BackgroundOutboxRunnerService, OutboxRunner, WebhookExporter
+from honeypot.exporter_runner import (
+    BackgroundOutboxRunnerService,
+    OutboxRunner,
+    TelegramExporter,
+    WebhookExporter,
+)
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
@@ -108,6 +113,54 @@ def test_outbox_runner_requeues_batch_with_backoff_on_webhook_error(tmp_path) ->
     assert outbox_entries[0].retry_count == 1
     assert outbox_entries[0].next_attempt_at == clock.now() + timedelta(seconds=45)
     assert outbox_entries[0].last_error == "Webhook antwortete mit HTTP 503"
+
+
+def test_telegram_exporter_posts_alert_batch_to_send_message(tmp_path) -> None:
+    recorder, _ = seed_webhook_alert(tmp_path)
+    alert = recorder.store.fetch_alerts()[0]
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["json"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(200, json={"ok": True})
+
+    exporter = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        transport=httpx.MockTransport(handler),
+    )
+
+    delivery = exporter.deliver_alert_batch((alert,))
+
+    assert delivery.status == "delivered"
+    assert delivery.accepted_items == 1
+    assert captured["path"] == "/bottoken-123/sendMessage"
+    assert captured["json"]["chat_id"] == "chat-99"
+    assert "BREAKER_OPEN" in captured["json"]["text"]
+    assert "grid-01" in captured["json"]["text"]
+
+
+def test_telegram_exporter_retries_on_http_error(tmp_path) -> None:
+    recorder, _ = seed_webhook_alert(tmp_path)
+    alert = recorder.store.fetch_alerts()[0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(429, json={"ok": False})
+
+    exporter = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        retry_after_seconds=90,
+        transport=httpx.MockTransport(handler),
+    )
+
+    delivery = exporter.deliver_alert_batch((alert,))
+
+    assert delivery.status == "retry_later"
+    assert delivery.retry_after_seconds == 90
+    assert delivery.detail == "Telegram antwortete mit HTTP 429"
 
 
 def test_outbox_runner_marks_entries_failed_when_exporter_is_missing(tmp_path) -> None:

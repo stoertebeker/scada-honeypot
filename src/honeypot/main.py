@@ -8,7 +8,13 @@ from fastapi import FastAPI
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig, load_runtime_config
 from honeypot.event_core import EventRecorder
-from honeypot.exporter_runner import BackgroundOutboxRunnerService, OutboxRunner, WebhookExporter
+from honeypot.exporter_runner import (
+    BackgroundOutboxRunnerService,
+    OutboxRunner,
+    TelegramExporter,
+    WebhookExporter,
+)
+from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.rule_engine import RuleEngine
@@ -138,17 +144,13 @@ def build_local_runtime(
         port=config.hmi_port if hmi_port is None else hmi_port,
         log_level=config.log_level,
     )
+    exporters = _build_exporters(config)
     outbox_runner = None
     outbox_runner_service = None
-    if config.webhook_exporter_enabled and config.webhook_exporter_url is not None:
+    if exporters:
         outbox_runner = OutboxRunner(
             store=event_store,
-            exporters={
-                "webhook": WebhookExporter(
-                    url=str(config.webhook_exporter_url),
-                    retry_after_seconds=config.outbox_retry_backoff_seconds,
-                )
-            },
+            exporters=exporters,
             batch_size=config.outbox_batch_size,
             retry_backoff_seconds=config.outbox_retry_backoff_seconds,
             clock=event_recorder.clock,
@@ -166,6 +168,22 @@ def build_local_runtime(
         outbox_runner=outbox_runner,
         outbox_runner_service=outbox_runner_service,
     )
+
+
+def _build_exporters(config: RuntimeConfig) -> dict[str, HoneypotExporter]:
+    exporters: dict[str, HoneypotExporter] = {}
+    if config.webhook_exporter_enabled and config.webhook_exporter_url is not None:
+        exporters["webhook"] = WebhookExporter(
+            url=str(config.webhook_exporter_url),
+            retry_after_seconds=config.outbox_retry_backoff_seconds,
+        )
+    if config.telegram_exporter_enabled and config.telegram_bot_token is not None and config.telegram_chat_id is not None:
+        exporters["telegram"] = TelegramExporter(
+            bot_token=config.telegram_bot_token,
+            chat_id=config.telegram_chat_id,
+            retry_after_seconds=config.outbox_retry_backoff_seconds,
+        )
+    return exporters
 
 
 def _runtime_banner(runtime: LocalRuntime) -> str:
