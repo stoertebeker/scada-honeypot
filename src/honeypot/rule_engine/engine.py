@@ -9,6 +9,8 @@ from honeypot.event_core.models import AlertSeverity, AlertState, EventRecord
 
 ALERT_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 SETPOINT_ALERT_CODE = "SETPOINT_CHANGE_ACCEPTED"
+REPEATED_LOGIN_FAILURE_ALERT_CODE = "REPEATED_LOGIN_FAILURE"
+LOGIN_FAILURE_THRESHOLD = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +67,96 @@ class SuccessfulSetpointChangeRule:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class BreakerOpenRule:
+    """Leitet einen Alert aus sichtbaren Breaker-Open-Prozessereignissen ab."""
+
+    rule_id: str = "breaker_open"
+
+    def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
+        del context
+        if event.result != "accepted":
+            return ()
+        if event.event_type != "process.breaker.state_changed":
+            return ()
+        if event.action != "breaker_open_request":
+            return ()
+        if event.resulting_value != "open":
+            return ()
+
+        return (
+            DerivedAlert(
+                alarm_code="BREAKER_OPEN",
+                severity="high",
+                message=f"Breaker open isoliert Exportpfad auf {event.asset_id}",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class InverterCommLossRule:
+    """Leitet einen Alert aus Kommunikationsverlust eines Inverter-Blocks ab."""
+
+    rule_id: str = "inverter_comm_loss"
+
+    def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
+        del context
+        if event.result != "accepted":
+            return ()
+        if event.event_type != "system.communication.inverter_block_lost":
+            return ()
+        if event.action != "simulate_comm_loss":
+            return ()
+        if event.resulting_value != "lost":
+            return ()
+
+        return (
+            DerivedAlert(
+                alarm_code="COMM_LOSS_INVERTER_BLOCK",
+                severity="medium",
+                message=f"Kommunikationsverlust fuer Inverter-Block {event.asset_id}",
+            ),
+        )
+
+
+@dataclass(slots=True)
+class RepeatedServiceLoginFailureRule:
+    """Leitet ab der Schwellzahl wiederholter Login-Fehler einen Auth-Alert ab."""
+
+    threshold: int = LOGIN_FAILURE_THRESHOLD
+    rule_id: str = "repeated_service_login_failure"
+    _failure_counts: dict[tuple[str, str], int] = field(default_factory=dict, init=False, repr=False)
+
+    def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
+        del context
+        if event.event_type != "hmi.auth.service_login_attempt":
+            return ()
+
+        requested_value = event.requested_value if isinstance(event.requested_value, Mapping) else {}
+        username = str(requested_value.get("username", "unknown")).strip() or "unknown"
+        source_ip = event.source_ip
+        key = (source_ip, username)
+
+        if event.result == "success":
+            self._failure_counts.pop(key, None)
+            return ()
+        if event.result != "failure":
+            return ()
+
+        failure_count = self._failure_counts.get(key, 0) + 1
+        self._failure_counts[key] = failure_count
+        if failure_count != self.threshold:
+            return ()
+
+        return (
+            DerivedAlert(
+                alarm_code=REPEATED_LOGIN_FAILURE_ALERT_CODE,
+                severity="medium",
+                message=f"Wiederholte Login-Fehlschlaege fuer {username} von {source_ip}",
+            ),
+        )
+
+
 @dataclass(slots=True)
 class RuleEngine:
     """Registry und deterministische Auswertung fuer lokale Event-Regeln."""
@@ -75,7 +167,10 @@ class RuleEngine:
     @classmethod
     def default_v1(cls, *, min_severity: AlertSeverity = "medium") -> "RuleEngine":
         engine = cls(min_severity=min_severity)
+        engine.register(RepeatedServiceLoginFailureRule())
         engine.register(SuccessfulSetpointChangeRule())
+        engine.register(BreakerOpenRule())
+        engine.register(InverterCommLossRule())
         return engine
 
     @property

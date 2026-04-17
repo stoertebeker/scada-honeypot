@@ -139,10 +139,11 @@ class EventRecorder:
             for state_key, state_payload in current_state_updates.items():
                 self.store.upsert_current_state(state_key, state_payload, updated_at=updated_at)
 
-        alerts = (alert,) if alert is not None else self._derive_rule_alerts(
+        derived_alerts = self._derive_rule_alerts(
             event,
             current_state_updates=current_state_updates,
         )
+        alerts = self._merge_alerts(alert=alert, derived_alerts=derived_alerts)
         outbox_entries = []
         for resolved_alert in alerts:
             self.store.append_alert(resolved_alert)
@@ -177,6 +178,29 @@ class EventRecorder:
             context=RuleContext(current_state={} if current_state_updates is None else dict(current_state_updates)),
         )
         return tuple(self._build_alert_from_rule(event, derived_alert) for derived_alert in derived_alerts)
+
+    def _merge_alerts(
+        self,
+        *,
+        alert: AlertRecord | None,
+        derived_alerts: tuple[AlertRecord, ...],
+    ) -> tuple[AlertRecord, ...]:
+        collected: list[AlertRecord] = []
+        seen: set[tuple[str, str, str, str, str]] = set()
+
+        for candidate in ((alert,) if alert is not None else ()) + derived_alerts:
+            dedupe_key = (
+                candidate.alarm_code,
+                candidate.severity,
+                candidate.state,
+                candidate.component,
+                candidate.asset_id,
+            )
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            collected.append(candidate)
+        return tuple(collected)
 
     def _build_alert_from_rule(self, event: EventRecord, derived_alert: DerivedAlert) -> AlertRecord:
         return self.build_alert(

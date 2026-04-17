@@ -56,7 +56,12 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
     assert runtime.event_recorder.archive is not None
     assert runtime.event_recorder.archive.path == archive_path
     assert runtime.event_recorder.rule_engine is not None
-    assert runtime.event_recorder.rule_engine.rule_ids == ("successful_setpoint_change",)
+    assert runtime.event_recorder.rule_engine.rule_ids == (
+        "repeated_service_login_failure",
+        "successful_setpoint_change",
+        "breaker_open",
+        "inverter_comm_loss",
+    )
     assert runtime.hmi_app is not None
     assert runtime.hmi_service.address == ("127.0.0.1", 0)
 

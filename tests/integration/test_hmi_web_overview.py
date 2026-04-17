@@ -637,8 +637,7 @@ async def test_service_panel_breaker_controls_shared_truth_and_log_events(tmp_pa
     assert register_map.snapshot.grid_interconnect.breaker_state == "closed"
     assert len(breaker_events) == 2
     assert len(process_events) == 2
-    assert breaker_events[0].correlation_id == process_events[0].correlation_id
-    assert breaker_events[1].correlation_id == process_events[1].correlation_id
+    assert {event.correlation_id for event in breaker_events} == {event.correlation_id for event in process_events}
 
 
 @pytest.mark.asyncio

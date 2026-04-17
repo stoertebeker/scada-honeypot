@@ -45,7 +45,7 @@ Vorhanden sind:
 - kanonischer `event_core` mit `EventRecord`, `AlertRecord`, `OutboxEntry` und `EventRecorder`
 - lokaler `SQLiteEventStore` im `WAL`-Modus fuer `current_state`, `event_log`, `alert_log` und `outbox`
 - optionaler `JsonlEventArchive`-Sink, der Events zeilenweise nach `JSONL_ARCHIVE_PATH` spiegelt und bei Archivfehlern den lokalen SQLite-Kern nicht blockiert
-- minimale lokale `RuleEngine`, die aktuell erfolgreiche Setpoint-Aenderungen ohne bestehendes Anlagenalarmbild in Alerts ueberfuehrt
+- minimale lokale `RuleEngine`, die jetzt wiederholte Login-Fehler, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN` und `COMM_LOSS_INVERTER_BLOCK` abdeckt und explizite Prozessalarme ohne Doppel-Eintrag im `alert_log` priorisiert
 - `Modbus/TCP`-Vertical-Slices fuer `Unit 1`, `Unit 11-13`, `Unit 21`, `Unit 31` und `Unit 41` mit MBAP-Handling, `FC03`, `FC06` und dem ersten gezielten `FC16`-Pfad
 - `FC06` und `FC16` auf `40200` koppeln Modbus-Write, `plant_sim.apply_curtailment()`, sichtbaren Leistungsabfall, Alarm `PLANT_CURTAILED` und korrelierte Eventspur
 - `FC16` auf `40201` aktualisiert jetzt das Blindleistungsziel fachlich konsistent, und `40202 plant_mode_request` bleibt als latched Bedienwunsch sichtbar
@@ -74,10 +74,10 @@ Vorhanden sind:
 - Zeitabstraktion mit kontrollierbarer Test-Uhr
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
-- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den minimalen Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
+- Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
 
 Noch nicht vorhanden:
-- weitere Rule-Engine-Regeln, Dedupe/Suppression und echte Alert-Kaskaden
+- Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alert-Kaskaden
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten jenseits von `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends`
 - Exporter-Implementierung
@@ -129,14 +129,14 @@ Die wichtigsten Dokumente:
 Die Deckscrew ist jetzt sauber in Phase D/E angekommen. Der naechste konkrete
 Schlag sollte innerhalb der Roadmap-Reihenfolge sein:
 
-1. Rule-Engine-Regeln fuer Breaker, Comm-Loss und wiederholte Login-Fehlschlaege auf den jetzt sichtbaren Bedienpfad setzen
+1. Exporter-SDK-Vertraege und einen lokalen Test-Exporter auf die jetzt vorhandene Outbox ziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. weitere HMI-Servicepfade
+1. restliche HMI-Servicepfade
 2. restliche Modbus-Write-Pfade
-3. weitere Rule-Engine-Regeln, Alerts und Exporter
-4. Hardening und Anti-Fingerprint
+3. Exporter und Runner
+4. Rule-Engine-Feinschliff, Hardening und Anti-Fingerprint
 
 ## Beispielkonfiguration
 

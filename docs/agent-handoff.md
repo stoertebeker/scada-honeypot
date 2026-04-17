@@ -246,7 +246,13 @@ Vorhanden:
 - `RuleEngine` mit:
   - Registry fuer deterministische Regelreihenfolge
   - Severity-Gate ueber `ALERT_MIN_SEVERITY`
-  - erstem V1-Rule-Slice fuer erfolgreiche Setpoint-Aenderungen
+  - V1-Regeln fuer:
+    - wiederholte Login-Fehlschlaege ab Schwellwert
+    - erfolgreiche Setpoint-Aenderungen
+    - `BREAKER_OPEN`
+    - `COMM_LOSS_INVERTER_BLOCK`
+- `EventRecorder.record()` fuehrt explizite Prozess-Alerts und Rule-basierte
+  Alerts jetzt dedupliziert zusammen, ohne doppelte Eintraege im `alert_log`
 - best-effort Verhalten fuer Archivfehler: `SQLite` bleibt Primärwahrheit und
   wird bei Archivproblemen nicht blockiert
 - Guardrails gegen leere `state_key`- und `target_type`-Werte
@@ -584,7 +590,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `117 passed`
+- `122 passed`
 
 Abgedeckt sind bisher:
 
@@ -597,8 +603,9 @@ Abgedeckt sind bisher:
 - Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
 - Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
 - `JSONL`-Archivpfad fuer Eventanalyse
-- minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer erfolgreiche
-  Setpoint-Aenderungen
+- minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer wiederholte
+  Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN` und
+  `COMM_LOSS_INVERTER_BLOCK`
 - Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
 - Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
   Eventspur
@@ -646,7 +653,7 @@ Bereits implizit abgesichert:
 
 Noch **nicht** vorhanden:
 
-- weitere Rule-Engine-Regeln, Dedupe/Suppression und mehrstufige Alarmfolgen
+- Rule-Engine-Feinschliff fuer Dedupe/Suppression und mehrstufige Alarmfolgen
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten und HMI-Fehlerseiten
 - Exporter-Implementierung
@@ -661,15 +668,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Rule-Engine-Regeln fuer Breaker, Comm-Loss und wiederholte Login-Fehlschlaege an den sichtbaren Bedienpfad haengen
-2. danach restliche HMI-Servicepfade und restliche Modbus-Write-Pfade nachziehen
-3. Exporter entlang der sichtbaren Bedienpfade erweitern
+1. jetzt Exporter-SDK-Vertraege und einen lokalen Test-Exporter an die vorhandene Outbox haengen
+2. danach Runner/Webhook-Exporter und restliche HMI-/Modbus-Servicepfade nachziehen
+3. Rule-Engine-Feinschliff entlang der sichtbaren Bedienpfade erweitern
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- Rule-Engine-Regeln fuer Breaker, Comm-Loss und wiederholte Login-Fehlschlaege auf Basis der jetzt vorhandenen HMI-/Modbus-Eventspur aufsetzen
-- fokussierte Tests fuer deduplizierte oder klar getrennte Alert-Ableitung im sichtbaren Bedienpfad
-- keine Exporter- oder weiteren Service-Schreibpfade vorziehen, bevor die Alarmableitung entlang des jetzigen Pfads sauber sitzt
+- Exporter-SDK-Vertraege plus lokalen Test-Exporter auf Basis der vorhandenen Outbox aufsetzen
+- fokussierte Tests fuer Outbox-Payloads, Alert/Event-Referenzen und lokal ruhige Fehlerpfade
+- keine Webhook- oder externen Ziele vorziehen, bevor der lokale Exporter-Vertrag sauber sitzt
 
 Nicht als naechstes tun:
 
