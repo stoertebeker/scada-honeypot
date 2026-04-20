@@ -688,7 +688,9 @@ Vorhanden:
   - ruhige `401`, `403` und `404`
   - fehlende `Server`-/`Date`-Header im lokalen HMI-Dienst
   - keine sichtbaren Framework-Signaturen in Fehlerseiten
-  - Exporter-Ausfall ohne sichtbare Client-Seiteneffekte
+  - Follow-up-Alert-Suppression gegen `GRID_PATH_UNAVAILABLE`- und
+    `LOW_SITE_OUTPUT_UNEXPECTED`-Flooding
+  - Webhook- und SMTP-Ausfall ohne sichtbare Client-Seiteneffekte
   - stabilen lokalen Modbus-/HMI-Betrieb trotz Outbox-Retry
 - Die Gates pruefen echte localhost-Pfade, nicht nur ASGI-Shortcuts
 
@@ -700,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `180 passed`
+- `182 passed`
 
 Abgedeckt sind bisher:
 
@@ -754,8 +756,9 @@ Abgedeckt sind bisher:
   und Retry-Backoff auf dem lokalen SQLite-Store
 - lokaler Runner-Hintergrundbetrieb fuer Webhook-, SMTP- und Telegram-Pfad ohne
   manuelles `drain_once()` im Runtime-Slice
-- Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut und
-  Exporter-Ausfall ohne sichtbare Seiteneffekte
+- Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut,
+  Follow-up-Alert-Suppression und Exporter-Ausfall ohne sichtbare
+  Seiteneffekte
 - lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
   echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
 
@@ -797,24 +800,24 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Release-Gates fuer neue Alert-/Exporter-Pfade nachziehen
-2. dabei Duplicate-/Suppressionschutz fuer neue Folge-Alerts und ruhige SMTP-Fehlerpfade absichern
-3. erst danach weitere V1-Erweiterungen jenseits des aktuellen Service-Slices ansetzen
+1. jetzt den ersten browserbasierten End-to-End-Slice fuer HMI und Service-Panel ziehen
+2. dabei sichtbare Login-, Alarm- und Bedienpfade ueber echten Runtime-Start absichern
+3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- Release-Gates fuer `GRID_PATH_UNAVAILABLE`, `LOW_SITE_OUTPUT_UNEXPECTED`
-  und ruhige `SMTP`-Fehlerpfade nachziehen
-- fokussierte Integrations-Tests gegen Alert-Flooding, Outbox-Retry und ruhige
-  Client-Pfade
+- erster `Playwright`-Smoke fuer `/service/login`, `/service/panel` und
+  `/alarms` gegen den echten lokalen Runtime-Pfad
+- fokussierte Nachweise fuer ruhige Fehlerbilder, Session-Flow und sichtbare
+  Shared-Truth-Effekte nach HMI-Bedienung
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
-  diese Gates dauerhaft gruen bleiben
+  diese End-to-End-Pfade dauerhaft gruen bleiben
 
 Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
-- keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  Release-Gates fuer die neuen Folge-Alerts dauerhaft gruen bleiben
+- keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor der
+  erste browserbasierte Runtime-Nachweis dauerhaft gruen bleibt
 
 ## Vor dem Weiterbauen lesen
 

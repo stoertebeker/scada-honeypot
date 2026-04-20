@@ -7,9 +7,10 @@ from time import monotonic, sleep
 
 import httpx
 
-from honeypot.exporter_runner import WebhookExporter
+from honeypot.exporter_runner import SmtpExporter, WebhookExporter
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
+from honeypot.rule_engine import GRID_PATH_UNAVAILABLE_ALERT_CODE, LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE
 
 
 def write_env(tmp_path: Path, *lines: str) -> Path:
@@ -44,6 +45,31 @@ def recv_exact(connection: socket.socket, size: int) -> bytes:
             raise RuntimeError("Socket geschlossen, bevor die Antwort komplett war")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+def build_low_output_state(
+    *,
+    plant_power_mw: float,
+    irradiance_w_m2: int = 892,
+    plant_power_limit_pct: float = 100,
+    breaker_state: str = "closed",
+    export_path_available: bool = True,
+    alarms=(),
+):
+    return {
+        "site": {
+            "plant_power_mw": plant_power_mw,
+            "plant_power_limit_pct": plant_power_limit_pct,
+            "breaker_state": breaker_state,
+        },
+        "weather_station": {
+            "irradiance_w_m2": irradiance_w_m2,
+        },
+        "grid_interconnect": {
+            "export_path_available": export_path_available,
+        },
+        "alarms": list(alarms),
+    }
 
 
 def test_release_gate_http_headers_and_error_pages_are_quiet(tmp_path: Path) -> None:
@@ -189,4 +215,193 @@ def test_release_gate_exporter_failure_stays_internal_and_clients_remain_stable(
     assert "Plant Overview" in overview.text
     assert "Webhook" not in overview.text
     assert transaction_id == 0x5544
+    assert protocol_id == 0
+
+
+def test_release_gate_follow_up_alerts_do_not_flood_alert_log_or_hmi(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    open_state = {
+        "grid_interconnect": {
+            "breaker_state": "open",
+            "export_path_available": False,
+            "grid_acceptance_state": "unavailable",
+        }
+    }
+    first_grid_event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    second_grid_event = first_grid_event.model_copy(
+        update={
+            "event_id": "evt_release_gate_grid_repeat",
+            "correlation_id": "corr_release_gate_grid_repeat",
+        }
+    )
+    first_low_output_event = runtime.event_recorder.build_event(
+        event_type="process.setpoint.block_enable_request_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.25",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="set_block_enable_request",
+        result="accepted",
+        resulting_value=0,
+        tags=("control-path", "inverter-block", "enable"),
+    )
+    second_low_output_event = first_low_output_event.model_copy(
+        update={
+            "event_id": "evt_release_gate_low_output_repeat",
+            "correlation_id": "corr_release_gate_low_output_repeat",
+        }
+    )
+
+    runtime.event_recorder.record(first_grid_event, current_state_updates=open_state, outbox_targets=("webhook",))
+    runtime.event_recorder.record(second_grid_event, current_state_updates=open_state, outbox_targets=("webhook",))
+    runtime.event_recorder.record(
+        first_low_output_event,
+        current_state_updates=build_low_output_state(plant_power_mw=1.9),
+        outbox_targets=("webhook",),
+    )
+    runtime.event_recorder.record(
+        second_low_output_event,
+        current_state_updates=build_low_output_state(plant_power_mw=1.9),
+        outbox_targets=("webhook",),
+    )
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        response = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/alarms",
+            timeout=5.0,
+            trust_env=False,
+        )
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    grid_path_alerts = tuple(alert for alert in alerts if alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE)
+    low_output_alerts = tuple(alert for alert in alerts if alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE)
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "traceback" not in response.text.lower()
+    assert len(grid_path_alerts) == 1
+    assert len(low_output_alerts) == 1
+    assert sum(1 for entry in outbox_entries if entry.payload_ref == grid_path_alerts[0].alert_id) == 1
+    assert sum(1 for entry in outbox_entries if entry.payload_ref == low_output_alerts[0].alert_id) == 1
+
+
+def test_release_gate_smtp_failure_stays_internal_and_clients_remain_stable(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        "SMTP_EXPORTER_ENABLED=1",
+        "SMTP_HOST=mail.example.invalid",
+        "SMTP_PORT=2525",
+        "SMTP_FROM=alerts@example.invalid",
+        "SMTP_TO=soc@example.invalid",
+        "OUTBOX_RETRY_BACKOFF_SECONDS=45",
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+
+    class FailingSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            del message
+            raise OSError("smtp down")
+
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        retry_after_seconds=45,
+        client_factory=lambda host, port, timeout: FailingSmtpClient(),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    alert = runtime.event_recorder.build_alert(
+        event=event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+    runtime.event_recorder.record(event, alert=alert, outbox_targets=("smtp",))
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        modbus_address = runtime.modbus_service.address
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and outbox_entries[0].retry_count == 1:
+                break
+            sleep(0.05)
+        overview = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+        modbus_response = send_modbus_request(
+            modbus_address,
+            transaction_id=0x6644,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+    finally:
+        runtime.stop()
+
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
+
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert outbox_entries[0].status == "pending"
+    assert outbox_entries[0].retry_count == 1
+    assert outbox_entries[0].last_error == "SMTP-Transportfehler: OSError"
+    assert overview.status_code == 200
+    assert "Plant Overview" in overview.text
+    assert "SMTP" not in overview.text
+    assert transaction_id == 0x6644
     assert protocol_id == 0
