@@ -379,6 +379,12 @@ Pflichttests:
 - fuenfter Browser-Slice prueft `block_reset_request` nach simuliertem
   `COMM_LOSS_INVERTER_BLOCK` auf `/service/panel` mit sichtbarer Wirkung in
   `/inverters` und `/alarms`
+- sechster Browser-Slice prueft fehlgeschlagenen Service-Login und den
+  unauthentifizierten `GET /service/panel` mit ruhigem `401`
+- siebter Browser-Slice prueft den Session-Ablauf nach `20` Minuten Idle-Zeit
+  mit ruhigem `401` auf `/service/panel`
+- achter Browser-Slice prueft deaktiviertes Service-Login mit ruhigem `403`
+  auf `/service/login` und `/service/panel`
 
 ### 12.3 Alerting-End-to-End
 

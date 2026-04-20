@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `187 passed`
+- `190 passed`
 
 Abgedeckt sind bisher:
 
@@ -772,6 +772,16 @@ Abgedeckt sind bisher:
   Wirkung in `/inverters` und `/alarms` ab und prueft dabei Comm-Loss-Clear,
   Statuswiederherstellung und die zugehoerige Prozess- und Alert-Spur fuer
   `invb-02`
+- derselbe Browser-Slice deckt jetzt auch fehlgeschlagenen Service-Login und
+  den unauthentifizierten `GET /service/panel` ab und prueft dabei ruhige
+  `401`-Fehlerbilder ohne Framework-Leckage, fehlende `service_session`-Cookie
+  bei Fehlversuch und die korrekte Auth-/Error-Spur
+- derselbe Browser-Slice deckt jetzt auch den Session-Ablauf nach `20`
+  Minuten Idle-Zeit ab und prueft dabei den ruhigen `401`-Rueckfall auf
+  `/service/panel` nach zuvor erfolgreichem Login
+- derselbe Browser-Slice deckt jetzt auch deaktiviertes Service-Login mit
+  ruhigem `403` auf `/service/login` und `/service/panel` ab und prueft dabei
+  die korrekte Forbidden-Eventspur
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -822,18 +832,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den naechsten browserbasierten Negativpfad fuer Service-Auth und
-   Session-Ablauf ziehen
-2. dabei fehlgeschlagenen Login, ruhiges `401/403` und einen abgelaufenen
-   Service-Session-Pfad gegen echten Runtime-Start absichern
+1. jetzt den naechsten browserbasierten Security-Slice fuer wiederholte
+   Service-Login-Fehler ziehen
+2. dabei die bestehende Rule-Engine-Ableitung gegen `/alarms` auf echtem
+   Runtime-Start absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- sechster `Playwright`-Smoke fuer fehlgeschlagenen Service-Login und
-  anschliessend geschuetztes `/service/panel`
-- fokussierte Nachweise fuer ruhige Fehlerbilder, `401/403` ohne
-  Framework-Leckage und konsistente Auth-Eventspur
+- neunter `Playwright`-Smoke fuer wiederholte fehlgeschlagene Service-Logins
+  mit sichtbarer Rule-Alert-Wirkung in `/alarms`
+- fokussierte Nachweise fuer `REPEATED_SERVICE_LOGIN_FAILURE`, ruhige
+  Fehlversuche und konsistente Auth-/Alert-Spur
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
@@ -841,7 +851,7 @@ Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
 - keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  ersten sechs browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
+  ersten neun browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 
