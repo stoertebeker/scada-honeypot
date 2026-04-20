@@ -43,11 +43,12 @@ Bis echte Repo-Hilfskommandos vorliegen, gilt fuer die Deckscrew dieser
 verbindliche Arbeitskurs:
 
 - Bootstrap: `uv sync --dev`
+- Browser-Bootstrap fuer HMI-E2E: `uv run python -m playwright install chromium`
 - Lokaler Start: `uv run python -m honeypot.main`
 - Testgesamtlauf: `uv run pytest`
 - Contract-Tests: `uv run pytest tests/contract`
 - Integrations-Tests: `uv run pytest tests/integration`
-- HMI-End-to-End: `uv run playwright test`
+- HMI-End-to-End: `uv run pytest -q tests/e2e`
 
 Die erste Geruest-Implementierung soll diese Befehle spaeter ueber schlanke
 Repo-Wrapper oder Make-Targets kapseln, ohne die Semantik zu aendern.

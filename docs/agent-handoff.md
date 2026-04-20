@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `182 passed`
+- `183 passed`
 
 Abgedeckt sind bisher:
 
@@ -750,6 +750,11 @@ Abgedeckt sind bisher:
   schreibenden Service-Bedienungen fuer Leistungsbegrenzung,
   Blindleistungsziel, `plant_mode_request` und Breaker inklusive korrelierter
   Eventspur zum Fachkern
+- erster browserbasierter `Playwright`-Smoke in
+  `tests/e2e/test_hmi_service_playwright.py` deckt jetzt
+  `/service/login -> /service/panel -> breaker open -> /alarms` gegen den
+  echten lokalen Runtime-Pfad ab und prueft dabei Auth-, Control-, Page- und
+  Alert-Spur im lokalen Store
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -800,24 +805,25 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den ersten browserbasierten End-to-End-Slice fuer HMI und Service-Panel ziehen
-2. dabei sichtbare Login-, Alarm- und Bedienpfade ueber echten Runtime-Start absichern
+1. jetzt den naechsten browserbasierten Shared-Truth-Slice fuer Curtailment ziehen
+2. dabei sichtbare Bedienung auf `/service/panel` gegen `/overview` und `/trends`
+   auf echtem Runtime-Start absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- erster `Playwright`-Smoke fuer `/service/login`, `/service/panel` und
-  `/alarms` gegen den echten lokalen Runtime-Pfad
-- fokussierte Nachweise fuer ruhige Fehlerbilder, Session-Flow und sichtbare
-  Shared-Truth-Effekte nach HMI-Bedienung
+- zweiter `Playwright`-Smoke fuer `power_limit` auf `/service/panel`
+  mit sichtbarer Wirkung in `/overview` und `/trends`
+- fokussierte Nachweise fuer shared truth zwischen HMI-Bedienung,
+  Anlagenzustand und read-only Seiten
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
 Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
-- keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor der
-  erste browserbasierte Runtime-Nachweis dauerhaft gruen bleibt
+- keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
+  ersten zwei browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 

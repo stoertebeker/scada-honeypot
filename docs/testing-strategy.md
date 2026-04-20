@@ -367,6 +367,8 @@ Pflichttests:
 - Login-Flow arbeitet stabil
 - Bedienungen werden korrekt rueckgespiegelt
 - Fehlerseiten bleiben ruhig und generisch
+- erster Browser-Slice prueft `/service/login -> /service/panel -> breaker open -> /alarms`
+  gegen den echten lokalen Runtime-Pfad
 
 ### 12.3 Alerting-End-to-End
 
