@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `190 passed`
+- `192 passed`
 
 Abgedeckt sind bisher:
 
@@ -782,6 +782,10 @@ Abgedeckt sind bisher:
 - derselbe Browser-Slice deckt jetzt auch deaktiviertes Service-Login mit
   ruhigem `403` auf `/service/login` und `/service/panel` ab und prueft dabei
   die korrekte Forbidden-Eventspur
+- derselbe Browser-Slice deckt jetzt auch wiederholte fehlgeschlagene
+  Service-Logins ab und prueft dabei den sichtbaren Rule-Alert
+  `REPEATED_LOGIN_FAILURE` in `/alarms`, dessen Asset-Bezug `hmi-web` und die
+  korrekte Auth-/Alert-Spur ohne `service_session`-Cookie
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -832,18 +836,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den naechsten browserbasierten Security-Slice fuer wiederholte
-   Service-Login-Fehler ziehen
-2. dabei die bestehende Rule-Engine-Ableitung gegen `/alarms` auf echtem
-   Runtime-Start absichern
+1. jetzt den naechsten browserbasierten Security-Slice fuer Alert-Dedupe nach
+   wiederholten Service-Login-Fehlern ziehen
+2. dabei weitere Fehlversuche nach bereits aktivem
+   `REPEATED_LOGIN_FAILURE` gegen `/alarms` auf echtem Runtime-Start absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- neunter `Playwright`-Smoke fuer wiederholte fehlgeschlagene Service-Logins
-  mit sichtbarer Rule-Alert-Wirkung in `/alarms`
-- fokussierte Nachweise fuer `REPEATED_SERVICE_LOGIN_FAILURE`, ruhige
-  Fehlversuche und konsistente Auth-/Alert-Spur
+- zehnter `Playwright`-Smoke fuer weitere Fehlversuche nach bereits aktivem
+  `REPEATED_LOGIN_FAILURE`
+- fokussierte Nachweise fuer Dedupe/Suppression ohne zweiten aktiven
+  Login-Fehler-Alert in `/alarms`
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
@@ -851,7 +855,7 @@ Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
 - keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  ersten neun browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
+  ersten zehn browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 

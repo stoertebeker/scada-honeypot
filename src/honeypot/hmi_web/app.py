@@ -202,6 +202,17 @@ class AlarmListRow:
 
 
 @dataclass(frozen=True, slots=True)
+class VisibleAlarmEntry:
+    code: str
+    category: str
+    severity: str
+    state: str
+    asset_id: str
+    first_seen: Any
+    last_changed: Any
+
+
+@dataclass(frozen=True, slots=True)
 class AlarmsViewModel:
     page_title: str
     page_subtitle: str
@@ -2043,22 +2054,25 @@ def build_alarms_view_model(
 ) -> AlarmsViewModel:
     """Bereitet die sichtbaren Werte fuer die zentrale Alarmliste auf."""
 
+    visible_alarms = _visible_alarm_entries(snapshot, alert_history=alert_history)
     rows = _alarm_rows(
-        snapshot,
+        visible_alarms,
         texts=texts,
-        alert_history=alert_history,
         severity_filter=severity_filter,
         state_filter=state_filter,
         sort_order=sort_order,
     )
-    acknowledged_count = sum(1 for alarm in snapshot.alarms if alarm.state == "active_acknowledged")
-    communication_count = sum(1 for alarm in snapshot.alarms if alarm.category == "communication" and alarm.is_active)
-    highest_severity = _highest_alarm_severity(snapshot)
+    active_alarm_count = sum(1 for alarm in visible_alarms if _is_active_alarm_state(alarm.state))
+    acknowledged_count = sum(1 for alarm in visible_alarms if alarm.state == "active_acknowledged")
+    communication_count = sum(
+        1 for alarm in visible_alarms if alarm.category == "communication" and _is_active_alarm_state(alarm.state)
+    )
+    highest_severity = _highest_alarm_severity(visible_alarms)
     metrics = (
         OverviewMetric(
             "label.active_alarms",
-            str(len(snapshot.active_alarms)),
-            "alarm" if snapshot.active_alarms else "good",
+            str(active_alarm_count),
+            "alarm" if active_alarm_count else "good",
         ),
         OverviewMetric(
             "label.acknowledged_alarms",
@@ -2847,34 +2861,79 @@ def _normalize_alarm_sort(value: str | None) -> str:
     return "recent"
 
 
-def _highest_alarm_severity(snapshot: PlantSnapshot) -> str | None:
-    if not snapshot.active_alarms:
+def _is_active_alarm_state(value: str) -> bool:
+    return value in {"active_unacknowledged", "active_acknowledged"}
+
+
+def _highest_alarm_severity(visible_alarms: tuple[VisibleAlarmEntry, ...]) -> str | None:
+    active_alarms = tuple(alarm for alarm in visible_alarms if _is_active_alarm_state(alarm.state))
+    if not active_alarms:
         return None
     severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
-    return max(snapshot.active_alarms, key=lambda alarm: severity_order[alarm.severity]).severity
+    return max(active_alarms, key=lambda alarm: severity_order[alarm.severity]).severity
 
 
-def _alarm_rows(
+def _visible_alarm_entries(
     snapshot: PlantSnapshot,
     *,
-    texts: dict[str, str],
     alert_history: tuple[AlertRecord, ...],
-    severity_filter: str | None,
-    state_filter: str | None,
-    sort_order: str,
-) -> tuple[AlarmListRow, ...]:
-    rows = []
+) -> tuple[VisibleAlarmEntry, ...]:
+    snapshot_entries: dict[tuple[str, str], VisibleAlarmEntry] = {}
     for alarm in snapshot.alarms:
-        if severity_filter is not None and alarm.severity != severity_filter:
-            continue
-        if state_filter is not None and alarm.state != state_filter:
-            continue
         asset_id = _alarm_asset_id(snapshot, alarm.code, alert_history)
         history = tuple(
             entry for entry in alert_history if entry.alarm_code == alarm.code and entry.asset_id == asset_id
         )
         first_seen = snapshot.start_time if not history else min(entry.created_at for entry in history)
         last_changed = snapshot.start_time if not history else max(entry.created_at for entry in history)
+        snapshot_entries[(alarm.code, asset_id)] = VisibleAlarmEntry(
+            code=alarm.code,
+            category=alarm.category,
+            severity=alarm.severity,
+            state=alarm.state,
+            asset_id=asset_id,
+            first_seen=first_seen,
+            last_changed=last_changed,
+        )
+    history_entries = {
+        (entry.alarm_code, entry.asset_id): tuple(
+            item
+            for item in alert_history
+            if item.alarm_code == entry.alarm_code and item.asset_id == entry.asset_id
+        )
+        for entry in alert_history
+    }
+    history_only_entries = {}
+    for key, history in history_entries.items():
+        if key in snapshot_entries:
+            continue
+        latest = max(history, key=lambda entry: entry.created_at)
+        history_only_entries[key] = VisibleAlarmEntry(
+            code=latest.alarm_code,
+            category=_history_alarm_category(latest.alarm_code),
+            severity=latest.severity,
+            state=latest.state,
+            asset_id=latest.asset_id,
+            first_seen=min(entry.created_at for entry in history),
+            last_changed=max(entry.created_at for entry in history),
+        )
+    return tuple(snapshot_entries.values()) + tuple(history_only_entries.values())
+
+
+def _alarm_rows(
+    visible_alarms: tuple[VisibleAlarmEntry, ...],
+    *,
+    texts: dict[str, str],
+    severity_filter: str | None,
+    state_filter: str | None,
+    sort_order: str,
+) -> tuple[AlarmListRow, ...]:
+    rows = []
+    for alarm in visible_alarms:
+        if severity_filter is not None and alarm.severity != severity_filter:
+            continue
+        if state_filter is not None and alarm.state != state_filter:
+            continue
         rows.append(
             AlarmListRow(
                 code=alarm.code,
@@ -2884,10 +2943,10 @@ def _alarm_rows(
                 severity_key=alarm.severity,
                 state_label=_alarm_state_text(texts, alarm.state),
                 ack_state_label=_ack_state_text(texts, alarm.state),
-                asset_id=asset_id,
-                first_seen=_history_time(first_seen),
-                last_changed=_history_time(last_changed),
-                last_changed_sort=ensure_utc_datetime(last_changed).isoformat(),
+                asset_id=alarm.asset_id,
+                first_seen=_history_time(alarm.first_seen),
+                last_changed=_history_time(alarm.last_changed),
+                last_changed_sort=ensure_utc_datetime(alarm.last_changed).isoformat(),
                 tone=_tone_for_severity(alarm.severity),
             )
         )
@@ -2920,6 +2979,18 @@ def _alarm_asset_id(snapshot: PlantSnapshot, code: str, alert_history: tuple[Ale
 
 def _alarm_category_text(texts: dict[str, str], value: str) -> str:
     return texts.get(f"alarm_category.{value}", value.replace("_", " ").title())
+
+
+def _history_alarm_category(code: str) -> str:
+    if code == "REPEATED_LOGIN_FAILURE":
+        return "control"
+    if code == "SETPOINT_CHANGE_ACCEPTED":
+        return "control"
+    if code == "COMM_LOSS_INVERTER_BLOCK":
+        return "communication"
+    if code in {"GRID_PATH_UNAVAILABLE", "LOW_SITE_OUTPUT_UNEXPECTED", "MULTI_BLOCK_UNAVAILABLE"}:
+        return "site"
+    return "site"
 
 
 def _ack_state_text(texts: dict[str, str], value: str) -> str:

@@ -1210,6 +1210,41 @@ async def test_runtime_alarms_page_reads_breaker_alert_from_event_trail(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_runtime_alarms_page_reads_repeated_login_failure_from_event_trail(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for _ in range(3):
+            response = await client.post(
+                "/service/login",
+                data={"username": SERVICE_LOGIN_USERNAME, "password": "wrong"},
+            )
+            assert response.status_code == 200
+        response = await client.get("/alarms")
+
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "REPEATED_LOGIN_FAILURE" in response.text
+    assert "Repeated service login failures" in response.text
+    assert "hmi-web" in response.text
+    assert "Active" in response.text
+    assert any(
+        alert.alarm_code == "REPEATED_LOGIN_FAILURE" and alert.asset_id == "hmi-web" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
+@pytest.mark.asyncio
 async def test_runtime_trends_page_reads_curtailment_from_shared_truth(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

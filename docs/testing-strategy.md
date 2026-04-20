@@ -385,6 +385,8 @@ Pflichttests:
   mit ruhigem `401` auf `/service/panel`
 - achter Browser-Slice prueft deaktiviertes Service-Login mit ruhigem `403`
   auf `/service/login` und `/service/panel`
+- neunter Browser-Slice prueft wiederholte fehlgeschlagene Service-Logins mit
+  sichtbarem `REPEATED_LOGIN_FAILURE` auf `/alarms`
 
 ### 12.3 Alerting-End-to-End
 
