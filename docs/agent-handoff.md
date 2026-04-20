@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `186 passed`
+- `187 passed`
 
 Abgedeckt sind bisher:
 
@@ -767,6 +767,11 @@ Abgedeckt sind bisher:
   `block_power_limit_pct` auf `/service/panel` mit sichtbarer Wirkung in
   `/inverters` ab und prueft dabei Statuswechsel nach `offline`, `0.0 kW`,
   fehlende Comm-Loss-Alarme und die Prozessspur fuer den betroffenen Block
+- derselbe Browser-Slice deckt jetzt auch `block_reset_request` nach
+  simuliertem `COMM_LOSS_INVERTER_BLOCK` auf `/service/panel` mit sichtbarer
+  Wirkung in `/inverters` und `/alarms` ab und prueft dabei Comm-Loss-Clear,
+  Statuswiederherstellung und die zugehoerige Prozess- und Alert-Spur fuer
+  `invb-02`
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -817,17 +822,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den naechsten browserbasierten Shared-Truth-Slice fuer Block-Reset und Comm-Loss-Recovery ziehen
-2. dabei sichtbare Bedienung auf `/service/panel` gegen `/inverters` und
-   `/alarms` auf echtem Runtime-Start absichern
+1. jetzt den naechsten browserbasierten Negativpfad fuer Service-Auth und
+   Session-Ablauf ziehen
+2. dabei fehlgeschlagenen Login, ruhiges `401/403` und einen abgelaufenen
+   Service-Session-Pfad gegen echten Runtime-Start absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- fuenfter `Playwright`-Smoke fuer `block_reset_request` nach simuliertem
-  Kommunikationsverlust auf `invb-02`
-- fokussierte Nachweise fuer Comm-Loss-Clear, Statuswiederherstellung und
-  shared truth zwischen HMI-Bedienung, `/inverters` und `/alarms`
+- sechster `Playwright`-Smoke fuer fehlgeschlagenen Service-Login und
+  anschliessend geschuetztes `/service/panel`
+- fokussierte Nachweise fuer ruhige Fehlerbilder, `401/403` ohne
+  Framework-Leckage und konsistente Auth-Eventspur
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
@@ -835,7 +841,7 @@ Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
 - keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  ersten fuenf browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
+  ersten sechs browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 

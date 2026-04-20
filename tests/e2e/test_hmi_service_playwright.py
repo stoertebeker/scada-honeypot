@@ -237,6 +237,76 @@ def test_playwright_inverter_block_control_updates_inverters_view(runtime: Local
     )
 
 
+def test_playwright_block_reset_recovers_comm_loss_in_inverters_and_alarms(runtime: LocalRuntime, page: Page) -> None:
+    _seed_runtime_comm_loss(runtime, asset_id="invb-02")
+
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.goto(f"{base_url}/inverters", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/inverters$"))
+    expect(page.get_by_role("heading", name="Inverter Fleet")).to_be_visible()
+    inverter_row = page.locator("tbody tr").filter(has=page.get_by_text("invb-02"))
+    expect(inverter_row).to_contain_text("Degraded")
+    expect(inverter_row).to_contain_text("Lost")
+    expect(inverter_row).to_contain_text("Stale")
+    expect(page.locator("body")).to_contain_text("COMM_LOSS_INVERTER_BLOCK")
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    block_card = page.locator("article.block-card").filter(has=page.get_by_text("invb-02"))
+    expect(block_card).to_contain_text("invb-02")
+    block_card.locator("form[action='/service/panel/inverter-block/reset'] button").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=block_reset_requested$"))
+    expect(page.get_by_text("Inverter block reset pulse accepted.")).to_be_visible()
+
+    page.get_by_role("link", name="Inverters").click()
+
+    expect(page).to_have_url(re.compile(r".*/inverters$"))
+    expect(page.get_by_role("heading", name="Inverter Fleet")).to_be_visible()
+    inverter_row = page.locator("tbody tr").filter(has=page.get_by_text("invb-02"))
+    expect(inverter_row).to_contain_text("Online")
+    expect(inverter_row).to_contain_text("Healthy")
+    expect(inverter_row).to_contain_text("Good")
+    expect(inverter_row).not_to_contain_text("Lost")
+    expect(inverter_row).not_to_contain_text("Stale")
+    expect(page.locator("body")).to_contain_text("No active alarms")
+    expect(page.locator("body")).not_to_contain_text("COMM_LOSS_INVERTER_BLOCK")
+
+    page.get_by_role("link", name="Alarms").click()
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("Active Alarms")
+    expect(page.locator("body")).to_contain_text("0")
+    expect(page.locator("body")).to_contain_text("COMM_LOSS_INVERTER_BLOCK")
+    expect(page.locator("body")).to_contain_text("Cleared")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "block_reset_request"
+        and event.result == "accepted"
+        and event.asset_id == "invb-02"
+        for event in events
+    )
+    assert any(event.event_type == "process.control.block_reset_requested" and event.asset_id == "invb-02" for event in events)
+    assert any(event.event_type == "hmi.page.inverters_viewed" for event in events)
+    assert any(event.event_type == "hmi.page.alarms_viewed" for event in events)
+    assert any(
+        alert.alarm_code == "COMM_LOSS_INVERTER_BLOCK" and alert.asset_id == "invb-02" and alert.state != "cleared"
+        for alert in alerts
+    )
+    assert any(
+        alert.alarm_code == "COMM_LOSS_INVERTER_BLOCK" and alert.asset_id == "invb-02" and alert.state == "cleared"
+        for alert in alerts
+    )
+
+
 def _login_to_service_panel(page: Page, *, base_url: str) -> None:
     page.goto(f"{base_url}/service/login", wait_until="networkidle")
 
@@ -254,3 +324,12 @@ def _login_to_service_panel(page: Page, *, base_url: str) -> None:
 
 def _launch_browser(playwright: Playwright) -> Browser:
     return playwright.chromium.launch(headless=True)
+
+
+def _seed_runtime_comm_loss(runtime: LocalRuntime, *, asset_id: str) -> None:
+    register_map = runtime.modbus_service.register_map
+    with register_map._lock:
+        register_map._snapshot = register_map._simulator.lose_block_communications(
+            register_map._snapshot,
+            asset_id=asset_id,
+        )
