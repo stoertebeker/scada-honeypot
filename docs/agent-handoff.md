@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `183 passed`
+- `184 passed`
 
 Abgedeckt sind bisher:
 
@@ -755,6 +755,10 @@ Abgedeckt sind bisher:
   `/service/login -> /service/panel -> breaker open -> /alarms` gegen den
   echten lokalen Runtime-Pfad ab und prueft dabei Auth-, Control-, Page- und
   Alert-Spur im lokalen Store
+- derselbe Browser-Slice deckt jetzt auch `power_limit` auf `/service/panel`
+  mit sichtbarer Shared-Truth-Wirkung in `/overview` und `/trends` ab und
+  prueft dabei Curtailment-Event, `PLANT_CURTAILED` und die read-only
+  Rueckspiegelung im Browser
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -805,17 +809,17 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den naechsten browserbasierten Shared-Truth-Slice fuer Curtailment ziehen
-2. dabei sichtbare Bedienung auf `/service/panel` gegen `/overview` und `/trends`
+1. jetzt den naechsten browserbasierten Shared-Truth-Slice fuer Breaker-Recovery ziehen
+2. dabei sichtbare Bedienung auf `/service/panel` gegen `/meter` und `/alarms`
    auf echtem Runtime-Start absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- zweiter `Playwright`-Smoke fuer `power_limit` auf `/service/panel`
-  mit sichtbarer Wirkung in `/overview` und `/trends`
-- fokussierte Nachweise fuer shared truth zwischen HMI-Bedienung,
-  Anlagenzustand und read-only Seiten
+- dritter `Playwright`-Smoke fuer `breaker open -> breaker close` auf
+  `/service/panel` mit sichtbarer Wirkung in `/meter` und `/alarms`
+- fokussierte Nachweise fuer Alarm-Clear, Exportpfad-Wiederherstellung und
+  shared truth zwischen HMI-Bedienung und read-only Seiten
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
@@ -823,7 +827,7 @@ Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
 - keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  ersten zwei browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
+  ersten drei browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 

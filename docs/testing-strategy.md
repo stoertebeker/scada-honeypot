@@ -369,6 +369,8 @@ Pflichttests:
 - Fehlerseiten bleiben ruhig und generisch
 - erster Browser-Slice prueft `/service/login -> /service/panel -> breaker open -> /alarms`
   gegen den echten lokalen Runtime-Pfad
+- zweiter Browser-Slice prueft `power_limit` auf `/service/panel` mit sichtbarer
+  Shared-Truth-Wirkung in `/overview` und `/trends`
 
 ### 12.3 Alerting-End-to-End
 

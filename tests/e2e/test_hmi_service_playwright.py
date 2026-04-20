@@ -48,18 +48,7 @@ def test_playwright_service_login_breaker_alarm_flow(runtime: LocalRuntime, page
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"
 
-    page.goto(f"{base_url}/service/login", wait_until="networkidle")
-
-    expect(page).to_have_url(re.compile(r".*/service/login$"))
-    expect(page.get_by_role("heading", name="Service Login")).to_be_visible()
-    expect(page.get_by_role("heading", name="Service Authentication")).to_be_visible()
-
-    page.get_by_label("Username").fill(SERVICE_LOGIN_USERNAME)
-    page.get_by_label("Password").fill(SERVICE_LOGIN_PASSWORD)
-    page.get_by_role("button", name="Log In").click()
-
-    expect(page).to_have_url(re.compile(r".*/service/panel(?:\?.*)?$"))
-    expect(page.get_by_role("heading", name="Service Panel")).to_be_visible()
+    _login_to_service_panel(page, base_url=base_url)
     expect(page.get_by_role("heading", name="Grid Breaker Control")).to_be_visible()
 
     page.get_by_role("button", name="Open Breaker").click()
@@ -93,6 +82,66 @@ def test_playwright_service_login_breaker_alarm_flow(runtime: LocalRuntime, page
         alert.alarm_code == "BREAKER_OPEN" and alert.asset_id == "grid-01" and alert.state != "cleared"
         for alert in alerts
     )
+
+
+def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    page.get_by_label("Active Power Limit").fill("55.5")
+    page.get_by_role("button", name="Apply Power Limit").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=power_limit_updated$"))
+    expect(page.get_by_text("Active power limit updated successfully.")).to_be_visible()
+    expect(page.get_by_text("55.5 %")).to_be_visible()
+    expect(page.get_by_text("3.22 MW")).to_be_visible()
+
+    page.get_by_role("link", name="Overview").click()
+
+    expect(page).to_have_url(re.compile(r".*/overview$"))
+    expect(page.get_by_role("heading", name="Plant Overview")).to_be_visible()
+    expect(page.get_by_text("55.5 %")).to_be_visible()
+    expect(page.get_by_text("3.22 MW")).to_be_visible()
+    expect(page.get_by_text("Plant curtailed")).to_be_visible()
+
+    page.get_by_role("link", name="Trends").click()
+
+    expect(page).to_have_url(re.compile(r".*/trends$"))
+    expect(page.get_by_role("heading", name="Trend Overview")).to_be_visible()
+    expect(page.get_by_text("The trace shows curtailed output against the nominal baseline.")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("55.5 %")
+    expect(page.locator("body")).to_contain_text("3.22 MW")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "set_active_power_limit"
+        and event.result == "accepted"
+        for event in events
+    )
+    assert any(event.event_type == "process.setpoint.curtailment_changed" for event in events)
+    assert any(event.event_type == "hmi.page.overview_viewed" for event in events)
+    assert any(event.event_type == "hmi.page.trends_viewed" for event in events)
+    assert any(alert.alarm_code == "PLANT_CURTAILED" and alert.state != "cleared" for alert in alerts)
+
+
+def _login_to_service_panel(page: Page, *, base_url: str) -> None:
+    page.goto(f"{base_url}/service/login", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/service/login$"))
+    expect(page.get_by_role("heading", name="Service Login")).to_be_visible()
+    expect(page.get_by_role("heading", name="Service Authentication")).to_be_visible()
+
+    page.get_by_label("Username").fill(SERVICE_LOGIN_USERNAME)
+    page.get_by_label("Password").fill(SERVICE_LOGIN_PASSWORD)
+    page.get_by_role("button", name="Log In").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel(?:\?.*)?$"))
+    expect(page.get_by_role("heading", name="Service Panel")).to_be_visible()
 
 
 def _launch_browser(playwright: Playwright) -> Browser:
