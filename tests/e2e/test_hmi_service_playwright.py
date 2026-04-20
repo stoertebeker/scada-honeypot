@@ -129,6 +129,63 @@ def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntim
     assert any(alert.alarm_code == "PLANT_CURTAILED" and alert.state != "cleared" for alert in alerts)
 
 
+def test_playwright_breaker_recovery_updates_meter_and_clears_alarm(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    page.get_by_role("button", name="Open Breaker").click()
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=breaker_open_requested$"))
+    expect(page.get_by_text("Breaker State: Open")).to_be_visible()
+
+    page.get_by_role("button", name="Close Breaker").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=breaker_close_requested$"))
+    expect(page.get_by_text("Breaker close request accepted.")).to_be_visible()
+    expect(page.get_by_text("Breaker State: Closed")).to_be_visible()
+
+    page.get_by_role("link", name="Meter").click()
+
+    expect(page).to_have_url(re.compile(r".*/meter$"))
+    expect(page.get_by_role("heading", name="Meter Overview")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("5.80 MW")
+    expect(page.locator("body")).to_contain_text("Closed")
+    expect(page.locator("body")).to_contain_text("Available")
+    expect(page.locator("body")).not_to_contain_text("BREAKER_OPEN")
+
+    page.get_by_role("link", name="Alarms").click()
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("Active Alarms")
+    expect(page.locator("body")).to_contain_text("0")
+    expect(page.locator("body")).to_contain_text("BREAKER_OPEN")
+    expect(page.locator("body")).to_contain_text("Cleared")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "breaker_open_request"
+        and event.result == "accepted"
+        for event in events
+    )
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "breaker_close_request"
+        and event.result == "accepted"
+        for event in events
+    )
+    assert any(event.event_type == "hmi.page.meter_viewed" for event in events)
+    assert any(event.event_type == "hmi.page.alarms_viewed" for event in events)
+    assert any(
+        alert.alarm_code == "BREAKER_OPEN" and alert.asset_id == "grid-01" and alert.state == "cleared"
+        for alert in alerts
+    )
+
+
 def _login_to_service_panel(page: Page, *, base_url: str) -> None:
     page.goto(f"{base_url}/service/login", wait_until="networkidle")
 

@@ -371,6 +371,8 @@ Pflichttests:
   gegen den echten lokalen Runtime-Pfad
 - zweiter Browser-Slice prueft `power_limit` auf `/service/panel` mit sichtbarer
   Shared-Truth-Wirkung in `/overview` und `/trends`
+- dritter Browser-Slice prueft `breaker open -> breaker close` auf
+  `/service/panel` mit sichtbarer Wirkung in `/meter` und der Alarmhistorie
 
 ### 12.3 Alerting-End-to-End
 
