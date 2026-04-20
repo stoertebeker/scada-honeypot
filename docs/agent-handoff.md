@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `185 passed`
+- `186 passed`
 
 Abgedeckt sind bisher:
 
@@ -763,6 +763,10 @@ Abgedeckt sind bisher:
   `/service/panel` mit sichtbarer Wirkung in `/meter` und `/alarms` ab und
   prueft dabei `BREAKER_OPEN` als aktiven Alarm, dessen spaeteren `cleared`-
   Historieneintrag und die Exportpfad-Wiederherstellung im Browser
+- derselbe Browser-Slice deckt jetzt auch `block_enable_request` und
+  `block_power_limit_pct` auf `/service/panel` mit sichtbarer Wirkung in
+  `/inverters` ab und prueft dabei Statuswechsel nach `offline`, `0.0 kW`,
+  fehlende Comm-Loss-Alarme und die Prozessspur fuer den betroffenen Block
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -813,17 +817,17 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den naechsten browserbasierten Shared-Truth-Slice fuer Inverter-Block-Control ziehen
-2. dabei sichtbare Bedienung auf `/service/panel` gegen `/inverters` auf echtem
-   Runtime-Start absichern
+1. jetzt den naechsten browserbasierten Shared-Truth-Slice fuer Block-Reset und Comm-Loss-Recovery ziehen
+2. dabei sichtbare Bedienung auf `/service/panel` gegen `/inverters` und
+   `/alarms` auf echtem Runtime-Start absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- vierter `Playwright`-Smoke fuer `block_enable_request` und
-  `block_power_limit_pct` auf `/service/panel`
-- fokussierte Nachweise fuer shared truth zwischen HMI-Bedienung und
-  `/inverters`, inklusive sichtbarer Blockleistung und Statusaenderung
+- fuenfter `Playwright`-Smoke fuer `block_reset_request` nach simuliertem
+  Kommunikationsverlust auf `invb-02`
+- fokussierte Nachweise fuer Comm-Loss-Clear, Statuswiederherstellung und
+  shared truth zwischen HMI-Bedienung, `/inverters` und `/alarms`
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
@@ -831,7 +835,7 @@ Nicht als naechstes tun:
 
 - keine neue Aussenkante vorziehen
 - keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  ersten vier browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
+  ersten fuenf browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
 
 ## Vor dem Weiterbauen lesen
 

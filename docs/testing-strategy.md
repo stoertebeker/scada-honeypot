@@ -373,6 +373,9 @@ Pflichttests:
   Shared-Truth-Wirkung in `/overview` und `/trends`
 - dritter Browser-Slice prueft `breaker open -> breaker close` auf
   `/service/panel` mit sichtbarer Wirkung in `/meter` und der Alarmhistorie
+- vierter Browser-Slice prueft `block_enable_request` und
+  `block_power_limit_pct` auf `/service/panel` mit sichtbarer Wirkung in
+  `/inverters`
 
 ### 12.3 Alerting-End-to-End
 
