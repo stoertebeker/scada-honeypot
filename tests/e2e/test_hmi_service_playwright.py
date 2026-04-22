@@ -688,6 +688,27 @@ def test_playwright_single_line_reflects_breaker_open_shared_truth(
     assert runtime.modbus_service.register_map.snapshot.revenue_meter.export_power_kw == 0.0
 
 
+def test_playwright_weather_page_reflects_unit_21_shared_truth(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.goto(f"{base_url}/weather", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/weather$"))
+    expect(page.get_by_role("heading", name="Weather Context")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("840 W/m2")
+    expect(page.locator("body")).to_contain_text("31.5 C")
+    expect(page.locator("body")).to_contain_text("22.0 C")
+    expect(page.locator("body")).to_contain_text("4.2 m/s")
+    expect(page.locator("body")).to_contain_text("Good")
+
+    events = runtime.event_store.fetch_events()
+    weather_registers = runtime.modbus_service.register_map.read_holding_registers(unit_id=21, start_offset=99, quantity=8)
+
+    assert any(event.event_type == "hmi.page.weather_viewed" for event in events)
+    assert weather_registers.values == (0, 0, 0, 840, 315, 220, 42, 1000)
+
+
 def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"

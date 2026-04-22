@@ -410,6 +410,8 @@ Pflichttests:
   echten `operating_mode`
 - neunzehnter Browser-Slice prueft `breaker open` auf `/service/panel` mit
   sichtbarer Rueckspiegelung im read-only `/single-line`-Schema
+- zwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
+  gegen die Werte aus `Unit 21`
 
 ### 12.3 Alerting-End-to-End
 

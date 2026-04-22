@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `209 passed`
+- `210 passed`
 
 Abgedeckt sind bisher:
 
@@ -825,6 +825,9 @@ Abgedeckt sind bisher:
 - ein weiterer Browser-Slice deckt jetzt `breaker open` auf `/service/panel`
   ab und prueft dabei die sichtbare Rueckspiegelung im read-only
   `/single-line`-Schema auf derselben Shared Truth
+- ein weiterer Browser-Slice deckt jetzt `/weather` als read-only
+  Shared-Truth-Seite ab und prueft dabei dieselben Wetterwerte und
+  Qualitaetszustände wie `Unit 21`
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -875,14 +878,14 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. als naechsten read-only HMI-Nachweis noch `/weather` browserseitig
-   absichern
-2. danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
+1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
+   rund; danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen
+   ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- naechster atomarer Browser-Fix: `/weather` als read-only Shared-Truth-Seite
-  gegen den lokalen Runtime-Pfad absichern
+- naechster atomarer Fix nur bei weiterem Bedarf: weiterer read-only HMI-
+  Feinschnitt oder eine neue Rule-/Exporter-Kette auf derselben Wahrheit
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
