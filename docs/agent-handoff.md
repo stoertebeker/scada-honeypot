@@ -2,18 +2,20 @@
 
 ## Zwischenfazit
 
-Das Repo ist nicht mehr nur in Dokumentationsnaehe. Die Deckscrew hat **Phase A
-praktisch abgeschlossen**:
+Das Repo ist nicht mehr nur in Dokumentationsnaehe. Die Deckscrew hat den
+lokalen V1-Prototypen inzwischen **bis weit in Phase D/E und zentrale Teile von
+Phase I** gezogen:
 
-- Projektgeruest unter `src/`, `tests/`, `fixtures/`, `tools/` steht
-- `uv`-Setup mit `pyproject.toml`, `.python-version` und `uv.lock` steht
-- `config_core` laedt und validiert Runtime-Konfiguration aus `.env` und
-  Umgebungsvariablen
-- erstes mitgeliefertes Locale-Paket liegt unter
-  `resources/locales/attacker-ui/en.json`
-- erstes ladbares Start-Fixture `fixtures/normal_operation.json` ist vorhanden
-- Zeitabstraktion fuer deterministische Tests ist vorhanden
-- das Repo ist lokal startbar und die Unit-Tests laufen gruen
+- gemeinsamer Fachkern aus `asset_domain`, `plant_sim`, `event_core`,
+  `storage` und lokalem Runtime-Startpfad steht
+- Modbus, HMI, Service-Panel, Rule-Engine und Outbox-/Exporter-Pfade laufen
+  auf derselben Snapshot- und Event-Wahrheit
+- Webhook, SMTP und Telegram decken rule-basierte Folge-Alerts inzwischen bis
+  zum Exporter-Double ab, inklusive stillem Retry und isoliertem Teilausfall
+- browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
+  wichtigsten sichtbaren und sicherheitsrelevanten Pfade
+- das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
+  Gesamttestlauf steht aktuell bei `236 passed`
 
 Wichtiger Kurs:
 
@@ -28,21 +30,16 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
-- `9d4c92a` `feat: add fc16 ppc setpoint writes`
-- `114c271` `feat: boot local modbus runtime`
-- `0be087b` `feat: add fc06 curtailment write path`
-- `9f0b0a3` `feat: add read-only modbus slice`
-- `04ebab8` `feat: record plant sim state transitions`
-- `cd25146` `feat: add event recorder and sqlite store`
-- `6dc38a9` `feat: add alarm lifecycle to plant sim`
-- `a7f5954` `feat: add deterministic plant simulation scenarios`
-- `56e1f98` `feat: add typed asset domain snapshot`
-- `cd18d1b` `feat: add deterministic test clock`
-- `1ac917e` `feat: add loadable plant fixture`
-- `2e294f1` `feat: add validated runtime config core`
-- `9d4de02` `chore: ignore finder metadata`
-- `80f4538` `docs: sync readme with phase-a scaffold`
-- `9a8c35b` `chore: bootstrap phase-a project scaffold`
+- `600e4b8` `test: gate partial multi-target exporter failure`
+- `e900e78` `test: drain follow-up alert via all exporters`
+- `6c677c5` `test: gate low output telegram failure`
+- `1ca54fc` `test: gate grid path telegram failure`
+- `57e2dc1` `test: gate multi-block telegram failure`
+- `91c2ebd` `test: drain low output follow-up via telegram`
+- `24f274c` `test: drain grid path follow-up via telegram`
+- `1491047` `test: drain multi-block follow-up via telegram`
+- `7b24f4d` `test: gate low output smtp failure`
+- `f639bfc` `test: gate grid path smtp failure`
 
 ## Aktueller Implementierungsstand
 
@@ -60,7 +57,7 @@ Wichtiger Kurs:
   - `EventRecorder`
   - `ReadOnlyRegisterMap`
   - `ReadOnlyModbusTcpService`
-- `LocalHmiHttpService`
+  - `LocalHmiHttpService`
 - `main()` startet jetzt lokalen Modbus-Listener und lokalen HMI-HTTP-Dienst
   und bleibt bis `KeyboardInterrupt` aktiv
 - Sicherheitsregel im Startpfad:
@@ -891,8 +888,11 @@ Noch **nicht** vorhanden:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alarmfolgen und spaetere
   Suppression-Strategien jenseits identischer aktiver Alerts
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- weitere HMI-Seiten und HMI-Fehlerseiten
-- weitere Ziel-Exporter, Rule-Engine-Feinschliff und restliche Servicepfade
+- weitere HMI-Seiten jenseits von `/overview`, `/single-line`, `/inverters`,
+  `/weather`, `/meter`, `/alarms`, `/trends` und dem bestehenden
+  Service-Panel
+- weitere Ziel-Exporter jenseits von Webhook, SMTP und Telegram sowie
+  restliche Servicepfade
 
 Operative Hinweise:
 
@@ -905,8 +905,9 @@ Operative Hinweise:
 Direkter Kurs fuer den naechsten Agenten:
 
 1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
-   rund; danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen
-   ansetzen
+   rund; sinnvoller naechster Kurs ist jetzt ein Last-/Timing-Sweep fuer
+   Outbox-Leasing, Backoff und mehrere gleichzeitige Folge-Alerts ueber
+   Webhook, SMTP und Telegram
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 

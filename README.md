@@ -16,8 +16,9 @@ Die Anlage soll:
 
 ## Aktueller Stand
 
-Das Projekt befindet sich aktuell im **fruehen Implementierungsstand von
-Phase D/E bei offenem Rest aus Phase C**.
+Das Projekt befindet sich aktuell im **fortgeschrittenen
+Implementierungsstand von Phase D/E mit wesentlichen Hardening- und
+Release-Gate-Slices aus Phase I**.
 
 Vorhanden sind:
 - Scope
@@ -79,6 +80,7 @@ Vorhanden sind:
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
+- Gesamtteststand aktuell: `236 passed`
 
 Noch nicht vorhanden:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
