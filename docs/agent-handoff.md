@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `196 passed`
+- `198 passed`
 
 Abgedeckt sind bisher:
 
@@ -796,6 +796,9 @@ Abgedeckt sind bisher:
   aktivem `REPEATED_LOGIN_FAILURE` ab und prueft dabei den sichtbaren
   `cleared`-Historieneintrag in `/alarms` bei gleichzeitig wieder geoeffneter
   Service-Session
+- derselbe Browser-Slice deckt jetzt auch `GRID_PATH_UNAVAILABLE` als zweiten
+  history-only Rule-Alert ab und prueft dabei die sichtbare Folge-Alarmspur
+  fuer `grid-01` in `/alarms`
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -846,19 +849,19 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den zweiten history-only Rule-Alert in der HMI gegen `/alarms`
-   belegen
-2. danach Dedupe/Suppression auch fuer diesen Folge-Alert browserseitig
+1. jetzt Dedupe/Suppression auch fuer `GRID_PATH_UNAVAILABLE` browserseitig
    absichern
+2. danach den naechsten history-only Rule-Alert wie
+   `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar in `/alarms` belegen
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- zwoelfter atomarer Browser-Fix: `GRID_PATH_UNAVAILABLE` oder
-  `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar aus dem lokalen `alert_log` auf
+- dreizehnter atomarer Browser-Fix: weitere Breaker-Open-Ereignisse nach
+  aktivem `GRID_PATH_UNAVAILABLE` duplizieren den Folge-Alert nicht in
   `/alarms`
-- fokussierte Nachweise fuer einen zweiten history-only Rule-Alert jenseits
-  des Login-Pfads
+- fokussierte Nachweise fuer Dedupe/Suppression eines zweiten history-only
+  Rule-Alerts jenseits des Login-Pfads
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 

@@ -1210,6 +1210,37 @@ async def test_runtime_alarms_page_reads_breaker_alert_from_event_trail(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_runtime_alarms_page_reads_grid_path_follow_up_alert_from_event_trail(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    runtime.modbus_service.register_map.write_single_register(unit_id=41, start_offset=199, value=1)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms")
+
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "GRID_PATH_UNAVAILABLE" in response.text
+    assert "Grid path unavailable" in response.text
+    assert "grid-01" in response.text
+    assert "Critical" in response.text
+    assert "Active" in response.text
+    assert any(
+        alert.alarm_code == "GRID_PATH_UNAVAILABLE" and alert.asset_id == "grid-01" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
+@pytest.mark.asyncio
 async def test_runtime_alarms_page_reads_repeated_login_failure_from_event_trail(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

@@ -314,6 +314,38 @@ def test_playwright_service_login_breaker_alarm_flow(runtime: LocalRuntime, page
     )
 
 
+def test_playwright_breaker_open_shows_grid_path_follow_up_alarm(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+    expect(page.get_by_role("heading", name="Grid Breaker Control")).to_be_visible()
+
+    page.get_by_role("button", name="Open Breaker").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=breaker_open_requested$"))
+    expect(page.get_by_text("Breaker open request accepted.")).to_be_visible()
+
+    page.get_by_role("link", name="Alarms").click()
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    grid_path_row = page.locator("tbody tr").filter(has=page.get_by_text("GRID_PATH_UNAVAILABLE"))
+    expect(grid_path_row).to_contain_text("Grid path unavailable")
+    expect(grid_path_row).to_contain_text("grid-01")
+    expect(grid_path_row).to_contain_text("Critical")
+    expect(grid_path_row).to_contain_text("Active")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert any(event.event_type == "hmi.page.alarms_viewed" for event in events)
+    assert any(
+        alert.alarm_code == "GRID_PATH_UNAVAILABLE" and alert.asset_id == "grid-01" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"
