@@ -1281,6 +1281,53 @@ async def test_runtime_alarms_page_reads_low_output_follow_up_alert_from_event_t
 
 
 @pytest.mark.asyncio
+async def test_runtime_alarms_page_suppresses_duplicate_low_output_follow_up_alerts_while_active(
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    runtime.modbus_service.register_map.set_block_control_state(
+        asset_id="invb-01",
+        block_enable_request=False,
+        block_power_limit_pct=100.0,
+    )
+    runtime.modbus_service.register_map.set_block_control_state(
+        asset_id="invb-02",
+        block_enable_request=False,
+        block_power_limit_pct=100.0,
+    )
+    runtime.modbus_service.register_map.set_block_control_state(
+        asset_id="invb-03",
+        block_enable_request=True,
+        block_power_limit_pct=90.0,
+    )
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms")
+
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert response.text.count("LOW_SITE_OUTPUT_UNEXPECTED") == 1
+    assert "Unexpected low site output" in response.text
+    assert "site" in response.text
+    assert "Active" in response.text
+    assert sum(
+        1
+        for alert in alerts
+        if alert.alarm_code == "LOW_SITE_OUTPUT_UNEXPECTED" and alert.asset_id == "site"
+    ) == 1
+
+
+@pytest.mark.asyncio
 async def test_runtime_alarms_page_shows_low_output_follow_up_alert_cleared_after_block_recovery(
     tmp_path: Path,
 ) -> None:

@@ -399,6 +399,9 @@ Pflichttests:
   mehrfachen Block-Ausfaellen sichtbar auf `/alarms`
 - fuenfzehnter Browser-Slice prueft `LOW_SITE_OUTPUT_UNEXPECTED` nach
   Block-Erholung mit sichtbarem `cleared` auf `/alarms`
+- sechzehnter Browser-Slice prueft `LOW_SITE_OUTPUT_UNEXPECTED` bei weiterem
+  Block-Control waehrend aktiver Folge-Lage ohne duplizierten Alert auf
+  `/alarms`
 
 ### 12.3 Alerting-End-to-End
 
