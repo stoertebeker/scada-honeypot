@@ -87,8 +87,28 @@ def test_comm_loss_marks_target_block_stale_without_zeroing_site_power() -> None
     assert degraded_block.quality == "stale"
     assert degraded_snapshot.site.communications_health == "degraded"
     assert degraded_snapshot.site.availability_state == "partially_available"
-    assert degraded_snapshot.revenue_meter.export_power_kw == pytest.approx(5800.0)
+    assert degraded_snapshot.revenue_meter.export_power_kw == pytest.approx(snapshot.revenue_meter.export_power_kw)
     assert degraded_snapshot.active_alarm_codes == ("COMM_LOSS_INVERTER_BLOCK",)
+
+
+def test_sequential_comm_loss_preserves_prior_lost_blocks() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    first_loss_snapshot = simulator.lose_block_communications(snapshot, asset_id="invb-01")
+    second_loss_snapshot = simulator.lose_block_communications(first_loss_snapshot, asset_id="invb-02")
+
+    first_lost_block = next(block for block in second_loss_snapshot.inverter_blocks if block.asset_id == "invb-01")
+    second_lost_block = next(block for block in second_loss_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    remaining_block = next(block for block in second_loss_snapshot.inverter_blocks if block.asset_id == "invb-03")
+
+    assert first_lost_block.communication_state == "lost"
+    assert first_lost_block.quality == "stale"
+    assert second_lost_block.communication_state == "lost"
+    assert second_lost_block.quality == "stale"
+    assert remaining_block.communication_state == "healthy"
+    assert second_loss_snapshot.site.communications_health == "degraded"
+    assert second_loss_snapshot.active_alarm_codes == ("COMM_LOSS_INVERTER_BLOCK",)
 
 
 def test_block_enable_request_zeroes_target_block_and_reduces_site_power() -> None:

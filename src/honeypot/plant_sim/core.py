@@ -678,10 +678,9 @@ class PlantSimulator:
     ) -> PlantSnapshot:
         """Markiert einen Inverter-Block als Kommunikationsverlust ohne Anlagen-Trip."""
 
-        base_snapshot = self.simulate_normal_operation(snapshot)
         target_found = False
         inverter_blocks = []
-        for block in base_snapshot.inverter_blocks:
+        for block in snapshot.inverter_blocks:
             if block.asset_id != asset_id:
                 inverter_blocks.append(block)
                 continue
@@ -700,18 +699,18 @@ class PlantSimulator:
         if not target_found:
             raise PlantSimulationError(f"unbekannter inverter_block fuer Kommunikationsverlust: {asset_id}")
 
-        site = base_snapshot.site.model_copy(
+        site = snapshot.site.model_copy(
             update={
                 "availability_state": "partially_available",
                 "communications_health": "degraded",
             }
         )
         alarms = _replace_scenario_alarms(
-            base_snapshot.alarms,
+            snapshot.alarms,
             "COMM_LOSS_INVERTER_BLOCK",
         )
         resulting_snapshot = _build_snapshot(
-            base_snapshot,
+            snapshot,
             site=site,
             inverter_blocks=tuple(inverter_blocks),
             alarms=alarms,
