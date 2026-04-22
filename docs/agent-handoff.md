@@ -857,6 +857,9 @@ Abgedeckt sind bisher:
   `MULTI_BLOCK_UNAVAILABLE`, `GRID_PATH_UNAVAILABLE` und
   `LOW_SITE_OUTPUT_UNEXPECTED` bleiben dabei ohne sichtbaren Seiteneffekt in
   `/alarms` oder Modbus
+- ein weiterer Gate-Slice prueft jetzt die parallele Mehrfachausleitung
+  desselben `LOW_SITE_OUTPUT_UNEXPECTED`-Folgealerts ueber Webhook, SMTP und
+  Telegram; ein Telegram-Rate-Limit blockiert dabei weder Webhook noch SMTP
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut,
   Follow-up-Alert-Suppression und Exporter-Ausfall ohne sichtbare
   Seiteneffekte

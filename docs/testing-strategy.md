@@ -434,6 +434,9 @@ Pflichttests:
   lokalen Hintergrundrunner bis zum Exporter-Double ausgeliefert
 - derselbe Nachweis gilt jetzt fuer Webhook, SMTP und Telegram, inklusive
   stillem Retry bei Exportfehlern ohne sichtbaren HMI-/Modbus-Seiteneffekt
+- mindestens ein Release-Gate prueft jetzt auch die parallele Mehrfachausleitung
+  desselben Folge-Alerts ueber mehrere Zielkanaele; faellt ein Kanal aus,
+  liefern die uebrigen Kanaele weiter aus
 
 ## 13. Logging- und Event-Tests
 

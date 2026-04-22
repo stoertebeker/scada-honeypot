@@ -1091,3 +1091,139 @@ def test_release_gate_low_output_telegram_failure_stays_internal_and_alarm_view_
     assert "Telegram" not in alarms_page.text
     assert transaction_id == 0x7C44
     assert protocol_id == 0
+
+
+def test_release_gate_partial_multi_target_failure_keeps_other_exporters_delivering(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        "WEBHOOK_EXPORTER_ENABLED=1",
+        "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+        "SMTP_EXPORTER_ENABLED=1",
+        "SMTP_HOST=mail.example.invalid",
+        "SMTP_PORT=2525",
+        "SMTP_FROM=alerts@example.invalid",
+        "SMTP_TO=soc@example.invalid",
+        "TELEGRAM_EXPORTER_ENABLED=1",
+        "TELEGRAM_BOT_TOKEN=token-123",
+        "TELEGRAM_CHAT_ID=chat-99",
+        "OUTBOX_RETRY_BACKOFF_SECONDS=45",
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    webhook_payloads: list[str] = []
+    smtp_payloads: list[str] = []
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        webhook_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    def telegram_handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(429, json={"ok": False, "error_code": 429, "description": "Too Many Requests"})
+
+    class FakeSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            smtp_payloads.append(message.get_content())
+            return {}
+
+    runtime.outbox_runner.exporters["webhook"] = WebhookExporter(
+        url="https://example.invalid/hook",
+        transport=httpx.MockTransport(webhook_handler),
+        retry_after_seconds=45,
+    )
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        retry_after_seconds=45,
+        client_factory=lambda host, port, timeout: FakeSmtpClient(),
+    )
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        retry_after_seconds=45,
+        transport=httpx.MockTransport(telegram_handler),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="system.site.low_output_observed",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="system",
+        component="plant-sim",
+        asset_id="site",
+        action="observe_site_output",
+        result="observed",
+        resulting_value=1.9,
+        tags=("diagnostics", "site-output"),
+    )
+
+    runtime.event_recorder.record(
+        event,
+        current_state_updates=build_low_output_state(plant_power_mw=1.9),
+        outbox_targets=("webhook", "smtp", "telegram"),
+    )
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        modbus_address = runtime.modbus_service.address
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            status_by_target = {entry.target_type: entry.status for entry in outbox_entries}
+            retry_by_target = {entry.target_type: entry.retry_count for entry in outbox_entries}
+            if (
+                len(outbox_entries) == 3
+                and status_by_target == {"webhook": "delivered", "smtp": "delivered", "telegram": "pending"}
+                and retry_by_target.get("telegram") == 1
+            ):
+                break
+            sleep(0.05)
+        alarms_page = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/alarms",
+            timeout=5.0,
+            trust_env=False,
+        )
+        modbus_response = send_modbus_request(
+            modbus_address,
+            transaction_id=0x7D44,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    low_output_alert = next(alert for alert in alerts if alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE)
+    by_target = {entry.target_type: entry for entry in outbox_entries if entry.payload_ref == low_output_alert.alert_id}
+    transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
+
+    assert len(by_target) == 3
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert by_target["webhook"].status == "delivered"
+    assert by_target["smtp"].status == "delivered"
+    assert by_target["telegram"].status == "pending"
+    assert by_target["telegram"].retry_count == 1
+    assert by_target["telegram"].last_error == "Telegram antwortete mit HTTP 429"
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in webhook_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in smtp_payloads)
+    assert alarms_page.status_code == 200
+    assert "Alarm Console" in alarms_page.text
+    assert "LOW_SITE_OUTPUT_UNEXPECTED" in alarms_page.text
+    assert "Telegram" not in alarms_page.text
+    assert transaction_id == 0x7D44
+    assert protocol_id == 0
