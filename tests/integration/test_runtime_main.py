@@ -628,6 +628,111 @@ def test_build_local_runtime_drains_smtp_grid_path_follow_up_in_background(tmp_p
     )
 
 
+def test_build_local_runtime_drains_smtp_low_output_follow_up_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-11",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "SMTP_EXPORTER_ENABLED=1",
+                "SMTP_HOST=mail.example.invalid",
+                "SMTP_PORT=2525",
+                "SMTP_FROM=alerts@example.invalid",
+                "SMTP_TO=soc@example.invalid",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured = {}
+
+    class FakeSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            captured["from"] = message["From"]
+            captured["to"] = message["To"]
+            captured["subject"] = message["Subject"]
+            captured["body"] = message.get_content()
+            return {}
+
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        client_factory=lambda host, port, timeout: FakeSmtpClient(),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.setpoint.block_enable_request_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="set_block_enable_request",
+        result="accepted",
+        resulting_value=0,
+        tags=("control-path", "inverter-block", "enable"),
+    )
+
+    runtime.event_recorder.record(
+        event,
+        current_state_updates={
+            "site": {
+                "plant_power_mw": 1.9,
+                "plant_power_limit_pct": 100,
+                "breaker_state": "closed",
+            },
+            "weather_station": {
+                "irradiance_w_m2": 892,
+            },
+            "grid_interconnect": {
+                "export_path_available": True,
+            },
+            "alarms": [],
+        },
+        outbox_targets=("smtp",),
+    )
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.status == "delivered" for entry in outbox_entries):
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert captured["from"] == "alerts@example.invalid"
+    assert captured["to"] == "soc@example.invalid"
+    assert LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in captured["body"]
+    assert any(
+        alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def test_build_local_runtime_drains_webhook_multi_block_follow_up_in_background(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
