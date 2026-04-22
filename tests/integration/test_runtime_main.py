@@ -1077,6 +1077,91 @@ def test_build_local_runtime_drains_webhook_low_output_follow_up_in_background(t
     )
 
 
+def test_build_local_runtime_drains_telegram_grid_path_follow_up_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-13",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "TELEGRAM_EXPORTER_ENABLED=1",
+                "TELEGRAM_BOT_TOKEN=token-123",
+                "TELEGRAM_CHAT_ID=chat-99",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured_payloads: list[str] = []
+    captured_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_paths.append(request.url.path)
+        captured_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(200, json={"ok": True})
+
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        transport=httpx.MockTransport(handler),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+
+    runtime.event_recorder.record(
+        event,
+        current_state_updates={
+            "grid_interconnect": {
+                "breaker_state": "open",
+                "export_path_available": False,
+                "grid_acceptance_state": "unavailable",
+            }
+        },
+        outbox_targets=("telegram",),
+    )
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.status == "delivered" for entry in outbox_entries):
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert all(path == "/bottoken-123/sendMessage" for path in captured_paths)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in captured_payloads)
+    assert any(
+        alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE and alert.asset_id == "grid-01" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def _build_inverter_blocks_state(*lost_asset_ids: str) -> list[dict[str, str]]:
     lost_assets = set(lost_asset_ids)
     return [
