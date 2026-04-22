@@ -11,6 +11,7 @@ from honeypot.exporter_runner import SmtpExporter, TelegramExporter
 from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
+from honeypot.rule_engine import MULTI_BLOCK_UNAVAILABLE_ALERT_CODE
 
 
 def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_path: Path) -> None:
@@ -419,6 +420,103 @@ def test_build_local_runtime_drains_smtp_outbox_in_background(tmp_path: Path) ->
     assert captured["from"] == "alerts@example.invalid"
     assert captured["to"] == "soc@example.invalid"
     assert "BREAKER_OPEN" in captured["body"]
+
+
+def test_build_local_runtime_drains_webhook_multi_block_follow_up_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-06",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "WEBHOOK_EXPORTER_ENABLED=1",
+                "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured_payloads: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    runtime.outbox_runner.exporters["webhook"] = runtime.outbox_runner.exporters["webhook"].__class__(
+        url="https://example.invalid/hook",
+        transport=httpx.MockTransport(handler),
+    )
+
+    first_event = runtime.event_recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_runtime_multi_block_02",
+            "correlation_id": "corr_runtime_multi_block_02",
+            "asset_id": "invb-02",
+        }
+    )
+
+    runtime.event_recorder.record(
+        first_event,
+        current_state_updates={"inverter_blocks": _build_inverter_blocks_state("invb-01")},
+        outbox_targets=("webhook",),
+    )
+    runtime.event_recorder.record(
+        second_event,
+        current_state_updates={"inverter_blocks": _build_inverter_blocks_state("invb-01", "invb-02")},
+        outbox_targets=("webhook",),
+    )
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.status == "delivered" for entry in outbox_entries):
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert any(MULTI_BLOCK_UNAVAILABLE_ALERT_CODE in payload for payload in captured_payloads)
+    assert any(
+        alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
+def _build_inverter_blocks_state(*lost_asset_ids: str) -> list[dict[str, str]]:
+    lost_assets = set(lost_asset_ids)
+    return [
+        {
+            "asset_id": asset_id,
+            "communication_state": "lost" if asset_id in lost_assets else "healthy",
+        }
+        for asset_id in ("invb-01", "invb-02", "invb-03")
+    ]
 
 
 def send_request(
