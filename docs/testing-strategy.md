@@ -389,6 +389,8 @@ Pflichttests:
   sichtbarem `REPEATED_LOGIN_FAILURE` auf `/alarms`
 - zehnter Browser-Slice prueft weitere Fehlversuche nach aktivem
   `REPEATED_LOGIN_FAILURE` ohne duplizierten Alert auf `/alarms`
+- elfter Browser-Slice prueft erfolgreichen Service-Login nach aktivem
+  `REPEATED_LOGIN_FAILURE` mit sichtbarem `cleared` auf `/alarms`
 
 ### 12.3 Alerting-End-to-End
 

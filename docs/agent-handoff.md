@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `195 passed`
+- `196 passed`
 
 Abgedeckt sind bisher:
 
@@ -792,6 +792,10 @@ Abgedeckt sind bisher:
 - die lokale `RuleEngine` clear't jetzt einen aktiven
   `REPEATED_LOGIN_FAILURE` wieder, sobald fuer dieselbe Quell-IP und denselben
   Benutzername ein erfolgreicher Service-Login gesehen wird
+- derselbe Browser-Slice deckt jetzt auch erfolgreichen Service-Login nach
+  aktivem `REPEATED_LOGIN_FAILURE` ab und prueft dabei den sichtbaren
+  `cleared`-Historieneintrag in `/alarms` bei gleichzeitig wieder geoeffneter
+  Service-Session
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -842,18 +846,19 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den sichtbaren Clear-Pfad fuer `REPEATED_LOGIN_FAILURE` gegen
-   `/alarms` browserseitig absichern
-2. danach den zweiten history-only Rule-Alert in der HMI gegen `/alarms`
+1. jetzt den zweiten history-only Rule-Alert in der HMI gegen `/alarms`
    belegen
+2. danach Dedupe/Suppression auch fuer diesen Folge-Alert browserseitig
+   absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- elfter atomarer Browser-Fix: erfolgreicher Service-Login clear't einen
-  aktiven `REPEATED_LOGIN_FAILURE` sichtbar auf `/alarms`
-- fokussierte Nachweise fuer `cleared` in der Alarmhistorie ohne Verlust der
-  bisherigen Suppression
+- zwoelfter atomarer Browser-Fix: `GRID_PATH_UNAVAILABLE` oder
+  `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar aus dem lokalen `alert_log` auf
+  `/alarms`
+- fokussierte Nachweise fuer einen zweiten history-only Rule-Alert jenseits
+  des Login-Pfads
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 

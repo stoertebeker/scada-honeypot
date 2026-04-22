@@ -222,6 +222,57 @@ def test_playwright_repeated_login_failure_alert_is_suppressed_after_additional_
     ) == 1
 
 
+def test_playwright_successful_login_clears_repeated_login_failure_alarm(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.goto(f"{base_url}/service/login", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/service/login$"))
+    expect(page.get_by_role("heading", name="Service Login")).to_be_visible()
+    for _ in range(3):
+        page.get_by_label("Username").fill(SERVICE_LOGIN_USERNAME)
+        page.get_by_label("Password").fill("wrong")
+        page.get_by_role("button", name="Log In").click()
+        expect(page).to_have_url(re.compile(r".*/service/login$"))
+        expect(page.get_by_text("Authentication failed. Check credentials and retry.")).to_be_visible()
+
+    page.get_by_label("Username").fill(SERVICE_LOGIN_USERNAME)
+    page.get_by_label("Password").fill(SERVICE_LOGIN_PASSWORD)
+    page.get_by_role("button", name="Log In").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel(?:\\?.*)?$"))
+    expect(page.get_by_role("heading", name="Service Panel")).to_be_visible()
+    assert any(cookie["name"] == SERVICE_SESSION_COOKIE_NAME for cookie in page.context.cookies())
+
+    page.get_by_role("link", name="Alarms").click()
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("Active Alarms")
+    expect(page.locator("body")).to_contain_text("0")
+    repeated_rows = page.locator("tbody tr").filter(has=page.get_by_text("REPEATED_LOGIN_FAILURE"))
+    assert repeated_rows.count() == 1
+    expect(repeated_rows.first).to_contain_text("Repeated service login failures")
+    expect(repeated_rows.first).to_contain_text("hmi-web")
+    expect(repeated_rows.first).to_contain_text("Cleared")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert sum(
+        1
+        for event in events
+        if event.event_type == "hmi.auth.service_login_attempt"
+        and event.requested_value["username"] == SERVICE_LOGIN_USERNAME
+    ) == 4
+    assert any(event.event_type == "hmi.page.alarms_viewed" for event in events)
+    assert any(
+        alert.alarm_code == "REPEATED_LOGIN_FAILURE" and alert.asset_id == "hmi-web" and alert.state == "cleared"
+        for alert in alerts
+    )
+
+
 def test_playwright_service_login_breaker_alarm_flow(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"
