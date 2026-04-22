@@ -429,6 +429,8 @@ Pflichttests:
 - Alert landet in Outbox
 - lokaler Exporter-Double empfaengt Payload
 - Exportfehler bleibt fuer den Client unsichtbar
+- rule-basierte Folge-Alerts wie `MULTI_BLOCK_UNAVAILABLE` werden ueber den
+  lokalen Hintergrundrunner bis zum Exporter-Double ausgeliefert
 
 ## 13. Logging- und Event-Tests
 

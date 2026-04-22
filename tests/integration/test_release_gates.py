@@ -10,7 +10,11 @@ import httpx
 from honeypot.exporter_runner import SmtpExporter, WebhookExporter
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
-from honeypot.rule_engine import GRID_PATH_UNAVAILABLE_ALERT_CODE, LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE
+from honeypot.rule_engine import (
+    GRID_PATH_UNAVAILABLE_ALERT_CODE,
+    LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+    MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+)
 
 
 def write_env(tmp_path: Path, *lines: str) -> Path:
@@ -70,6 +74,17 @@ def build_low_output_state(
         },
         "alarms": list(alarms),
     }
+
+
+def build_inverter_blocks_state(*lost_asset_ids: str) -> list[dict[str, str]]:
+    lost_assets = set(lost_asset_ids)
+    return [
+        {
+            "asset_id": asset_id,
+            "communication_state": "lost" if asset_id in lost_assets else "healthy",
+        }
+        for asset_id in ("invb-01", "invb-02", "invb-03")
+    ]
 
 
 def test_release_gate_http_headers_and_error_pages_are_quiet(tmp_path: Path) -> None:
@@ -307,6 +322,80 @@ def test_release_gate_follow_up_alerts_do_not_flood_alert_log_or_hmi(tmp_path: P
     assert len(low_output_alerts) == 1
     assert sum(1 for entry in outbox_entries if entry.payload_ref == grid_path_alerts[0].alert_id) == 1
     assert sum(1 for entry in outbox_entries if entry.payload_ref == low_output_alerts[0].alert_id) == 1
+
+
+def test_release_gate_multi_block_follow_up_does_not_flood_outbox_or_hmi(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    first_event = runtime.event_recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_release_gate_multi_block_02",
+            "correlation_id": "corr_release_gate_multi_block_02",
+            "asset_id": "invb-02",
+        }
+    )
+    third_event = first_event.model_copy(
+        update={
+            "event_id": "evt_release_gate_multi_block_03",
+            "correlation_id": "corr_release_gate_multi_block_03",
+            "asset_id": "invb-03",
+        }
+    )
+
+    runtime.event_recorder.record(
+        first_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01")},
+        outbox_targets=("webhook",),
+    )
+    runtime.event_recorder.record(
+        second_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01", "invb-02")},
+        outbox_targets=("webhook",),
+    )
+    runtime.event_recorder.record(
+        third_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01", "invb-02", "invb-03")},
+        outbox_targets=("webhook",),
+    )
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        response = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/alarms",
+            timeout=5.0,
+            trust_env=False,
+        )
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    multi_block_alerts = tuple(alert for alert in alerts if alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE)
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "traceback" not in response.text.lower()
+    assert response.text.count("MULTI_BLOCK_UNAVAILABLE") == 1
+    assert len(multi_block_alerts) == 1
+    assert sum(1 for entry in outbox_entries if entry.payload_ref == multi_block_alerts[0].alert_id) == 1
 
 
 def test_release_gate_smtp_failure_stays_internal_and_clients_remain_stable(tmp_path: Path) -> None:

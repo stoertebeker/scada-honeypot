@@ -847,6 +847,10 @@ Abgedeckt sind bisher:
   und Retry-Backoff auf dem lokalen SQLite-Store
 - lokaler Runner-Hintergrundbetrieb fuer Webhook-, SMTP- und Telegram-Pfad ohne
   manuelles `drain_once()` im Runtime-Slice
+- ein weiterer Runtime- und Release-Gate-Slice deckt jetzt den rule-basierten
+  Folge-Alert `MULTI_BLOCK_UNAVAILABLE` bis in Webhook-Outbox und
+  Hintergrundrunner ab und prueft zugleich Dedupe/Suppression ohne zweiten
+  Outbox-Eintrag bei weiterem Blockverlust
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut,
   Follow-up-Alert-Suppression und Exporter-Ausfall ohne sichtbare
   Seiteneffekte
