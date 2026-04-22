@@ -851,6 +851,10 @@ Abgedeckt sind bisher:
   Folge-Alert `MULTI_BLOCK_UNAVAILABLE` bis in Webhook-Outbox und
   Hintergrundrunner ab und prueft zugleich Dedupe/Suppression ohne zweiten
   Outbox-Eintrag bei weiterem Blockverlust
+- ein weiterer Runtime- und Release-Gate-Slice deckt jetzt denselben
+  rule-basierten Folge-Alert `MULTI_BLOCK_UNAVAILABLE` auch fuer den
+  SMTP-Hintergrundrunner ab, inklusive stillem Retry bei Transportfehlern
+  ohne sichtbaren Seiteneffekt in `/alarms` oder Modbus
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut,
   Follow-up-Alert-Suppression und Exporter-Ausfall ohne sichtbare
   Seiteneffekte

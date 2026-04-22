@@ -494,3 +494,114 @@ def test_release_gate_smtp_failure_stays_internal_and_clients_remain_stable(tmp_
     assert "SMTP" not in overview.text
     assert transaction_id == 0x6644
     assert protocol_id == 0
+
+
+def test_release_gate_multi_block_smtp_failure_stays_internal_and_alarm_view_remains_stable(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        "SMTP_EXPORTER_ENABLED=1",
+        "SMTP_HOST=mail.example.invalid",
+        "SMTP_PORT=2525",
+        "SMTP_FROM=alerts@example.invalid",
+        "SMTP_TO=soc@example.invalid",
+        "OUTBOX_RETRY_BACKOFF_SECONDS=45",
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+
+    class FailingSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            del message
+            raise OSError("smtp down")
+
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        retry_after_seconds=45,
+        client_factory=lambda host, port, timeout: FailingSmtpClient(),
+    )
+
+    first_event = runtime.event_recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_release_gate_multi_block_smtp_02",
+            "correlation_id": "corr_release_gate_multi_block_smtp_02",
+            "asset_id": "invb-02",
+        }
+    )
+
+    runtime.event_recorder.record(
+        first_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01")},
+        outbox_targets=("smtp",),
+    )
+    runtime.event_recorder.record(
+        second_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01", "invb-02")},
+        outbox_targets=("smtp",),
+    )
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        modbus_address = runtime.modbus_service.address
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.retry_count == 1 for entry in outbox_entries):
+                break
+            sleep(0.05)
+        alarms_page = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/alarms",
+            timeout=5.0,
+            trust_env=False,
+        )
+        modbus_response = send_modbus_request(
+            modbus_address,
+            transaction_id=0x7744,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    multi_block_alert = next(alert for alert in alerts if alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE)
+    multi_block_outbox = next(entry for entry in outbox_entries if entry.payload_ref == multi_block_alert.alert_id)
+    transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
+
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert multi_block_outbox.status == "pending"
+    assert multi_block_outbox.retry_count == 1
+    assert multi_block_outbox.last_error == "SMTP-Transportfehler: OSError"
+    assert alarms_page.status_code == 200
+    assert "Alarm Console" in alarms_page.text
+    assert "MULTI_BLOCK_UNAVAILABLE" in alarms_page.text
+    assert "SMTP" not in alarms_page.text
+    assert transaction_id == 0x7744
+    assert protocol_id == 0
