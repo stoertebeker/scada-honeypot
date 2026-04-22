@@ -405,6 +405,9 @@ Pflichttests:
 - siebzehnter Browser-Slice prueft `reactive_power_target` auf
   `/service/panel` mit sichtbarer Shared-Truth-Rueckspiegelung in
   `/overview`
+- achtzehnter Browser-Slice prueft `plant_mode_request` auf
+  `/service/panel` als gelatchten Bedienwunsch ohne heimlichen Wechsel des
+  echten `operating_mode`
 
 ### 12.3 Alerting-End-to-End
 

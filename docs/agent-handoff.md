@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `207 passed`
+- `208 passed`
 
 Abgedeckt sind bisher:
 
@@ -818,6 +818,10 @@ Abgedeckt sind bisher:
 - ein weiterer Browser-Slice deckt jetzt `reactive_power_target` auf
   `/service/panel` ab und prueft dabei die sichtbare Rueckspiegelung in
   `/overview`, die Prozessspur und denselben PPC-Shared-Truth wie Modbus
+- ein weiterer Browser-Slice deckt jetzt `plant_mode_request` auf
+  `/service/panel` ab und prueft dabei den gelatchten Bedienwunsch ohne
+  heimlichen Wechsel von `operating_mode` sowie denselben PPC-Shared-Truth wie
+  Modbus
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -868,15 +872,14 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. als naechsten kleinen Service-Pfad noch `plant_mode_request`
-   browserseitig absichern
-2. danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
+1. die derzeitigen Service-Pfade sind browserseitig jetzt weitgehend rund;
+   danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- naechster atomarer Browser-Fix: `plant_mode_request` als gelatchter
-  Bedienwunsch ohne heimlichen Betriebsmoduswechsel gegen den lokalen
-  Runtime-Pfad absichern
+- naechster atomarer Fix nur bei weiterem Bedarf: weiterer HMI-/Modbus-
+  Feinschnitt oder eine zusaetzliche Rule-/Exporter-Kette auf derselben
+  Wahrheit
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 

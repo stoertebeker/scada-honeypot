@@ -615,6 +615,42 @@ def test_playwright_reactive_power_target_updates_service_panel_and_shared_truth
     )
 
 
+def test_playwright_plant_mode_request_latches_without_changing_actual_operating_mode(
+    runtime: LocalRuntime,
+    page: Page,
+) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    plant_mode_select = page.locator("select[name='plant_mode_request']")
+    plant_mode_select.select_option(label="Maintenance")
+    page.get_by_role("button", name="Apply Plant Mode").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=plant_mode_updated$"))
+    expect(page.get_by_text("Plant mode request updated successfully.")).to_be_visible()
+    expect(plant_mode_select).to_have_value("2")
+
+    events = runtime.event_store.fetch_events()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "set_plant_mode_request"
+        and event.result == "accepted"
+        for event in events
+    )
+    assert any(event.event_type == "process.setpoint.plant_mode_request_changed" for event in events)
+    assert runtime.modbus_service.register_map.get_plant_mode_request() == 2
+    assert runtime.modbus_service.register_map.read_holding_registers(unit_id=1, start_offset=201, quantity=1).values == (
+        2,
+    )
+    assert runtime.modbus_service.register_map.snapshot.site.operating_mode == "normal"
+    assert runtime.modbus_service.register_map.read_holding_registers(unit_id=1, start_offset=99, quantity=1).values == (
+        0,
+    )
+
+
 def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"
