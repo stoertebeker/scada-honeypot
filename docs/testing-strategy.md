@@ -395,6 +395,8 @@ Pflichttests:
   history-only Rule-Alert sichtbar auf `/alarms`
 - dreizehnter Browser-Slice prueft einen weiteren `breaker_open_request` bei
   aktivem `GRID_PATH_UNAVAILABLE` ohne duplizierten Folge-Alert auf `/alarms`
+- vierzehnter Browser-Slice prueft `LOW_SITE_OUTPUT_UNEXPECTED` nach
+  mehrfachen Block-Ausfaellen sichtbar auf `/alarms`
 
 ### 12.3 Alerting-End-to-End
 

@@ -396,6 +396,56 @@ def test_playwright_grid_path_follow_up_alert_is_suppressed_after_additional_bre
     ) == 1
 
 
+def test_playwright_low_site_output_follow_up_alarm_appears_after_multiple_block_outages(
+    runtime: LocalRuntime,
+    page: Page,
+) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    for asset_id in ("invb-01", "invb-02"):
+        block_card = page.locator("article.block-card").filter(has=page.get_by_text(asset_id))
+        expect(block_card).to_contain_text(asset_id)
+        block_card.get_by_label("Block Enable Request").select_option(label="Unavailable")
+        block_card.get_by_label("Block Power Limit (%)").fill("100.0")
+        block_card.get_by_role("button", name="Apply Block Control").click()
+
+        expect(page).to_have_url(re.compile(r".*/service/panel\?status=block_control_updated$"))
+        expect(page.get_by_text("Inverter block control updated successfully.")).to_be_visible()
+
+    page.get_by_role("link", name="Alarms").click()
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    low_output_rows = page.locator("tbody tr").filter(has=page.get_by_text("LOW_SITE_OUTPUT_UNEXPECTED"))
+    assert low_output_rows.count() == 1
+    expect(low_output_rows.first).to_contain_text("Unexpected low site output")
+    expect(low_output_rows.first).to_contain_text("site")
+    expect(low_output_rows.first).to_contain_text("High")
+    expect(low_output_rows.first).to_contain_text("Active")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert len(
+        [
+            event
+            for event in events
+            if event.event_type == "hmi.action.service_control_submitted"
+            and event.action == "set_block_control_state"
+            and event.result == "accepted"
+            and event.asset_id in {"invb-01", "invb-02"}
+        ]
+    ) == 2
+    assert any(event.event_type == "hmi.page.alarms_viewed" for event in events)
+    assert any(
+        alert.alarm_code == "LOW_SITE_OUTPUT_UNEXPECTED" and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"

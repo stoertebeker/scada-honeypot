@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `199 passed`
+- `202 passed`
 
 Abgedeckt sind bisher:
 
@@ -750,6 +750,9 @@ Abgedeckt sind bisher:
   schreibenden Service-Bedienungen fuer Leistungsbegrenzung,
   Blindleistungsziel, `plant_mode_request` und Breaker inklusive korrelierter
   Eventspur zum Fachkern
+- kumulativer Mehrblock-Shared-Truth fuer `block_enable_request` und
+  `block_power_limit_pct`, damit mehrere gelatchte Inverter-Block-Controls
+  gleichzeitig sichtbar auf Parkleistung und Folge-Alerts wirken
 - erster browserbasierter `Playwright`-Smoke in
   `tests/e2e/test_hmi_service_playwright.py` deckt jetzt
   `/service/login -> /service/panel -> breaker open -> /alarms` gegen den
@@ -802,6 +805,9 @@ Abgedeckt sind bisher:
 - ein weiterer Browser-Slice deckt jetzt zusaetzliche `breaker_open_request`
   bei bereits aktivem `GRID_PATH_UNAVAILABLE` ab und prueft Dedupe/
   Suppression ohne zweiten aktiven Folge-Alert in `/alarms` oder `alert_log`
+- ein weiterer Integrations- und Browser-Slice deckt jetzt
+  `LOW_SITE_OUTPUT_UNEXPECTED` nach mehrfachen Block-Ausfaellen ab und prueft
+  die sichtbare Folge-Alarmspur fuer das Aggregat `site` in `/alarms`
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -852,18 +858,16 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. danach den naechsten history-only Rule-Alert wie
-   `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar in `/alarms` belegen
-2. erst danach einen ersten Stabilitaetspfad wie Dedupe/Suppression oder
-   `cleared` fuer `LOW_SITE_OUTPUT_UNEXPECTED` absichern
-3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
+1. jetzt einen ersten Stabilitaetspfad wie Dedupe/Suppression oder `cleared`
+   fuer `LOW_SITE_OUTPUT_UNEXPECTED` absichern
+2. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- vierzehnter atomarer Browser-Fix: `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar in
-  `/alarms` gegen den echten lokalen Runtime-Pfad belegen
-- fokussierte Nachweise fuer den naechsten history-only Rule-Alert jenseits
-  des Login- und Grid-Pfads
+- fuenfzehnter atomarer Browser-Fix: `LOW_SITE_OUTPUT_UNEXPECTED` nach
+  Aktivierung browserseitig auf Dedupe/Suppression oder `cleared` absichern
+- fokussierte Nachweise fuer den ersten Stabilitaetspfad des naechsten
+  history-only Rule-Alerts
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
