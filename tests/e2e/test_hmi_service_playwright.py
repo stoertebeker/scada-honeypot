@@ -932,6 +932,65 @@ def test_playwright_block_reset_recovers_comm_loss_in_inverters_and_alarms(runti
     )
 
 
+def test_playwright_block_reset_clears_multi_block_follow_up_in_alarms(runtime: LocalRuntime, page: Page) -> None:
+    _seed_runtime_comm_loss(runtime, asset_id="invb-01")
+    _seed_runtime_comm_loss(runtime, asset_id="invb-02")
+
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.goto(f"{base_url}/alarms", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("MULTI_BLOCK_UNAVAILABLE")
+    expect(page.locator("body")).to_contain_text("Multiple inverter blocks unavailable")
+    expect(page.locator("body")).to_contain_text("site")
+    expect(page.locator("body")).to_contain_text("Active")
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    block_card = page.locator("article.block-card").filter(has=page.get_by_text("invb-02"))
+    expect(block_card).to_contain_text("invb-02")
+    block_card.locator("form[action='/service/panel/inverter-block/reset'] button").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=block_reset_requested$"))
+    expect(page.get_by_text("Inverter block reset pulse accepted.")).to_be_visible()
+
+    page.get_by_role("link", name="Alarms").click()
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("MULTI_BLOCK_UNAVAILABLE")
+    expect(page.locator("body")).to_contain_text("Multiple inverter blocks unavailable")
+    expect(page.locator("body")).to_contain_text("Cleared")
+    expect(page.locator("body")).to_contain_text("COMM_LOSS_INVERTER_BLOCK")
+
+    events = runtime.event_store.fetch_events()
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "block_reset_request"
+        and event.result == "accepted"
+        and event.asset_id == "invb-02"
+        for event in events
+    )
+    assert any(event.event_type == "hmi.page.alarms_viewed" for event in events)
+    assert any(
+        alert.alarm_code == "MULTI_BLOCK_UNAVAILABLE" and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+    assert any(
+        alert.alarm_code == "MULTI_BLOCK_UNAVAILABLE" and alert.asset_id == "site" and alert.state == "cleared"
+        for alert in alerts
+    )
+    assert any(
+        alert.alarm_code == "COMM_LOSS_INVERTER_BLOCK" and alert.asset_id == "invb-01" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def test_playwright_service_session_expiry_returns_quiet_unauthorized_page(
     expired_runtime: tuple[LocalRuntime, FrozenClock],
     page: Page,

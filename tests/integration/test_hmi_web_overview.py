@@ -1281,6 +1281,38 @@ async def test_runtime_alarms_page_reads_low_output_follow_up_alert_from_event_t
 
 
 @pytest.mark.asyncio
+async def test_runtime_alarms_page_reads_multi_block_follow_up_alert_from_event_trail(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    _seed_runtime_comm_loss(runtime, asset_id="invb-01")
+    _seed_runtime_comm_loss(runtime, asset_id="invb-02")
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms")
+
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "MULTI_BLOCK_UNAVAILABLE" in response.text
+    assert "Multiple inverter blocks unavailable" in response.text
+    assert "site" in response.text
+    assert "Critical" in response.text
+    assert "Active" in response.text
+    assert any(
+        alert.alarm_code == "MULTI_BLOCK_UNAVAILABLE" and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
+@pytest.mark.asyncio
 async def test_runtime_alarms_page_suppresses_duplicate_low_output_follow_up_alerts_while_active(
     tmp_path: Path,
 ) -> None:
@@ -1325,6 +1357,44 @@ async def test_runtime_alarms_page_suppresses_duplicate_low_output_follow_up_ale
         for alert in alerts
         if alert.alarm_code == "LOW_SITE_OUTPUT_UNEXPECTED" and alert.asset_id == "site"
     ) == 1
+
+
+@pytest.mark.asyncio
+async def test_runtime_alarms_page_shows_multi_block_follow_up_alert_cleared_after_block_reset(
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    _seed_runtime_comm_loss(runtime, asset_id="invb-01")
+    _seed_runtime_comm_loss(runtime, asset_id="invb-02")
+    runtime.modbus_service.register_map.write_single_register(unit_id=12, start_offset=201, value=1)
+
+    transport = httpx.ASGITransport(app=runtime.hmi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms")
+
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert response.status_code == 200
+    assert "Alarm Console" in response.text
+    assert "MULTI_BLOCK_UNAVAILABLE" in response.text
+    assert "Multiple inverter blocks unavailable" in response.text
+    assert "site" in response.text
+    assert "Cleared" in response.text
+    assert any(
+        alert.alarm_code == "MULTI_BLOCK_UNAVAILABLE" and alert.asset_id == "site" and alert.state == "cleared"
+        for alert in alerts
+    )
+    assert any(
+        alert.alarm_code == "COMM_LOSS_INVERTER_BLOCK" and alert.asset_id == "invb-01" and alert.state != "cleared"
+        for alert in alerts
+    )
 
 
 @pytest.mark.asyncio
@@ -1480,3 +1550,12 @@ async def test_runtime_service_login_opens_service_panel(tmp_path: Path) -> None
     assert login_response.status_code == 303
     assert panel_response.status_code == 200
     assert "Service Panel" in panel_response.text
+
+
+def _seed_runtime_comm_loss(runtime, *, asset_id: str) -> None:
+    register_map = runtime.modbus_service.register_map
+    with register_map._lock:
+        register_map._snapshot = register_map._simulator.lose_block_communications(
+            register_map._snapshot,
+            asset_id=asset_id,
+        )

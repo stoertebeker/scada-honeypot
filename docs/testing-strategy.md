@@ -408,9 +408,14 @@ Pflichttests:
 - achtzehnter Browser-Slice prueft `plant_mode_request` auf
   `/service/panel` als gelatchten Bedienwunsch ohne heimlichen Wechsel des
   echten `operating_mode`
-- neunzehnter Browser-Slice prueft `breaker open` auf `/service/panel` mit
+- neunzehnter Browser-Slice prueft `MULTI_BLOCK_UNAVAILABLE` nach doppeltem
+  Inverter-Block-Comm-Loss sichtbar auf `/alarms`
+- derselbe Browser-Slice prueft nach `block_reset_request` fuer einen der
+  betroffenen Bloecke den sichtbaren `cleared`-Historieneintrag bei weiter
+  aktivem Einzel-Comm-Loss
+- zwanzigster Browser-Slice prueft `breaker open` auf `/service/panel` mit
   sichtbarer Rueckspiegelung im read-only `/single-line`-Schema
-- zwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
+- einundzwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
   gegen die Werte aus `Unit 21`
 
 ### 12.3 Alerting-End-to-End

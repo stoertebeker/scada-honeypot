@@ -822,6 +822,15 @@ Abgedeckt sind bisher:
   `/service/panel` ab und prueft dabei den gelatchten Bedienwunsch ohne
   heimlichen Wechsel von `operating_mode` sowie denselben PPC-Shared-Truth wie
   Modbus
+- die lokale `RuleEngine` clear't jetzt den kritischen Folge-Alert
+  `MULTI_BLOCK_UNAVAILABLE`, sobald nach einem `block_reset_request` nur noch
+  ein einzelner Inverter-Block als `communication_state=lost` im Snapshot
+  verbleibt
+- ein weiterer Integrations- und Browser-Slice deckt jetzt
+  `MULTI_BLOCK_UNAVAILABLE` nach doppeltem Inverter-Block-Comm-Loss ab und
+  prueft auf `/alarms` sowohl die sichtbare Aktivierung fuer das Aggregat
+  `site` als auch den sichtbaren `cleared`-Historieneintrag nach Reset eines
+  der betroffenen Bloecke bei weiter aktivem Einzel-Comm-Loss
 - ein weiterer Browser-Slice deckt jetzt `breaker open` auf `/service/panel`
   ab und prueft dabei die sichtbare Rueckspiegelung im read-only
   `/single-line`-Schema auf derselben Shared Truth
