@@ -387,6 +387,8 @@ Pflichttests:
   auf `/service/login` und `/service/panel`
 - neunter Browser-Slice prueft wiederholte fehlgeschlagene Service-Logins mit
   sichtbarem `REPEATED_LOGIN_FAILURE` auf `/alarms`
+- zehnter Browser-Slice prueft weitere Fehlversuche nach aktivem
+  `REPEATED_LOGIN_FAILURE` ohne duplizierten Alert auf `/alarms`
 
 ### 12.3 Alerting-End-to-End
 

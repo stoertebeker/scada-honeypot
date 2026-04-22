@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `192 passed`
+- `193 passed`
 
 Abgedeckt sind bisher:
 
@@ -786,6 +786,9 @@ Abgedeckt sind bisher:
   Service-Logins ab und prueft dabei den sichtbaren Rule-Alert
   `REPEATED_LOGIN_FAILURE` in `/alarms`, dessen Asset-Bezug `hmi-web` und die
   korrekte Auth-/Alert-Spur ohne `service_session`-Cookie
+- derselbe Browser-Slice deckt jetzt auch weitere Fehlversuche nach bereits
+  aktivem `REPEATED_LOGIN_FAILURE` ab und prueft dabei Dedupe/Suppression ohne
+  zweiten aktiven Login-Fehler-Alert in `/alarms` oder `alert_log`
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -836,18 +839,17 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt den naechsten browserbasierten Security-Slice fuer Alert-Dedupe nach
-   wiederholten Service-Login-Fehlern ziehen
-2. dabei weitere Fehlversuche nach bereits aktivem
-   `REPEATED_LOGIN_FAILURE` gegen `/alarms` auf echtem Runtime-Start absichern
+1. jetzt das Clear-Verhalten fuer `REPEATED_LOGIN_FAILURE` bei erfolgreichem
+   Login in der Rule-Engine schliessen
+2. danach den sichtbaren Clear-Pfad gegen `/alarms` browserseitig absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- zehnter `Playwright`-Smoke fuer weitere Fehlversuche nach bereits aktivem
-  `REPEATED_LOGIN_FAILURE`
-- fokussierte Nachweise fuer Dedupe/Suppression ohne zweiten aktiven
-  Login-Fehler-Alert in `/alarms`
+- naechster atomarer Kern-Fix: erfolgreicher Service-Login clear't einen
+  aktiven `REPEATED_LOGIN_FAILURE` im lokalen Alert-Pfad
+- fokussierte Nachweise fuer korrekte Clear-Ableitung ohne Verlust der
+  bisherigen Suppression
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
