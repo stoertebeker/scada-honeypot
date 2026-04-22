@@ -767,17 +767,17 @@ def test_build_local_runtime_drains_smtp_low_output_follow_up_in_background(tmp_
     )
 
     event = runtime.event_recorder.build_event(
-        event_type="process.setpoint.block_enable_request_changed",
-        category="process",
+        event_type="system.site.low_output_observed",
+        category="system",
         severity="medium",
         source_ip="203.0.113.24",
-        actor_type="remote_client",
+        actor_type="system",
         component="plant-sim",
-        asset_id="invb-02",
-        action="set_block_enable_request",
-        result="accepted",
-        resulting_value=0,
-        tags=("control-path", "inverter-block", "enable"),
+        asset_id="site",
+        action="observe_site_output",
+        result="observed",
+        resulting_value=1.9,
+        tags=("diagnostics", "site-output"),
     )
 
     runtime.event_recorder.record(
@@ -1022,17 +1022,17 @@ def test_build_local_runtime_drains_webhook_low_output_follow_up_in_background(t
     )
 
     event = runtime.event_recorder.build_event(
-        event_type="process.setpoint.block_enable_request_changed",
-        category="process",
+        event_type="system.site.low_output_observed",
+        category="system",
         severity="medium",
         source_ip="203.0.113.24",
-        actor_type="remote_client",
+        actor_type="system",
         component="plant-sim",
-        asset_id="invb-02",
-        action="set_block_enable_request",
-        result="accepted",
-        resulting_value=0,
-        tags=("control-path", "inverter-block", "enable"),
+        asset_id="site",
+        action="observe_site_output",
+        result="observed",
+        resulting_value=1.9,
+        tags=("diagnostics", "site-output"),
     )
 
     runtime.event_recorder.record(
@@ -1198,17 +1198,17 @@ def test_build_local_runtime_drains_telegram_low_output_follow_up_in_background(
     )
 
     event = runtime.event_recorder.build_event(
-        event_type="process.setpoint.block_enable_request_changed",
-        category="process",
+        event_type="system.site.low_output_observed",
+        category="system",
         severity="medium",
         source_ip="203.0.113.24",
-        actor_type="remote_client",
+        actor_type="system",
         component="plant-sim",
-        asset_id="invb-02",
-        action="set_block_enable_request",
-        result="accepted",
-        resulting_value=0,
-        tags=("control-path", "inverter-block", "enable"),
+        asset_id="site",
+        action="observe_site_output",
+        result="observed",
+        resulting_value=1.9,
+        tags=("diagnostics", "site-output"),
     )
 
     runtime.event_recorder.record(
@@ -1248,6 +1248,134 @@ def test_build_local_runtime_drains_telegram_low_output_follow_up_in_background(
     assert runtime.outbox_runner_service.drain_count >= 1
     assert all(path == "/bottoken-123/sendMessage" for path in captured_paths)
     assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in captured_payloads)
+    assert any(
+        alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
+def test_build_local_runtime_drains_low_output_follow_up_to_all_exporters_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-15",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "WEBHOOK_EXPORTER_ENABLED=1",
+                "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+                "SMTP_EXPORTER_ENABLED=1",
+                "SMTP_HOST=mail.example.invalid",
+                "SMTP_PORT=2525",
+                "SMTP_FROM=alerts@example.invalid",
+                "SMTP_TO=soc@example.invalid",
+                "TELEGRAM_EXPORTER_ENABLED=1",
+                "TELEGRAM_BOT_TOKEN=token-123",
+                "TELEGRAM_CHAT_ID=chat-99",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    webhook_payloads: list[str] = []
+    telegram_payloads: list[str] = []
+    smtp_payloads: list[str] = []
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        webhook_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    def telegram_handler(request: httpx.Request) -> httpx.Response:
+        telegram_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(200, json={"ok": True})
+
+    class FakeSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            smtp_payloads.append(message.get_content())
+            return {}
+
+    runtime.outbox_runner.exporters["webhook"] = runtime.outbox_runner.exporters["webhook"].__class__(
+        url="https://example.invalid/hook",
+        transport=httpx.MockTransport(webhook_handler),
+    )
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        client_factory=lambda host, port, timeout: FakeSmtpClient(),
+    )
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        transport=httpx.MockTransport(telegram_handler),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="system.site.low_output_observed",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="system",
+        component="plant-sim",
+        asset_id="site",
+        action="observe_site_output",
+        result="observed",
+        resulting_value=1.9,
+        tags=("diagnostics", "site-output"),
+    )
+
+    runtime.event_recorder.record(
+        event,
+        current_state_updates={
+            "site": {
+                "plant_power_mw": 1.9,
+                "plant_power_limit_pct": 100,
+                "breaker_state": "closed",
+            },
+            "weather_station": {
+                "irradiance_w_m2": 892,
+            },
+            "grid_interconnect": {
+                "export_path_available": True,
+            },
+            "alarms": [],
+        },
+        outbox_targets=("webhook", "smtp", "telegram"),
+    )
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if len(outbox_entries) == 3 and all(entry.status == "delivered" for entry in outbox_entries):
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    status_by_target = {entry.target_type: entry.status for entry in outbox_entries}
+
+    assert len(outbox_entries) == 3
+    assert status_by_target == {"webhook": "delivered", "smtp": "delivered", "telegram": "delivered"}
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in webhook_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in smtp_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in telegram_payloads)
     assert any(
         alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE and alert.asset_id == "site" and alert.state != "cleared"
         for alert in alerts
