@@ -426,6 +426,97 @@ def test_build_local_runtime_drains_smtp_outbox_in_background(tmp_path: Path) ->
     assert "BREAKER_OPEN" in captured["body"]
 
 
+def test_build_local_runtime_drains_telegram_multi_block_follow_up_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-12",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "TELEGRAM_EXPORTER_ENABLED=1",
+                "TELEGRAM_BOT_TOKEN=token-123",
+                "TELEGRAM_CHAT_ID=chat-99",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured_payloads: list[str] = []
+    captured_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_paths.append(request.url.path)
+        captured_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(200, json={"ok": True})
+
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        transport=httpx.MockTransport(handler),
+    )
+
+    first_event = runtime.event_recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_runtime_multi_block_telegram_02",
+            "correlation_id": "corr_runtime_multi_block_telegram_02",
+            "asset_id": "invb-02",
+        }
+    )
+
+    runtime.event_recorder.record(
+        first_event,
+        current_state_updates={"inverter_blocks": _build_inverter_blocks_state("invb-01")},
+        outbox_targets=("telegram",),
+    )
+    runtime.event_recorder.record(
+        second_event,
+        current_state_updates={"inverter_blocks": _build_inverter_blocks_state("invb-01", "invb-02")},
+        outbox_targets=("telegram",),
+    )
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.status == "delivered" for entry in outbox_entries):
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert all(path == "/bottoken-123/sendMessage" for path in captured_paths)
+    assert any(MULTI_BLOCK_UNAVAILABLE_ALERT_CODE in payload for payload in captured_payloads)
+    assert any(
+        alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE and alert.asset_id == "site" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def test_build_local_runtime_drains_smtp_multi_block_follow_up_in_background(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
