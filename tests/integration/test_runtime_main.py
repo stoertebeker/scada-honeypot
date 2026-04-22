@@ -11,7 +11,11 @@ from honeypot.exporter_runner import SmtpExporter, TelegramExporter
 from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
-from honeypot.rule_engine import GRID_PATH_UNAVAILABLE_ALERT_CODE, MULTI_BLOCK_UNAVAILABLE_ALERT_CODE
+from honeypot.rule_engine import (
+    GRID_PATH_UNAVAILABLE_ALERT_CODE,
+    LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+    MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+)
 
 
 def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_path: Path) -> None:
@@ -584,6 +588,93 @@ def test_build_local_runtime_drains_webhook_grid_path_follow_up_in_background(tm
     assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in captured_payloads)
     assert any(
         alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE and alert.asset_id == "grid-01" and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
+def test_build_local_runtime_drains_webhook_low_output_follow_up_in_background(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-08",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "WEBHOOK_EXPORTER_ENABLED=1",
+                "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    captured_payloads: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    runtime.outbox_runner.exporters["webhook"] = runtime.outbox_runner.exporters["webhook"].__class__(
+        url="https://example.invalid/hook",
+        transport=httpx.MockTransport(handler),
+    )
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.setpoint.block_enable_request_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="set_block_enable_request",
+        result="accepted",
+        resulting_value=0,
+        tags=("control-path", "inverter-block", "enable"),
+    )
+
+    runtime.event_recorder.record(
+        event,
+        current_state_updates={
+            "site": {
+                "plant_power_mw": 1.9,
+                "plant_power_limit_pct": 100,
+                "breaker_state": "closed",
+            },
+            "weather_station": {
+                "irradiance_w_m2": 892,
+            },
+            "grid_interconnect": {
+                "export_path_available": True,
+            },
+            "alarms": [],
+        },
+        outbox_targets=("webhook",),
+    )
+
+    try:
+        runtime.start()
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.status == "delivered" for entry in outbox_entries):
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in captured_payloads)
+    assert any(
+        alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE and alert.asset_id == "site" and alert.state != "cleared"
         for alert in alerts
     )
 
