@@ -991,6 +991,32 @@ def test_playwright_block_reset_clears_multi_block_follow_up_in_alarms(runtime: 
     )
 
 
+def test_playwright_additional_comm_loss_does_not_duplicate_multi_block_follow_up(runtime: LocalRuntime, page: Page) -> None:
+    _seed_runtime_comm_loss(runtime, asset_id="invb-01")
+    _seed_runtime_comm_loss(runtime, asset_id="invb-02")
+    _seed_runtime_comm_loss(runtime, asset_id="invb-03")
+
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.goto(f"{base_url}/alarms", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/alarms$"))
+    expect(page.get_by_role("heading", name="Alarm Console")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("MULTI_BLOCK_UNAVAILABLE")
+    expect(page.locator("body")).to_contain_text("Multiple inverter blocks unavailable")
+
+    body_text = page.locator("body").text_content() or ""
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert body_text.count("MULTI_BLOCK_UNAVAILABLE") == 1
+    assert sum(
+        1
+        for alert in alerts
+        if alert.alarm_code == "MULTI_BLOCK_UNAVAILABLE" and alert.asset_id == "site"
+    ) == 1
+
+
 def test_playwright_service_session_expiry_returns_quiet_unauthorized_page(
     expired_runtime: tuple[LocalRuntime, FrozenClock],
     page: Page,

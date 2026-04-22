@@ -831,6 +831,10 @@ Abgedeckt sind bisher:
   prueft auf `/alarms` sowohl die sichtbare Aktivierung fuer das Aggregat
   `site` als auch den sichtbaren `cleared`-Historieneintrag nach Reset eines
   der betroffenen Bloecke bei weiter aktivem Einzel-Comm-Loss
+- ein weiterer Integrations- und Browser-Slice deckt jetzt einen dritten
+  Block-Comm-Loss bei bereits aktivem `MULTI_BLOCK_UNAVAILABLE` ab und prueft
+  Dedupe/Suppression ohne zweiten aktiven Folge-Alert in `/alarms` oder
+  `alert_log`
 - ein weiterer Browser-Slice deckt jetzt `breaker open` auf `/service/panel`
   ab und prueft dabei die sichtbare Rueckspiegelung im read-only
   `/single-line`-Schema auf derselben Shared Truth

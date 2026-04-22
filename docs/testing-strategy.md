@@ -417,6 +417,9 @@ Pflichttests:
   sichtbarer Rueckspiegelung im read-only `/single-line`-Schema
 - einundzwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
   gegen die Werte aus `Unit 21`
+- zweiundzwanzigster Browser-Slice prueft einen weiteren
+  `simulate_comm_loss` bei bereits aktivem `MULTI_BLOCK_UNAVAILABLE` ohne
+  duplizierten Folge-Alert auf `/alarms`
 
 ### 12.3 Alerting-End-to-End
 
