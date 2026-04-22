@@ -7,7 +7,7 @@ from time import monotonic, sleep
 
 import httpx
 
-from honeypot.exporter_runner import SmtpExporter, WebhookExporter
+from honeypot.exporter_runner import SmtpExporter, TelegramExporter, WebhookExporter
 from honeypot.main import build_local_runtime
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
 from honeypot.rule_engine import (
@@ -808,4 +808,104 @@ def test_release_gate_low_output_smtp_failure_stays_internal_and_alarm_view_rema
     assert "LOW_SITE_OUTPUT_UNEXPECTED" in alarms_page.text
     assert "SMTP" not in alarms_page.text
     assert transaction_id == 0x7944
+    assert protocol_id == 0
+
+
+def test_release_gate_multi_block_telegram_failure_stays_internal_and_alarm_view_remains_stable(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        "TELEGRAM_EXPORTER_ENABLED=1",
+        "TELEGRAM_BOT_TOKEN=token-123",
+        "TELEGRAM_CHAT_ID=chat-99",
+        "OUTBOX_RETRY_BACKOFF_SECONDS=45",
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(429, json={"ok": False, "error_code": 429, "description": "Too Many Requests"})
+
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        retry_after_seconds=45,
+        transport=httpx.MockTransport(handler),
+    )
+
+    first_event = runtime.event_recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_release_gate_multi_block_telegram_02",
+            "correlation_id": "corr_release_gate_multi_block_telegram_02",
+            "asset_id": "invb-02",
+        }
+    )
+
+    runtime.event_recorder.record(
+        first_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01")},
+        outbox_targets=("telegram",),
+    )
+    runtime.event_recorder.record(
+        second_event,
+        current_state_updates={"inverter_blocks": build_inverter_blocks_state("invb-01", "invb-02")},
+        outbox_targets=("telegram",),
+    )
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        modbus_address = runtime.modbus_service.address
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and all(entry.retry_count == 1 for entry in outbox_entries):
+                break
+            sleep(0.05)
+        alarms_page = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/alarms",
+            timeout=5.0,
+            trust_env=False,
+        )
+        modbus_response = send_modbus_request(
+            modbus_address,
+            transaction_id=0x7A44,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+    finally:
+        runtime.stop()
+
+    alerts = runtime.event_store.fetch_alerts()
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    multi_block_alert = next(alert for alert in alerts if alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE)
+    multi_block_outbox = next(entry for entry in outbox_entries if entry.payload_ref == multi_block_alert.alert_id)
+    transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
+
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert multi_block_outbox.status == "pending"
+    assert multi_block_outbox.retry_count == 1
+    assert multi_block_outbox.last_error == "Telegram antwortete mit HTTP 429"
+    assert alarms_page.status_code == 200
+    assert "Alarm Console" in alarms_page.text
+    assert "MULTI_BLOCK_UNAVAILABLE" in alarms_page.text
+    assert "Telegram" not in alarms_page.text
+    assert transaction_id == 0x7A44
     assert protocol_id == 0
