@@ -849,13 +849,14 @@ Abgedeckt sind bisher:
   manuelles `drain_once()` im Runtime-Slice
 - weitere Runtime- und Release-Gate-Slices decken jetzt die rule-basierten
   Folge-Alerts `GRID_PATH_UNAVAILABLE`, `LOW_SITE_OUTPUT_UNEXPECTED` und
-  `MULTI_BLOCK_UNAVAILABLE` bis in Webhook-Outbox und Hintergrundrunner ab und
-  pruefen dabei auch Dedupe/Suppression ohne zweiten Outbox-Eintrag bei
-  weiterem Folgeereignis
-- derselbe Nachweis gilt jetzt auch fuer den SMTP-Hintergrundrunner; stille
-  Retry-Pfade bei Transportfehlern fuer `MULTI_BLOCK_UNAVAILABLE`,
-  `GRID_PATH_UNAVAILABLE` und `LOW_SITE_OUTPUT_UNEXPECTED` bleiben ohne
-  sichtbaren Seiteneffekt in `/alarms` oder Modbus
+  `MULTI_BLOCK_UNAVAILABLE` bis in Webhook-, SMTP- und Telegram-Outbox/
+  Hintergrundrunner ab und pruefen dabei auch Dedupe/Suppression ohne zweiten
+  Outbox-Eintrag bei weiterem Folgeereignis
+- derselbe Nachweis gilt jetzt auch fuer stille Retry-Pfade bei Transport-/
+  Rate-Limit-Fehlern auf Webhook-, SMTP- und Telegram-Pfad; die Folge-Alerts
+  `MULTI_BLOCK_UNAVAILABLE`, `GRID_PATH_UNAVAILABLE` und
+  `LOW_SITE_OUTPUT_UNEXPECTED` bleiben dabei ohne sichtbaren Seiteneffekt in
+  `/alarms` oder Modbus
 - Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut,
   Follow-up-Alert-Suppression und Exporter-Ausfall ohne sichtbare
   Seiteneffekte

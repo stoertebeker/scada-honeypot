@@ -432,8 +432,8 @@ Pflichttests:
 - rule-basierte Folge-Alerts wie `GRID_PATH_UNAVAILABLE`,
   `LOW_SITE_OUTPUT_UNEXPECTED` und `MULTI_BLOCK_UNAVAILABLE` werden ueber den
   lokalen Hintergrundrunner bis zum Exporter-Double ausgeliefert
-- derselbe Nachweis gilt jetzt fuer Webhook und SMTP, inklusive stillem Retry
-  bei Exportfehlern ohne sichtbaren HMI-/Modbus-Seiteneffekt
+- derselbe Nachweis gilt jetzt fuer Webhook, SMTP und Telegram, inklusive
+  stillem Retry bei Exportfehlern ohne sichtbaren HMI-/Modbus-Seiteneffekt
 
 ## 13. Logging- und Event-Tests
 
