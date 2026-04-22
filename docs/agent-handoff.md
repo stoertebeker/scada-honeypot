@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `208 passed`
+- `209 passed`
 
 Abgedeckt sind bisher:
 
@@ -822,6 +822,9 @@ Abgedeckt sind bisher:
   `/service/panel` ab und prueft dabei den gelatchten Bedienwunsch ohne
   heimlichen Wechsel von `operating_mode` sowie denselben PPC-Shared-Truth wie
   Modbus
+- ein weiterer Browser-Slice deckt jetzt `breaker open` auf `/service/panel`
+  ab und prueft dabei die sichtbare Rueckspiegelung im read-only
+  `/single-line`-Schema auf derselben Shared Truth
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -872,14 +875,14 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. die derzeitigen Service-Pfade sind browserseitig jetzt weitgehend rund;
-   danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
+1. als naechsten read-only HMI-Nachweis noch `/weather` browserseitig
+   absichern
+2. danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- naechster atomarer Fix nur bei weiterem Bedarf: weiterer HMI-/Modbus-
-  Feinschnitt oder eine zusaetzliche Rule-/Exporter-Kette auf derselben
-  Wahrheit
+- naechster atomarer Browser-Fix: `/weather` als read-only Shared-Truth-Seite
+  gegen den lokalen Runtime-Pfad absichern
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 

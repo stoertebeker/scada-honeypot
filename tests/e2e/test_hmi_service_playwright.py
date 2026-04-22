@@ -651,6 +651,43 @@ def test_playwright_plant_mode_request_latches_without_changing_actual_operating
     )
 
 
+def test_playwright_single_line_reflects_breaker_open_shared_truth(
+    runtime: LocalRuntime,
+    page: Page,
+) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+    expect(page.get_by_role("heading", name="Grid Breaker Control")).to_be_visible()
+
+    page.get_by_role("button", name="Open Breaker").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=breaker_open_requested$"))
+    expect(page.get_by_text("Breaker open request accepted.")).to_be_visible()
+
+    page.get_by_role("link", name="Single Line").click()
+
+    expect(page).to_have_url(re.compile(r".*/single-line$"))
+    expect(page.get_by_role("heading", name="Single-Line View")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("Flow isolated by open breaker")
+    expect(page.locator("body")).to_contain_text("Open")
+    expect(page.locator("body")).to_contain_text("0 kW")
+    expect(page.locator("body")).to_contain_text("Unavailable")
+
+    events = runtime.event_store.fetch_events()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "breaker_open_request"
+        and event.result == "accepted"
+        for event in events
+    )
+    assert any(event.event_type == "hmi.page.single_line_viewed" for event in events)
+    assert runtime.modbus_service.register_map.snapshot.grid_interconnect.breaker_state == "open"
+    assert runtime.modbus_service.register_map.snapshot.revenue_meter.export_power_kw == 0.0
+
+
 def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"

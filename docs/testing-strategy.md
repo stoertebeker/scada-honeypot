@@ -408,6 +408,8 @@ Pflichttests:
 - achtzehnter Browser-Slice prueft `plant_mode_request` auf
   `/service/panel` als gelatchten Bedienwunsch ohne heimlichen Wechsel des
   echten `operating_mode`
+- neunzehnter Browser-Slice prueft `breaker open` auf `/service/panel` mit
+  sichtbarer Rueckspiegelung im read-only `/single-line`-Schema
 
 ### 12.3 Alerting-End-to-End
 
