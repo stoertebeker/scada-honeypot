@@ -8,6 +8,7 @@ from honeypot.rule_engine import (
     GRID_PATH_UNAVAILABLE_ALERT_CODE,
     LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+    REPEATED_LOGIN_FAILURE_ALERT_CODE,
     RuleEngine,
     SETPOINT_ALERT_CODE,
     SITE_AGGREGATE_ASSET_ID,
@@ -406,6 +407,61 @@ def test_record_allows_rule_alert_again_after_matching_alert_was_cleared(tmp_pat
     assert second_record.alert.alarm_code == SETPOINT_ALERT_CODE
     assert second_record.alert.state == "active_unacknowledged"
     assert len(outbox_entries) == 2
+
+
+def test_record_clears_repeated_login_failure_alert_after_successful_login(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+
+    for index in range(3):
+        failure_event = recorder.build_event(
+            event_type="hmi.auth.service_login_attempt",
+            category="auth",
+            severity="medium",
+            source_ip="198.51.100.42",
+            actor_type="remote_client",
+            component="hmi-web",
+            asset_id="hmi-web",
+            action="login",
+            result="failure",
+            event_id=f"evt_login_failure_{index}",
+            correlation_id=f"corr_login_failure_{index}",
+            protocol="http",
+            service="web-hmi",
+            endpoint_or_register="/service/login",
+            requested_value={"username": "field.service", "http_path": "/service/login"},
+            tags=("auth", "service", "web"),
+        )
+        recorder.record(failure_event)
+
+    success_event = recorder.build_event(
+        event_type="hmi.auth.service_login_attempt",
+        category="auth",
+        severity="low",
+        source_ip="198.51.100.42",
+        actor_type="remote_client",
+        component="hmi-web",
+        asset_id="hmi-web",
+        action="login",
+        result="success",
+        event_id="evt_login_success",
+        correlation_id="corr_login_success",
+        protocol="http",
+        service="web-hmi",
+        endpoint_or_register="/service/login",
+        requested_value={"username": "field.service", "http_path": "/service/login"},
+        tags=("auth", "service", "web"),
+    )
+
+    cleared_record = recorder.record(success_event)
+    alerts = recorder.store.fetch_alerts()
+    repeated_login_alerts = tuple(alert for alert in alerts if alert.alarm_code == REPEATED_LOGIN_FAILURE_ALERT_CODE)
+
+    assert len(cleared_record.alerts) == 1
+    assert cleared_record.alert is not None
+    assert cleared_record.alert.alarm_code == REPEATED_LOGIN_FAILURE_ALERT_CODE
+    assert cleared_record.alert.state == "cleared"
+    assert len(repeated_login_alerts) == 2
+    assert repeated_login_alerts[-1].state == "cleared"
 
 
 def test_record_derives_multi_block_follow_up_alert_and_outbox_on_second_comm_loss(tmp_path) -> None:

@@ -375,7 +375,6 @@ class RepeatedServiceLoginFailureRule:
     _failure_counts: dict[tuple[str, str], int] = field(default_factory=dict, init=False, repr=False)
 
     def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
-        del context
         if event.event_type != "hmi.auth.service_login_attempt":
             return ()
 
@@ -383,10 +382,21 @@ class RepeatedServiceLoginFailureRule:
         username = str(requested_value.get("username", "unknown")).strip() or "unknown"
         source_ip = event.source_ip
         key = (source_ip, username)
+        message = f"Wiederholte Login-Fehlschlaege fuer {username} von {source_ip}"
 
         if event.result == "success":
             self._failure_counts.pop(key, None)
-            return ()
+            latest_matching_alert = self._latest_matching_alert(event=event, context=context, message=message)
+            if latest_matching_alert is None or latest_matching_alert.state == "cleared":
+                return ()
+            return (
+                DerivedAlert(
+                    alarm_code=REPEATED_LOGIN_FAILURE_ALERT_CODE,
+                    severity="medium",
+                    state="cleared",
+                    message=message,
+                ),
+            )
         if event.result != "failure":
             return ()
 
@@ -399,9 +409,27 @@ class RepeatedServiceLoginFailureRule:
             DerivedAlert(
                 alarm_code=REPEATED_LOGIN_FAILURE_ALERT_CODE,
                 severity="medium",
-                message=f"Wiederholte Login-Fehlschlaege fuer {username} von {source_ip}",
+                message=message,
             ),
         )
+
+    def _latest_matching_alert(
+        self,
+        *,
+        event: EventRecord,
+        context: RuleContext,
+        message: str,
+    ) -> AlertRecord | None:
+        latest_matching_alert: AlertRecord | None = None
+        for alert in context.alert_history:
+            if (
+                alert.alarm_code == REPEATED_LOGIN_FAILURE_ALERT_CODE
+                and alert.component == event.component
+                and alert.asset_id == event.asset_id
+                and alert.message == message
+            ):
+                latest_matching_alert = alert
+        return latest_matching_alert
 
 
 @dataclass(slots=True)

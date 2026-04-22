@@ -524,6 +524,44 @@ def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success
     assert post_reset == ()
 
 
+def test_repeated_login_failure_rule_clears_matching_active_alert_on_success() -> None:
+    engine = RuleEngine.default_v1()
+    success_event = build_event(
+        event_type="hmi.auth.service_login_attempt",
+        category="auth",
+        action="login",
+        result="success",
+        source_ip="198.51.100.42",
+        asset_id="hmi-web",
+        requested_value={"username": "field.service"},
+        tags=("auth", "service", "web"),
+    )
+    existing_alert = AlertRecord(
+        alert_id="alt_repeated_login_active",
+        event_id="evt_repeated_login_active",
+        correlation_id="corr_repeated_login_active",
+        alarm_code=REPEATED_LOGIN_FAILURE_ALERT_CODE,
+        severity="medium",
+        state="active_unacknowledged",
+        component="plant-sim",
+        asset_id="hmi-web",
+        message="Wiederholte Login-Fehlschlaege fuer field.service von 198.51.100.42",
+        created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+    )
+
+    derived_alerts = engine.evaluate(
+        success_event,
+        context=RuleContext(
+            alert_history=(existing_alert,),
+        ),
+    )
+
+    assert len(derived_alerts) == 1
+    assert derived_alerts[0].alarm_code == REPEATED_LOGIN_FAILURE_ALERT_CODE
+    assert derived_alerts[0].severity == "medium"
+    assert derived_alerts[0].state == "cleared"
+
+
 def test_rule_engine_suppresses_matching_active_alert_from_history() -> None:
     engine = RuleEngine.default_v1()
     event = build_event()
