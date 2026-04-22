@@ -402,6 +402,9 @@ Pflichttests:
 - sechzehnter Browser-Slice prueft `LOW_SITE_OUTPUT_UNEXPECTED` bei weiterem
   Block-Control waehrend aktiver Folge-Lage ohne duplizierten Alert auf
   `/alarms`
+- siebzehnter Browser-Slice prueft `reactive_power_target` auf
+  `/service/panel` mit sichtbarer Shared-Truth-Rueckspiegelung in
+  `/overview`
 
 ### 12.3 Alerting-End-to-End
 

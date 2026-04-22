@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `206 passed`
+- `207 passed`
 
 Abgedeckt sind bisher:
 
@@ -815,6 +815,9 @@ Abgedeckt sind bisher:
   `LOW_SITE_OUTPUT_UNEXPECTED` bei weiterem Block-Control waehrend aktiver
   Folge-Lage ab und prueft Dedupe/Suppression ohne zweiten Alert in `/alarms`
   oder `alert_log`
+- ein weiterer Browser-Slice deckt jetzt `reactive_power_target` auf
+  `/service/panel` ab und prueft dabei die sichtbare Rueckspiegelung in
+  `/overview`, die Prozessspur und denselben PPC-Shared-Truth wie Modbus
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -865,14 +868,15 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. Rule-Alert-Pfade fuer den lokalen V1-Prototyp sind entlang der aktuellen
-   Browser-Smokes jetzt rund genug; danach weitere V1-Erweiterungen oder
-   Exposure-/Operations-Themen ansetzen
+1. als naechsten kleinen Service-Pfad noch `plant_mode_request`
+   browserseitig absichern
+2. danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- naechster atomarer Fix nur bei weiterem Bedarf: zusaetzliche Rule-Alert-
-  Folgekette oder weitere HMI-/Modbus-Feinschnitte auf derselben Wahrheit
+- naechster atomarer Browser-Fix: `plant_mode_request` als gelatchter
+  Bedienwunsch ohne heimlichen Betriebsmoduswechsel gegen den lokalen
+  Runtime-Pfad absichern
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 
