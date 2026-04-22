@@ -499,28 +499,51 @@ class PlantSimulator:
         block_power_limit_pct: float,
         reset_requested: bool = False,
     ) -> PlantSnapshot:
-        if not 0 <= block_power_limit_pct <= 100:
-            raise PlantSimulationError("block_power_limit_pct muss im Bereich 0..100 liegen")
+        return self._apply_inverter_block_control_matrix(
+            snapshot,
+            block_control_states={
+                asset_id: (block_enable_request, round(block_power_limit_pct, 1)),
+            },
+            reset_asset_ids=frozenset({asset_id}) if reset_requested else frozenset(),
+        )
 
-        _require_block(snapshot, asset_id)
+    def _apply_inverter_block_control_matrix(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        block_control_states: dict[str, tuple[bool, float]],
+        reset_asset_ids: frozenset[str] = frozenset(),
+    ) -> PlantSnapshot:
+        merged_block_control_states = _current_block_control_states(
+            snapshot=snapshot,
+            baseline_block_power_kw=self.baseline_block_power_kw,
+        )
+        for control_asset_id, (control_enable_request, control_power_limit_pct) in block_control_states.items():
+            if not 0 <= control_power_limit_pct <= 100:
+                raise PlantSimulationError("block_power_limit_pct muss im Bereich 0..100 liegen")
+            _require_block(snapshot, control_asset_id)
+            merged_block_control_states[control_asset_id] = (
+                control_enable_request,
+                round(control_power_limit_pct, 1),
+            )
+
         effective_total_power_kw = 0.0 if snapshot.site.breaker_state == "open" else round(
             self.estimate_available_power_kw(snapshot) * (snapshot.site.plant_power_limit_pct / 100),
             1,
         )
-        target_limit_factor = round(block_power_limit_pct / 100, 3)
         weighted_powers = _distribute_power_kw_for_controls(
             snapshot.inverter_blocks,
             total_power_kw=effective_total_power_kw,
             baseline_block_power_kw=self.baseline_block_power_kw,
-            target_asset_id=asset_id,
-            block_enable_request=block_enable_request,
-            target_limit_factor=target_limit_factor,
+            block_control_states=merged_block_control_states,
         )
 
         inverter_blocks = []
         for block in snapshot.inverter_blocks:
-            is_target = block.asset_id == asset_id
-            if reset_requested and is_target:
+            block_enable_request, block_power_limit_pct = merged_block_control_states[block.asset_id]
+            target_limit_factor = round(block_power_limit_pct / 100, 3)
+            is_reset = block.asset_id in reset_asset_ids
+            if is_reset:
                 base_block = block.model_copy(
                     update={
                         "status": "online",
@@ -531,11 +554,11 @@ class PlantSimulator:
                 base_block = block
 
             block_power_kw = weighted_powers[block.asset_id]
-            if is_target and not block_enable_request:
+            if not block_enable_request:
                 status = "offline"
                 communication_state = "degraded"
                 availability_pct = 0
-            elif is_target and _is_block_disabled(base_block):
+            elif _is_block_disabled(base_block):
                 status = "online"
                 communication_state = "healthy"
                 availability_pct = 100 if block_power_kw > 0 else 0
@@ -544,9 +567,9 @@ class PlantSimulator:
                 communication_state = base_block.communication_state
                 availability_pct = 100 if block_power_kw > 0 and status != "offline" else base_block.availability_pct
 
-            if is_target and block_enable_request and reset_requested:
+            if is_reset and block_enable_request:
                 availability_pct = 100 if block_power_kw > 0 else 0
-            if is_target and block_enable_request and block_power_kw == 0 and snapshot.site.breaker_state != "open":
+            if block_enable_request and block_power_kw == 0 and snapshot.site.breaker_state != "open":
                 availability_pct = 0 if target_limit_factor == 0 else availability_pct
 
             inverter_blocks.append(
@@ -852,9 +875,7 @@ def _distribute_power_kw_for_controls(
     *,
     total_power_kw: float,
     baseline_block_power_kw: dict[str, float],
-    target_asset_id: str,
-    block_enable_request: bool,
-    target_limit_factor: float,
+    block_control_states: dict[str, tuple[bool, float]],
 ) -> dict[str, float]:
     weights = [max(baseline_block_power_kw.get(block.asset_id, block.block_power_kw), 1.0) for block in blocks]
     total_weight = sum(weights)
@@ -871,14 +892,11 @@ def _distribute_power_kw_for_controls(
             base_share = round(total_power_kw * (weight / total_weight), 1)
             remaining_power_kw = round(remaining_power_kw - base_share, 1)
 
-        if block.asset_id != target_asset_id:
-            distribution[block.asset_id] = base_share
-            continue
-
+        block_enable_request, block_power_limit_pct = block_control_states[block.asset_id]
         if not block_enable_request:
             distribution[block.asset_id] = 0.0
             continue
-        distribution[block.asset_id] = round(base_share * target_limit_factor, 1)
+        distribution[block.asset_id] = round(base_share * (block_power_limit_pct / 100), 1)
     return distribution
 
 
@@ -1081,3 +1099,21 @@ def _derived_block_power_limit_pct(
         return 100.0
     derived_limit_pct = (block.block_power_kw / (baseline_power_kw * global_limit_factor)) * 100
     return round(max(0.0, min(100.0, derived_limit_pct)), 1)
+
+
+def _current_block_control_states(
+    *,
+    snapshot: PlantSnapshot,
+    baseline_block_power_kw: dict[str, float],
+) -> dict[str, tuple[bool, float]]:
+    return {
+        block.asset_id: (
+            not _is_block_disabled(block),
+            _derived_block_power_limit_pct(
+                snapshot=snapshot,
+                asset_id=block.asset_id,
+                baseline_block_power_kw=baseline_block_power_kw,
+            ),
+        )
+        for block in snapshot.inverter_blocks
+    }

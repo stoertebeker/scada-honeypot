@@ -111,6 +111,36 @@ def test_block_enable_request_zeroes_target_block_and_reduces_site_power() -> No
     assert disabled_snapshot.revenue_meter.export_power_kw == pytest.approx(3880.0)
 
 
+def test_sequential_block_enable_requests_preserve_prior_disabled_blocks() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    first_disabled_snapshot = simulator.apply_block_enable_request(
+        snapshot,
+        asset_id="invb-01",
+        block_enable_request=False,
+        block_power_limit_pct=100,
+    )
+    second_disabled_snapshot = simulator.apply_block_enable_request(
+        first_disabled_snapshot,
+        asset_id="invb-02",
+        block_enable_request=False,
+        block_power_limit_pct=100,
+    )
+
+    first_disabled_block = next(block for block in second_disabled_snapshot.inverter_blocks if block.asset_id == "invb-01")
+    second_disabled_block = next(block for block in second_disabled_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    remaining_block = next(block for block in second_disabled_snapshot.inverter_blocks if block.asset_id == "invb-03")
+
+    assert first_disabled_block.status == "offline"
+    assert first_disabled_block.block_power_kw == pytest.approx(0.0)
+    assert second_disabled_block.status == "offline"
+    assert second_disabled_block.block_power_kw == pytest.approx(0.0)
+    assert remaining_block.block_power_kw > 1900
+    assert second_disabled_snapshot.site.plant_power_mw < 2.0
+    assert second_disabled_snapshot.site.availability_state == "partially_available"
+
+
 def test_block_reset_restores_comm_loss_block_without_forcing_plant_mode() -> None:
     snapshot = build_snapshot()
     simulator = PlantSimulator.from_snapshot(snapshot)
