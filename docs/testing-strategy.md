@@ -429,7 +429,8 @@ Pflichttests:
 - Alert landet in Outbox
 - lokaler Exporter-Double empfaengt Payload
 - Exportfehler bleibt fuer den Client unsichtbar
-- rule-basierte Folge-Alerts wie `MULTI_BLOCK_UNAVAILABLE` werden ueber den
+- rule-basierte Folge-Alerts wie `GRID_PATH_UNAVAILABLE`,
+  `LOW_SITE_OUTPUT_UNEXPECTED` und `MULTI_BLOCK_UNAVAILABLE` werden ueber den
   lokalen Hintergrundrunner bis zum Exporter-Double ausgeliefert
 - derselbe Nachweis gilt jetzt fuer Webhook und SMTP, inklusive stillem Retry
   bei Exportfehlern ohne sichtbaren HMI-/Modbus-Seiteneffekt
