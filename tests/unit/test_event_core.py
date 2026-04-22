@@ -507,6 +507,71 @@ def test_record_derives_multi_block_follow_up_alert_and_outbox_on_second_comm_lo
     assert len(outbox_entries) == 3
 
 
+def test_record_clears_multi_block_follow_up_after_one_block_recovers(tmp_path) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    first_event = recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-01",
+        action="simulate_comm_loss",
+        result="accepted",
+        event_id="evt_comm_loss_clear_01",
+        correlation_id="corr_comm_loss_clear_01",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    second_event = first_event.model_copy(
+        update={
+            "event_id": "evt_comm_loss_clear_02",
+            "correlation_id": "corr_comm_loss_clear_02",
+            "asset_id": "invb-02",
+        }
+    )
+    reset_event = recorder.build_event(
+        event_type="process.control.block_reset_requested",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="block_reset_request",
+        result="accepted",
+        event_id="evt_comm_loss_clear_reset",
+        correlation_id="corr_comm_loss_clear_reset",
+        resulting_value="applied",
+        tags=("control-path", "inverter-block", "reset"),
+    )
+
+    recorder.record(first_event, outbox_targets=("webhook",))
+    recorder.record(second_event, outbox_targets=("webhook",))
+    cleared_record = recorder.record(
+        reset_event,
+        current_state_updates={
+            "inverter_blocks": [
+                {"asset_id": "invb-01", "communication_state": "lost"},
+                {"asset_id": "invb-02", "communication_state": "healthy"},
+                {"asset_id": "invb-03", "communication_state": "healthy"},
+            ]
+        },
+        outbox_targets=("webhook",),
+    )
+    alerts = recorder.store.fetch_alerts()
+
+    multi_block_alerts = tuple(alert for alert in alerts if alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE)
+
+    assert len(cleared_record.alerts) == 1
+    assert cleared_record.alert is not None
+    assert cleared_record.alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE
+    assert cleared_record.alert.state == "cleared"
+    assert len(multi_block_alerts) == 2
+    assert multi_block_alerts[-1].state == "cleared"
+
+
 def test_record_derives_grid_path_follow_up_alert_and_clears_it_after_breaker_close(tmp_path) -> None:
     recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
     open_event = recorder.build_event(

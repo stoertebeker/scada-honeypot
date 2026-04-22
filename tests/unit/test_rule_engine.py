@@ -485,6 +485,74 @@ def test_multi_block_unavailable_rule_is_suppressed_while_matching_aggregate_ale
     assert derived_alerts[0].alarm_code == COMM_LOSS_ALERT_CODE
 
 
+def test_multi_block_unavailable_rule_clears_after_second_block_recovers() -> None:
+    engine = RuleEngine.default_v1()
+    active_alerts = (
+        AlertRecord(
+            alert_id="alt_comm_loss_01",
+            event_id="evt_existing_loss_01",
+            correlation_id="corr_existing_loss_01",
+            alarm_code=COMM_LOSS_ALERT_CODE,
+            severity="medium",
+            state="active_unacknowledged",
+            component="plant-sim",
+            asset_id="invb-01",
+            message="Kommunikationsverlust fuer Inverter-Block invb-01",
+            created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
+        ),
+        AlertRecord(
+            alert_id="alt_comm_loss_02",
+            event_id="evt_existing_loss_02",
+            correlation_id="corr_existing_loss_02",
+            alarm_code=COMM_LOSS_ALERT_CODE,
+            severity="medium",
+            state="active_unacknowledged",
+            component="plant-sim",
+            asset_id="invb-02",
+            message="Kommunikationsverlust fuer Inverter-Block invb-02",
+            created_at=datetime(2026, 4, 16, 9, 30, tzinfo=UTC),
+        ),
+        AlertRecord(
+            alert_id="alt_multi_block_active",
+            event_id="evt_existing_multi",
+            correlation_id="corr_existing_multi",
+            alarm_code=MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+            severity="critical",
+            state="active_unacknowledged",
+            component="plant-sim",
+            asset_id=SITE_AGGREGATE_ASSET_ID,
+            message="Mehrere Inverter-Bloecke gleichzeitig nicht verfuegbar",
+            created_at=datetime(2026, 4, 16, 9, 31, tzinfo=UTC),
+        ),
+    )
+
+    derived_alerts = engine.evaluate(
+        build_event(
+            event_type="process.control.block_reset_requested",
+            category="process",
+            action="block_reset_request",
+            asset_id="invb-02",
+            resulting_value="applied",
+            tags=("control-path", "inverter-block", "reset"),
+        ),
+        context=RuleContext(
+            current_state={
+                "inverter_blocks": [
+                    {"asset_id": "invb-01", "communication_state": "lost"},
+                    {"asset_id": "invb-02", "communication_state": "healthy"},
+                    {"asset_id": "invb-03", "communication_state": "healthy"},
+                ]
+            },
+            alert_history=active_alerts,
+        ),
+    )
+
+    assert len(derived_alerts) == 1
+    assert derived_alerts[0].alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE
+    assert derived_alerts[0].state == "cleared"
+    assert derived_alerts[0].asset_id == SITE_AGGREGATE_ASSET_ID
+
+
 def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success() -> None:
     engine = RuleEngine.default_v1()
     failure_event = build_event(

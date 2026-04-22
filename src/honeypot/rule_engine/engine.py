@@ -138,35 +138,97 @@ class MultiBlockUnavailableRule:
     rule_id: str = "multi_block_unavailable"
 
     def evaluate(self, event: EventRecord, *, context: RuleContext) -> tuple[DerivedAlert, ...]:
-        if event.result != "accepted":
-            return ()
-        if event.event_type != "system.communication.inverter_block_lost":
-            return ()
-        if event.action != "simulate_comm_loss":
-            return ()
-        if event.resulting_value != "lost":
-            return ()
+        latest_alert = self._latest_matching_alert(event=event, context=context)
+        active_block_assets_from_state = self._active_block_assets_from_state(context.current_state)
 
-        active_block_assets = {
-            alert.asset_id
-            for alert in context.alert_history
-            if alert.alarm_code == COMM_LOSS_ALERT_CODE and alert.state != "cleared"
-        }
-        if event.asset_id in active_block_assets:
-            return ()
+        if self._is_matching_comm_loss_event(event):
+            total_affected_blocks = active_block_assets_from_state
+            if total_affected_blocks is None:
+                active_block_assets = self._active_block_assets_from_alert_history(context)
+                if event.asset_id in active_block_assets:
+                    return ()
+                total_affected_blocks = active_block_assets | {event.asset_id}
 
-        total_affected_blocks = active_block_assets | {event.asset_id}
-        if len(total_affected_blocks) < self.threshold:
+            if len(total_affected_blocks) < self.threshold:
+                return ()
+
+            return (
+                DerivedAlert(
+                    alarm_code=MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+                    severity="critical",
+                    message=self._message,
+                    asset_id=self.aggregate_asset_id,
+                ),
+            )
+
+        if active_block_assets_from_state is None:
+            return ()
+        if len(active_block_assets_from_state) >= self.threshold:
+            return ()
+        if latest_alert is None or latest_alert.state == "cleared":
             return ()
 
         return (
             DerivedAlert(
                 alarm_code=MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
                 severity="critical",
-                message="Mehrere Inverter-Bloecke gleichzeitig nicht verfuegbar",
+                state="cleared",
+                message=self._message,
                 asset_id=self.aggregate_asset_id,
             ),
         )
+
+    @property
+    def _message(self) -> str:
+        return "Mehrere Inverter-Bloecke gleichzeitig nicht verfuegbar"
+
+    def _is_matching_comm_loss_event(self, event: EventRecord) -> bool:
+        return (
+            event.result == "accepted"
+            and event.event_type == "system.communication.inverter_block_lost"
+            and event.action == "simulate_comm_loss"
+            and event.resulting_value == "lost"
+        )
+
+    def _active_block_assets_from_alert_history(self, context: RuleContext) -> set[str]:
+        return {
+            alert.asset_id
+            for alert in context.alert_history
+            if alert.alarm_code == COMM_LOSS_ALERT_CODE and alert.state != "cleared"
+        }
+
+    def _active_block_assets_from_state(self, current_state: Mapping[str, Any]) -> set[str] | None:
+        inverter_blocks = current_state.get("inverter_blocks")
+        if not isinstance(inverter_blocks, list):
+            return None
+
+        active_assets: set[str] = set()
+        for block in inverter_blocks:
+            if not isinstance(block, Mapping):
+                continue
+            if block.get("communication_state") != "lost":
+                continue
+            asset_id = block.get("asset_id")
+            if isinstance(asset_id, str) and asset_id:
+                active_assets.add(asset_id)
+        return active_assets
+
+    def _latest_matching_alert(
+        self,
+        *,
+        event: EventRecord,
+        context: RuleContext,
+    ) -> AlertRecord | None:
+        latest_matching_alert: AlertRecord | None = None
+        for alert in context.alert_history:
+            if (
+                alert.alarm_code == MULTI_BLOCK_UNAVAILABLE_ALERT_CODE
+                and alert.component == event.component
+                and alert.asset_id == self.aggregate_asset_id
+                and alert.message == self._message
+            ):
+                latest_matching_alert = alert
+        return latest_matching_alert
 
 
 @dataclass(frozen=True, slots=True)
