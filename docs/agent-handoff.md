@@ -702,7 +702,7 @@ Aktuell gruen:
 
 Letzter bekannter Lauf:
 
-- `198 passed`
+- `199 passed`
 
 Abgedeckt sind bisher:
 
@@ -799,6 +799,9 @@ Abgedeckt sind bisher:
 - derselbe Browser-Slice deckt jetzt auch `GRID_PATH_UNAVAILABLE` als zweiten
   history-only Rule-Alert ab und prueft dabei die sichtbare Folge-Alarmspur
   fuer `grid-01` in `/alarms`
+- ein weiterer Browser-Slice deckt jetzt zusaetzliche `breaker_open_request`
+  bei bereits aktivem `GRID_PATH_UNAVAILABLE` ab und prueft Dedupe/
+  Suppression ohne zweiten aktiven Folge-Alert in `/alarms` oder `alert_log`
 - `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
   Outbox-Runner und Ziel-Exporter
 - `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
@@ -849,19 +852,18 @@ Operative Hinweise:
 
 Direkter Kurs fuer den naechsten Agenten:
 
-1. jetzt Dedupe/Suppression auch fuer `GRID_PATH_UNAVAILABLE` browserseitig
-   absichern
-2. danach den naechsten history-only Rule-Alert wie
+1. danach den naechsten history-only Rule-Alert wie
    `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar in `/alarms` belegen
+2. erst danach einen ersten Stabilitaetspfad wie Dedupe/Suppression oder
+   `cleared` fuer `LOW_SITE_OUTPUT_UNEXPECTED` absichern
 3. erst danach weitere V1-Erweiterungen oder Exposure-/Operations-Themen ansetzen
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
-- dreizehnter atomarer Browser-Fix: weitere Breaker-Open-Ereignisse nach
-  aktivem `GRID_PATH_UNAVAILABLE` duplizieren den Folge-Alert nicht in
-  `/alarms`
-- fokussierte Nachweise fuer Dedupe/Suppression eines zweiten history-only
-  Rule-Alerts jenseits des Login-Pfads
+- vierzehnter atomarer Browser-Fix: `LOW_SITE_OUTPUT_UNEXPECTED` sichtbar in
+  `/alarms` gegen den echten lokalen Runtime-Pfad belegen
+- fokussierte Nachweise fuer den naechsten history-only Rule-Alert jenseits
+  des Login- und Grid-Pfads
 - keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
   diese End-to-End-Pfade dauerhaft gruen bleiben
 

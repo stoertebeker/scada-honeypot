@@ -393,6 +393,8 @@ Pflichttests:
   `REPEATED_LOGIN_FAILURE` mit sichtbarem `cleared` auf `/alarms`
 - zwoelfter Browser-Slice prueft `GRID_PATH_UNAVAILABLE` als zweiten
   history-only Rule-Alert sichtbar auf `/alarms`
+- dreizehnter Browser-Slice prueft einen weiteren `breaker_open_request` bei
+  aktivem `GRID_PATH_UNAVAILABLE` ohne duplizierten Folge-Alert auf `/alarms`
 
 ### 12.3 Alerting-End-to-End
 
