@@ -153,6 +153,44 @@ def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enab
     assert_port_closed(loopback_hmi_address)
 
 
+def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    findings_path = tmp_path / "logs" / "findings.md"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-exposed-01",
+                "ALLOW_NONLOCAL_BIND=1",
+                "EXPOSED_RESEARCH_ENABLED=1",
+                "MODBUS_BIND_HOST=0.0.0.0",
+                "MODBUS_PORT=1502",
+                "HMI_BIND_HOST=0.0.0.0",
+                "HMI_PORT=8080",
+                "APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080",
+                "PUBLIC_INGRESS_MAPPINGS=modbus:502:1502,hmi:80:8080",
+                "WATCH_OFFICER_NAME=blue-watch",
+                "DUTY_ENGINEER_NAME=ops-duty",
+                f"FINDINGS_LOG_PATH={findings_path}",
+                "WEBHOOK_EXPORTER_ENABLED=1",
+                "WEBHOOK_EXPORTER_URL=https://collector.ops.lab/honeypot-ingest",
+                "APPROVED_EGRESS_TARGETS=webhook:collector.ops.lab:443",
+                "APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live",
+                f"EVENT_STORE_PATH={event_store_path}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert cli(["--env-file", str(env_file), "--verify-exposed-research"]) == 0
+
+    runtime = build_local_runtime(env_file=str(env_file))
+    alerts = runtime.event_store.fetch_alerts()
+
+    assert any(alert.alarm_code == "BREAKER_OPEN" and alert.state == "cleared" for alert in alerts)
+
+
 def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

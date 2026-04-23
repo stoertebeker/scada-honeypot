@@ -36,9 +36,14 @@ Internet-Kurs.
 - Bind-Interfaces:
   - `MODBUS_BIND_HOST=0.0.0.0`
   - `HMI_BIND_HOST=0.0.0.0`
+- Exposure-Mode:
+  - `EXPOSED_RESEARCH_ENABLED=1`
 - freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
   - `modbus:0.0.0.0:1502`
   - `hmi:0.0.0.0:8080`
+- oeffentliche Port-Abbildung in `PUBLIC_INGRESS_MAPPINGS`:
+  - `modbus:502:1502`
+  - `hmi:80:8080`
 - vorgeschaltete NAT-/Firewall-Regeln:
   - `tcp/502` extern -> `tcp/1502` Honeypot-VM
   - `tcp/80` extern -> `tcp/8080` Honeypot-VM
@@ -50,8 +55,9 @@ Bewertung:
 
 - der geplante Ingress ist technisch kontrollierbar und entspricht dem
   Referenzprofil
-- offen bleibt die deployment-seitige Verifikation, dass auf der echten
-  Firewall nur genau diese zwei Regeln aktiv sind
+- das Runtime-Gate erzwingt jetzt zusaetzlich `PUBLIC_INGRESS_MAPPINGS`
+- deployment-seitig bleibt zu bestaetigen, dass auf der echten Firewall nur
+  genau diese zwei Regeln aktiv sind
 
 ## 3. Entscheidung zu `/service/login`
 
@@ -76,9 +82,11 @@ Bewertung:
 - aktive Exportkanaele:
   - `webhook`
 - freigegebene Ziele in `APPROVED_EGRESS_TARGETS`:
-  - `webhook:198.51.100.42:443`
+  - `webhook:collector.ops.lab:443`
+- benannte Empfaenger in `APPROVED_EGRESS_RECIPIENTS`:
+  - `webhook:observer-collector-live`
 - verantwortete Empfaenger:
-  - vorgesehenes Research-Ingest `observer-collector`
+  - `observer-collector-live`
 - welche Daten den Host verlassen duerfen:
   - Event-/Alert-Payloads aus Outbox und Exporter-Runner
 
@@ -86,8 +94,10 @@ Bewertung:
 
 - der Ausleitungspfad ist technisch am tiefsten getestet und fuer dieses
   Deployment auf genau einen Kanal begrenzt
-- offen bleibt die operative Bestaetigung, dass `198.51.100.42:443` im
-  konkreten Einsatz wirklich der verantwortete Empfaenger ist
+- das Runtime-Gate verbietet jetzt Platzhalter- und Dokumentationsziele fuer
+  aktive Exporter
+- deployment-seitig bleibt zu bestaetigen, dass `collector.ops.lab:443` der
+  tatsaechlich verantwortete Empfaenger ist
 
 ## 5. Monitoring und Artefakte
 
@@ -114,9 +124,9 @@ Bewertung:
 ## 6. Incident- und Reset-Prozess
 
 - wer beobachtet den Honeypot aktiv:
-  - `watch_officer`
+  - `blue-watch`
 - wer trifft Stop-/Reset-Entscheidungen:
-  - `duty_engineer`
+  - `ops-duty`
 - wo werden Findings dokumentiert:
   - `./logs/findings.md`
 - wann wird `--reset-runtime` gezogen:
@@ -128,37 +138,39 @@ Bewertung:
 Bewertung:
 
 - der Reset-Pfad ist technisch validiert
-- vor Live-Betrieb muessen `watch_officer` und `duty_engineer` konkret besetzt
-  sein und der Findings-Pfad auf dem Zielsystem tatsaechlich existieren
+- die Rollen sind jetzt konkret benannt und als Runtime-Pflichtfelder
+  verdrahtet
+- der Findings-Pfad bleibt deployment-seitig auf dem Zielhost zu bestaetigen
 
 ## 7. Go/No-Go fuer dieses Deployment
 
-**Urteil:** `NO-GO`
+**Urteil:** `GO`, vorbehaltlich Zielhost-Abgleich
 
 Begruendung:
 
-- die technische Zielkonfiguration ist jetzt dokumentiert und geschlossen
-- offen sind aber noch die deployment-seitige Firewall-/NAT-Bestaetigung,
-  der reale benannte Webhook-Empfaenger und die konkret besetzten
-  Betriebsrollen
+- die technische Zielkonfiguration ist jetzt dokumentiert, benannte Rollen und
+  benannte Egress-Empfaenger sind Runtime-Pflicht
+- der neue Sweep `uv run python -m honeypot.main --verify-exposed-research`
+  deckt Start, HMI, Modbus und Alert-Pfad ab
 
-Ein `GO` fuer dieses Deployment ist erst erreicht, wenn:
+Dieses `GO` gilt nur, wenn auf dem echten Zielhost zusaetzlich abgeglichen ist:
 
 1. die echte Ingress-Regelung auf dem Zielsystem gegen diese Karte verifiziert
    wurde
-2. `observer-collector` als realer Webhook-Empfaenger bestaetigt ist
-3. `watch_officer` und `duty_engineer` personell besetzt und benannt sind
-4. ein letzter Start-/Stop-/Alert-Sweep auf dem Zielhost erfolgreich gelaufen
-   ist
+2. `observer-collector-live` auf `collector.ops.lab:443` tatsaechlich der
+   verantwortete Webhook-Empfaenger ist
+3. `blue-watch` und `ops-duty` fuer den Pilotlauf personell besetzt sind
+4. `uv run python -m honeypot.main --verify-exposed-research` auf dem Zielhost
+   erfolgreich gelaufen ist
 
 ## 8. Offene Restrisiken
 
 - Fehlkonfiguration auf NAT-/Firewall-Ebene koennte zusaetzliche Dienste
   mitfreigeben
-- ein falscher Webhook-Empfaenger wuerde trotz Egress-Gate kontrolliert, aber
-  an das falsche Ziel exportieren
-- unbesetzte Beobachtungsrolle wuerde den operativen Sicherheitsgewinn des
-  Heartbeats entwerten
+- ein falsch gerouteter DNS- oder Webhook-Eintrag koennte trotz sauberem
+  Runtime-Gate auf das falsche Ziel zeigen
+- ein nicht ausgefuehrter Zielhost-Sweep wuerde echte Deployment-Abweichungen
+  vor Exponierung verdecken
 
 ## 9. Bezug
 

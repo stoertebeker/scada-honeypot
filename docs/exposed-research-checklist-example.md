@@ -32,6 +32,8 @@ Checkliste auszufuellen ist und warum der Stand heute fuer
   - `HMI_BIND_HOST=127.0.0.1`
 - freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
   - keine
+- oeffentliche Port-Abbildung in `PUBLIC_INGRESS_MAPPINGS`:
+  - keine
 - vorgeschaltete NAT-/Firewall-Regeln:
   - keine
 - externe Erreichbarkeit:
@@ -67,6 +69,8 @@ Bewertung:
   - im Beispiel nur `webhook`
 - freigegebene Ziele in `APPROVED_EGRESS_TARGETS`:
   - `webhook:example.invalid:443`
+- benannte Empfaenger in `APPROVED_EGRESS_RECIPIENTS`:
+  - keine
 - verantwortete Empfaenger:
   - noch nicht deployment-spezifisch benannt
 - welche Daten den Host verlassen duerfen:
@@ -106,6 +110,11 @@ Bewertung:
   - noch nicht deployment-spezifisch benannt
 - wo werden Findings dokumentiert:
   - noch nicht deployment-spezifisch benannt
+- gesetzte Rollenwerte:
+  - `WATCH_OFFICER_NAME` fehlt
+  - `DUTY_ENGINEER_NAME` fehlt
+- Findings-Pfad:
+  - `FINDINGS_LOG_PATH` noch nicht deployment-spezifisch festgezogen
 - wann wird `--reset-runtime` gezogen:
   - nach Testlauf, bei Inkonsistenz oder bei unerwartetem Egress
 
@@ -124,8 +133,11 @@ Begruendung:
 - Ingress ist nicht deployment-spezifisch freigezogen
 - fuer dieses Deployment sind weder explizite Non-Local-Bind-Freigabe noch
   konkrete `APPROVED_INGRESS_BINDINGS` gesetzt
-- verantwortete Egress-Ziele sind nicht benannt
+- `PUBLIC_INGRESS_MAPPINGS` ist nicht gesetzt
+- verantwortete Egress-Ziele und `APPROVED_EGRESS_RECIPIENTS` sind nicht
+  benannt
 - beobachtende und freigebende Rollen sind nicht konkret festgelegt
+- ein Exposure-Sweep wurde fuer dieses Deployment nicht erfolgreich gelaufen
 
 ## 8. Offene Restrisiken und naechster Schlag
 
@@ -134,7 +146,10 @@ Vor einem echten `GO` fuer `exposed-research` muessen mindestens folgen:
 1. bewusste Ingress-Entscheidung fuer Ports, Interfaces und Firewall
 2. benannte Verantwortliche fuer Beobachtung, Stop und Reset
 3. echte, verantwortete Egress-Empfaenger statt Platzhalterzielen
-4. Entscheidung, ob `/service/login` fuer genau dieses Deployment an bleibt
+4. `PUBLIC_INGRESS_MAPPINGS`, `WATCH_OFFICER_NAME`,
+   `DUTY_ENGINEER_NAME` und `FINDINGS_LOG_PATH` deployment-spezifisch setzen
+5. `uv run python -m honeypot.main --verify-exposed-research` fuer dieses
+   Zielprofil erfolgreich laufen lassen
 
 ## 9. Bezug
 

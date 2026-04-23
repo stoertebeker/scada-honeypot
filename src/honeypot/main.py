@@ -3,8 +3,11 @@
 import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
+import socket
+from struct import pack, unpack
 from time import sleep
 
+import httpx
 from fastapi import FastAPI
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
@@ -19,10 +22,11 @@ from honeypot.exporter_runner import (
 )
 from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.runtime_egress import enforce_runtime_egress_policy
+from honeypot.runtime_exposure import enforce_exposed_research_policy
 from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
-from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
+from honeypot.protocol_modbus import READ_HOLDING_REGISTERS, ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.runtime_reset import reset_local_runtime_artifacts
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
@@ -266,6 +270,56 @@ def _runtime_banner(runtime: LocalRuntime) -> str:
     )
 
 
+def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
+    """Fuehrt einen lokalen Start-/Read-/Alert-/Stop-Sweep fuer exposed-research aus."""
+
+    runtime = build_local_runtime(env_file=env_file)
+    enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
+    enforce_exposed_research_policy(config=runtime.config, exporters=runtime.exporters)
+
+    modbus_address: tuple[str, int] | None = None
+    hmi_address: tuple[str, int] | None = None
+    try:
+        runtime.start()
+        modbus_address = _loopback_runtime_address(runtime.modbus_service.address)
+        hmi_address = _loopback_runtime_address(runtime.hmi_service.address)
+        modbus_response = _send_modbus_request(
+            modbus_address,
+            transaction_id=0x5EAD,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+        overview_response = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+        runtime.modbus_service.register_map.request_breaker_open()
+        runtime.modbus_service.register_map.request_breaker_close()
+    finally:
+        runtime.stop()
+
+    _, protocol_id, unit_id, pdu = _parse_modbus_response(modbus_response)
+    byte_count = pdu[1]
+    registers = unpack(f">{byte_count // 2}H", pdu[2:])
+    alerts = runtime.event_store.fetch_alerts()
+    breaker_alerts = [alert for alert in alerts if alert.alarm_code == "BREAKER_OPEN"]
+    if protocol_id != 0 or unit_id != 1 or registers[:2] != (100, 1001):
+        raise RuntimeError("exposed-research-Sweep: Modbus-Antwort stimmt nicht mit dem erwarteten Profil ueberein")
+    if overview_response.status_code != 200 or "Plant Overview" not in overview_response.text:
+        raise RuntimeError("exposed-research-Sweep: HMI-/overview antwortet nicht mit dem erwarteten Profil")
+    if len(breaker_alerts) < 2 or breaker_alerts[-1].state != "cleared":
+        raise RuntimeError("exposed-research-Sweep: Alert-Pfad fuer BREAKER_OPEN wurde nicht sauber aktiv/cleared verifiziert")
+    print(
+        "exposed-research sweep ok: "
+        f"modbus={modbus_address[0]}:{modbus_address[1]} "
+        f"hmi={hmi_address[0]}:{hmi_address[1]} "
+        f"site={runtime.config.site_code}"
+    )
+    return 0
+
+
 def _run_until_stopped(runtime: LocalRuntime) -> None:
     try:
         while True:
@@ -281,6 +335,7 @@ def main(*, env_file: str | None = ".env") -> int:
 
     runtime = build_local_runtime(env_file=env_file)
     enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
+    enforce_exposed_research_policy(config=runtime.config, exporters=runtime.exporters)
     runtime.start()
     print(_runtime_banner(runtime))
     _run_until_stopped(runtime)
@@ -297,6 +352,11 @@ def cli(argv: list[str] | None = None) -> int:
         action="store_true",
         help="entfernt lokale Runtime-Artefakte fuer einen frischen Neustart",
     )
+    parser.add_argument(
+        "--verify-exposed-research",
+        action="store_true",
+        help="fuehrt den lokalen Start-/Read-/Alert-/Stop-Sweep fuer exposed-research aus",
+    )
     args = parser.parse_args(argv)
     env_file = None if args.env_file == "" else str(Path(args.env_file))
     if args.reset_runtime:
@@ -306,7 +366,36 @@ def cli(argv: list[str] | None = None) -> int:
             f"removed={len(report.removed_paths)} missing={len(report.missing_paths)}"
         )
         return 0
+    if args.verify_exposed_research:
+        return verify_exposed_research_runtime(env_file=env_file)
     return main(env_file=env_file)
+
+
+def _loopback_runtime_address(address: tuple[str, int]) -> tuple[str, int]:
+    host, port = address
+    if host == "0.0.0.0":
+        return "127.0.0.1", port
+    return host, port
+
+
+def _send_modbus_request(
+    address: tuple[str, int],
+    *,
+    transaction_id: int,
+    unit_id: int,
+    function_code: int,
+    body: bytes,
+) -> bytes:
+    payload = bytes([function_code]) + body
+    request = pack(">HHHB", transaction_id, 0, len(payload) + 1, unit_id) + payload
+    with socket.create_connection(address, timeout=5.0) as connection:
+        connection.sendall(request)
+        return connection.recv(1024)
+
+
+def _parse_modbus_response(response: bytes) -> tuple[int, int, int, bytes]:
+    transaction_id, protocol_id, length, unit_id = unpack(">HHHB", response[:7])
+    return transaction_id, protocol_id, unit_id, response[7 : 6 + length]
 
 
 if __name__ == "__main__":

@@ -37,6 +37,7 @@ Verbindlich festzuhalten:
 - offene Protokolle:
 - Bind-Interfaces:
 - freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
+- oeffentliche Port-Abbildung in `PUBLIC_INGRESS_MAPPINGS`:
 - vorgeschaltete NAT-/Firewall-Regeln:
 - externe Erreichbarkeit:
   - nein / ja, bewusst dokumentiert
@@ -71,6 +72,7 @@ Verbindlich festzuhalten:
 - aktive Exportkanaele:
   - webhook / smtp / telegram / sonstige
 - freigegebene Ziele in `APPROVED_EGRESS_TARGETS`:
+- benannte Empfaenger in `APPROVED_EGRESS_RECIPIENTS`:
 - verantwortete Empfaenger:
 - welche Daten den Host verlassen duerfen:
 
@@ -107,11 +109,18 @@ Verbindlich festzuhalten:
 - wer beobachtet den Honeypot aktiv:
 - wer trifft Stop-/Reset-Entscheidungen:
 - wo werden Findings dokumentiert:
+- gesetzte Rollenwerte:
+  - `WATCH_OFFICER_NAME`
+  - `DUTY_ENGINEER_NAME`
+- Findings-Pfad:
+  - `FINDINGS_LOG_PATH`
 - wann wird `--reset-runtime` gezogen:
 
 Pflichtchecks:
 
 - Reset-Pfad ist bekannt und geuebt
+- `uv run python -m honeypot.main --verify-exposed-research` ist fuer dieses
+  Zielprofil erfolgreich gelaufen
 - Artefakte werden vor Reset gesichert, wenn noetig
 - unerwarteter Egress oder HMI-/Modbus-Inkonsistenz fuehrt zu klarer Aktion
 
@@ -124,6 +133,7 @@ Pflichtchecks:
 - Egress-Ziele bewusst freigegeben und verantwortet sind
 - Monitoring aktiv beobachtet wird
 - Incident- und Reset-Prozess klar benannt sind
+- der Exposure-Sweep erfolgreich gelaufen ist
 
 `NO-GO` wenn mindestens eines davon auftritt:
 
@@ -132,6 +142,7 @@ Pflichtchecks:
 - unklare oder unbewusste Egress-Ziele
 - kein beobachteter Heartbeat
 - kein benannter Incident-/Reset-Prozess
+- kein erfolgreicher Exposure-Sweep
 
 ## 8. Freigabe
 

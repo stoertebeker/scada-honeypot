@@ -84,6 +84,7 @@ class RuntimeConfig(BaseSettings):
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
     allow_nonlocal_bind: bool = False
+    exposed_research_enabled: bool = False
     enable_service_login: bool = True
 
     event_store_backend: Literal["sqlite"] = "sqlite"
@@ -111,6 +112,11 @@ class RuntimeConfig(BaseSettings):
     telegram_chat_id: str | None = None
     approved_egress_targets: Annotated[tuple[str, ...], NoDecode] = ()
     approved_ingress_bindings: Annotated[tuple[str, ...], NoDecode] = ()
+    approved_egress_recipients: Annotated[tuple[str, ...], NoDecode] = ()
+    public_ingress_mappings: Annotated[tuple[str, ...], NoDecode] = ()
+    watch_officer_name: str | None = None
+    duty_engineer_name: str | None = None
+    findings_log_path: Path = Path("./logs/findings.md")
 
     log_level: Literal["debug", "info", "warning", "error", "critical"] = "info"
     trend_window_minutes: int = Field(default=180, ge=1, le=1440)
@@ -140,13 +146,21 @@ class RuntimeConfig(BaseSettings):
         "smtp_to",
         "telegram_bot_token",
         "telegram_chat_id",
+        "watch_officer_name",
+        "duty_engineer_name",
         mode="before",
     )
     @classmethod
     def normalize_optional_strings(cls, value: object) -> str | None:
         return _normalize_optional_string(value)
 
-    @field_validator("approved_egress_targets", "approved_ingress_bindings", mode="before")
+    @field_validator(
+        "approved_egress_targets",
+        "approved_ingress_bindings",
+        "approved_egress_recipients",
+        "public_ingress_mappings",
+        mode="before",
+    )
     @classmethod
     def normalize_string_tuple_settings(cls, value: object) -> tuple[str, ...]:
         return _normalize_string_tuple(value)

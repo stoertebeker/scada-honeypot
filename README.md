@@ -73,6 +73,8 @@ Vorhanden sind:
 - aktiver Exporter-Egress braucht jetzt eine explizite Ziel-Freigabe ueber `APPROVED_EGRESS_TARGETS`; `python -m honeypot.main` verweigert sonst den Start fuer Webhook-, SMTP- oder Telegram-Ziele
 - Non-Local-Bind fuer Modbus oder HMI ist jetzt technisch moeglich, bleibt aber `deny-by-default`; externe Bindung braucht explizit `ALLOW_NONLOCAL_BIND=1` **und** konkrete Freigaben ueber `APPROVED_INGRESS_BINDINGS`
 - ein runtime-naher Integrationstest belegt jetzt den bewussten Non-Local-Startpfad mit `ALLOW_NONLOCAL_BIND=1`, expliziten `APPROVED_INGRESS_BINDINGS`, `0.0.0.0`-Binding und kontrollierten Loopback-Zugriffen auf denselben lokalen Dienst
+- `exposed-research` hat jetzt ein zusaetzliches technisches Start-Gate: benoetigt werden `EXPOSED_RESEARCH_ENABLED=1`, `PUBLIC_INGRESS_MAPPINGS`, benannte Rollen ueber `WATCH_OFFICER_NAME` und `DUTY_ENGINEER_NAME` sowie benannte Ausleitungsziele ueber `APPROVED_EGRESS_RECIPIENTS`; Dokumentations- und Platzhalterziele fuer aktive Exporter sind in diesem Modus verboten
+- `uv run python -m honeypot.main --verify-exposed-research` fuehrt jetzt einen lokalen Start-/Read-/Alert-/Stop-Sweep fuer den freigegebenen Exponierungsmodus aus und prueft Modbus, HMI sowie den Alert-Pfad `BREAKER_OPEN`
 - optionales Runtime-Monitoring schreibt jetzt einen lokalen Heartbeat nach `RUNTIME_STATUS_PATH` mit Dienst-Adressen, Exporter-Health, Alert- und Outbox-Zaehlern; Standardpfad ist `./logs/runtime-status.json`, ohne neuen HTTP- oder Debug-Endpunkt
 - ein integrierter `pre-exposure`-Gate-Sweep prueft jetzt denselben Runtime-Pfad mit aktivem Monitoring, freigegebenem Webhook-Ziel, erfolgreicher Outbox-Ausleitung, sauberem Reset und frischem Neustart
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
@@ -86,7 +88,7 @@ Vorhanden sind:
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` weiter `deny-by-default` auf lokalem Kurs halten; externe Bindung braucht bewusst `ALLOW_NONLOCAL_BIND=1` plus `APPROVED_INGRESS_BINDINGS`
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
-- Gesamtteststand aktuell: `264 passed`
+- Gesamtteststand aktuell: `272 passed`
 
 Nicht Teil des ersten lokalen V1-Releases:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
@@ -165,7 +167,7 @@ deployment-spezifischen Sicherheitskurs vor echter Exponierung:
    final abzeichnen
 4. die offenen Restpunkte aus
    `docs/exposed-research-checklist-lab-vm-observer-01.md` auf dem Zielumfeld
-   schliessen
+   mit `--verify-exposed-research` gegen den echten Zielhost verifizieren
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
@@ -200,16 +202,18 @@ Wichtige Variablengruppen:
   - `DEFAULT_POWER_LIMIT_PCT`
 
 - HMI und Protokoll:
-  - `ENABLE_SERVICE_LOGIN`
-  - `MODBUS_BIND_HOST`
-  - `MODBUS_PORT`
-  - `HMI_BIND_HOST`
-  - `HMI_PORT`
-  - `ALLOW_NONLOCAL_BIND`
-  - `APPROVED_INGRESS_BINDINGS`
-  - `TIMEZONE`
-  - `ATTACKER_UI_LOCALE`
-  - `ATTACKER_UI_FALLBACK_LOCALE`
+- `ENABLE_SERVICE_LOGIN`
+- `MODBUS_BIND_HOST`
+- `MODBUS_PORT`
+- `HMI_BIND_HOST`
+- `HMI_PORT`
+- `ALLOW_NONLOCAL_BIND`
+- `EXPOSED_RESEARCH_ENABLED`
+- `APPROVED_INGRESS_BINDINGS`
+- `PUBLIC_INGRESS_MAPPINGS`
+- `TIMEZONE`
+- `ATTACKER_UI_LOCALE`
+- `ATTACKER_UI_FALLBACK_LOCALE`
 
 Fuer lokale Entwicklung und Tests binden `MODBUS_BIND_HOST` und
 `HMI_BIND_HOST` standardmaessig an `127.0.0.1`. Eine Bindung an `0.0.0.0`
@@ -229,16 +233,23 @@ Deployments kann bewusst auf `502` gewechselt werden.
   - `ALERT_MIN_SEVERITY`
 
 - Exporter:
-  - `WEBHOOK_EXPORTER_ENABLED`
-  - `WEBHOOK_EXPORTER_URL`
-  - `SMTP_EXPORTER_ENABLED`
-  - `SMTP_HOST`
-  - `SMTP_PORT`
+- `WEBHOOK_EXPORTER_ENABLED`
+- `WEBHOOK_EXPORTER_URL`
+- `SMTP_EXPORTER_ENABLED`
+- `SMTP_HOST`
+- `SMTP_PORT`
   - `SMTP_FROM`
   - `SMTP_TO`
-  - `TELEGRAM_EXPORTER_ENABLED`
-  - `TELEGRAM_BOT_TOKEN`
-  - `TELEGRAM_CHAT_ID`
+- `TELEGRAM_EXPORTER_ENABLED`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `APPROVED_EGRESS_TARGETS`
+- `APPROVED_EGRESS_RECIPIENTS`
+
+- Exponierungsbetrieb:
+  - `WATCH_OFFICER_NAME`
+  - `DUTY_ENGINEER_NAME`
+  - `FINDINGS_LOG_PATH`
 
 ## Security-Hinweis
 

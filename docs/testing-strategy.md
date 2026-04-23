@@ -483,6 +483,14 @@ Pflichttests:
   Non-Local-Startpfad: `ALLOW_NONLOCAL_BIND=1`, explizite
   `APPROVED_INGRESS_BINDINGS`, Binding auf `0.0.0.0`, funktionierende
   HMI-/Modbus-Antworten ueber kontrollierte Loopback-Zugriffe
+- weitere Unit-Tests pruefen jetzt das `exposed-research`-Gate:
+  benoetigte Rollen, benannte Export-Empfaenger, `PUBLIC_INGRESS_MAPPINGS`
+  sowie die Ablehnung von Dokumentations- und Platzhalterzielen fuer aktive
+  Exporter
+- ein weiterer Runtime-Integrationspfad prueft jetzt
+  `uv run python -m honeypot.main --verify-exposed-research`:
+  Start mit freigegebenem Profil, Modbus-Read, HMI-Read auf `/overview`,
+  Alert-Aktivierung und `cleared` fuer `BREAKER_OPEN`, danach sauberer Stop
 - ein weiterer Release-Gate-Sweep prueft jetzt den kombinierten
   `pre-exposure`-Pfad: Heartbeat aktiv, freigegebenes Webhook-Ziel, laufende
   Runtime mit erfolgreicher Ausleitung, anschliessender Reset und sauberer

@@ -52,10 +52,19 @@ Phase I** gezogen:
   Incident-Kurs
 - zusaetzlich liegt jetzt die deployment-spezifisch ausgefuellte Einsatzkarte
   `docs/exposed-research-checklist-lab-vm-observer-01.md` vor; der Kurs ist
-  damit fachlich konkret, bleibt aber bis zu echten Firewall-, Empfaenger-
-  und Rollenfreigaben bewusst auf `NO-GO`
+  damit fachlich konkret und steht jetzt auf einem technischen
+  `GO-vorbehaltlich-Zielhost-Abgleich`
+- neu im Startpfad liegt jetzt ein echtes `exposed-research`-Gate:
+  benoetigt `EXPOSED_RESEARCH_ENABLED=1`, `PUBLIC_INGRESS_MAPPINGS`,
+  `APPROVED_EGRESS_RECIPIENTS`, `WATCH_OFFICER_NAME`,
+  `DUTY_ENGINEER_NAME`; Platzhalterziele fuer aktive Exporter werden in diesem
+  Modus abgewiesen
+- zusaetzlich gibt es jetzt den Zielhost-Sweep
+  `uv run python -m honeypot.main --verify-exposed-research`, der Start,
+  HMI, Modbus und den Alert-Pfad `BREAKER_OPEN` auf demselben Runtime-Pfad
+  prueft
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `264 passed`
+  Gesamttestlauf steht aktuell bei `272 passed`
 
 Wichtiger Kurs:
 
@@ -161,6 +170,13 @@ Vorhanden:
   - `APPROVED_EGRESS_TARGETS`
 - neuer Exposure-Key:
   - `ALLOW_NONLOCAL_BIND`
+- neue exposed-research-Keys:
+  - `EXPOSED_RESEARCH_ENABLED`
+  - `PUBLIC_INGRESS_MAPPINGS`
+  - `APPROVED_EGRESS_RECIPIENTS`
+  - `WATCH_OFFICER_NAME`
+  - `DUTY_ENGINEER_NAME`
+  - `FINDINGS_LOG_PATH`
 - neuer Ingress-Key:
   - `APPROVED_INGRESS_BINDINGS`
 

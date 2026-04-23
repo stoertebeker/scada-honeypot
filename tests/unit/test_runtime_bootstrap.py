@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from honeypot.exporter_runner import WebhookExporter
-from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, cli, main
+from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, cli, main, verify_exposed_research_runtime
 
 
 def test_bootstrap_runtime_exposes_documented_modules() -> None:
@@ -77,6 +77,58 @@ def test_build_local_runtime_rejects_nonlocal_binds_without_approved_ingress(tmp
 
     with pytest.raises(RuntimeError, match="APPROVED_INGRESS_BINDINGS"):
         build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+
+def test_main_rejects_exposed_research_without_named_roles(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            "ALLOW_NONLOCAL_BIND=1\n"
+            "EXPOSED_RESEARCH_ENABLED=1\n"
+            "MODBUS_BIND_HOST=0.0.0.0\n"
+            "HMI_BIND_HOST=0.0.0.0\n"
+            "APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080\n"
+            "PUBLIC_INGRESS_MAPPINGS=modbus:502:1502,hmi:80:8080\n"
+            "WEBHOOK_EXPORTER_ENABLED=1\n"
+            "WEBHOOK_EXPORTER_URL=https://collector.ops.lab/hook\n"
+            "APPROVED_EGRESS_TARGETS=webhook:collector.ops.lab:443\n"
+            "APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live\n"
+            f"EVENT_STORE_PATH={event_store_path}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="WATCH_OFFICER_NAME"):
+        main(env_file=str(env_file))
+
+
+def test_verify_exposed_research_runtime_rejects_placeholder_export_target(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            "ALLOW_NONLOCAL_BIND=1\n"
+            "EXPOSED_RESEARCH_ENABLED=1\n"
+            "MODBUS_BIND_HOST=0.0.0.0\n"
+            "MODBUS_PORT=1502\n"
+            "HMI_BIND_HOST=0.0.0.0\n"
+            "HMI_PORT=8080\n"
+            "APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080\n"
+            "PUBLIC_INGRESS_MAPPINGS=modbus:502:1502,hmi:80:8080\n"
+            "WATCH_OFFICER_NAME=blue-watch\n"
+            "DUTY_ENGINEER_NAME=ops-duty\n"
+            "WEBHOOK_EXPORTER_ENABLED=1\n"
+            "WEBHOOK_EXPORTER_URL=https://198.51.100.42/hook\n"
+            "APPROVED_EGRESS_TARGETS=webhook:198.51.100.42:443\n"
+            "APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live\n"
+            f"EVENT_STORE_PATH={event_store_path}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="Dokumentations- oder Platzhalterziele"):
+        verify_exposed_research_runtime(env_file=str(env_file))
 
 
 def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> None:
@@ -299,7 +351,11 @@ def test_cli_reset_runtime_prints_report(capsys, monkeypatch, tmp_path: Path) ->
 
 class _FakeRuntime:
     def __init__(self) -> None:
-        self.config = SimpleNamespace(site_code="site-01", approved_egress_targets=())
+        self.config = SimpleNamespace(
+            site_code="site-01",
+            approved_egress_targets=(),
+            exposed_research_enabled=False,
+        )
         self.manifest = bootstrap_runtime()
         self.snapshot = SimpleNamespace(fixture_name="normal_operation")
         self.modbus_service = SimpleNamespace(address=("127.0.0.1", 1502))

@@ -24,7 +24,9 @@ MODBUS_PORT=1502
 HMI_BIND_HOST=0.0.0.0
 HMI_PORT=8080
 ALLOW_NONLOCAL_BIND=1
+EXPOSED_RESEARCH_ENABLED=1
 APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080
+PUBLIC_INGRESS_MAPPINGS=modbus:502:1502,hmi:80:8080
 
 ENABLE_SERVICE_LOGIN=1
 
@@ -33,12 +35,16 @@ RUNTIME_STATUS_PATH=./logs/runtime-status.json
 JSONL_ARCHIVE_ENABLED=1
 JSONL_ARCHIVE_PATH=./logs/events.jsonl
 PCAP_CAPTURE_ENABLED=0
+FINDINGS_LOG_PATH=./logs/findings.md
 
 WEBHOOK_EXPORTER_ENABLED=1
-WEBHOOK_EXPORTER_URL=https://198.51.100.42/honeypot-ingest
-APPROVED_EGRESS_TARGETS=webhook:198.51.100.42:443
+WEBHOOK_EXPORTER_URL=https://collector.ops.lab/honeypot-ingest
+APPROVED_EGRESS_TARGETS=webhook:collector.ops.lab:443
+APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live
 SMTP_EXPORTER_ENABLED=0
 TELEGRAM_EXPORTER_ENABLED=0
+WATCH_OFFICER_NAME=blue-watch
+DUTY_ENGINEER_NAME=ops-duty
 ```
 
 ## 3. Ingress-Profil
@@ -81,8 +87,9 @@ Operative Folge:
 ## 5. Egress-Profil
 
 - aktiver Kanal: `webhook`
-- Ziel: `198.51.100.42:443`
-- `APPROVED_EGRESS_TARGETS=webhook:198.51.100.42:443`
+- Ziel: `collector.ops.lab:443`
+- `APPROVED_EGRESS_TARGETS=webhook:collector.ops.lab:443`
+- `APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live`
 - SMTP und Telegram bleiben fuer dieses Referenzprofil deaktiviert
 
 Begruendung:
@@ -122,6 +129,9 @@ Rollenmodell:
 
 - `watch_officer`: beobachtet Heartbeat, Alerts und sichtbare HMI-/Modbus-Lage
 - `duty_engineer`: entscheidet ueber Stop, Isolation und Reset
+- konkrete Referenz-Besetzung:
+  - `WATCH_OFFICER_NAME=blue-watch`
+  - `DUTY_ENGINEER_NAME=ops-duty`
 
 Pflichtreaktion bei:
 
@@ -139,6 +149,10 @@ Mindestablauf:
 5. `uv run python -m honeypot.main --reset-runtime`
 6. Findings dokumentieren
 
+Pflicht-Sweep vor Live-Betrieb:
+
+- `uv run python -m honeypot.main --verify-exposed-research`
+
 ## 8. Go/No-Go fuer dieses Referenzprofil
 
 Dieses Profil ist **freizugebend**, aber noch nicht automatisch live freigegeben.
@@ -146,9 +160,11 @@ Dieses Profil ist **freizugebend**, aber noch nicht automatisch live freigegeben
 `GO` fuer ein echtes Deployment nur wenn:
 
 - NAT-/Firewall-Regeln exakt dem Profil entsprechen
-- reale Webhook-Empfaenger benannt und akzeptiert sind
-- `watch_officer` und `duty_engineer` konkret benannt sind
+- Webhook-Empfaenger `observer-collector-live` auf `collector.ops.lab:443`
+  deployment-seitig bestaetigt ist
+- `blue-watch` und `ops-duty` fuer diesen Pilotlauf tatsaechlich besetzt sind
 - die deployment-spezifische Kopie dieser Karte abgezeichnet wurde
+- der Sweep `--verify-exposed-research` auf dem Zielhost erfolgreich laeuft
 
 `NO-GO` wenn:
 
@@ -156,6 +172,7 @@ Dieses Profil ist **freizugebend**, aber noch nicht automatisch live freigegeben
 - `/service/login` ungeprueft umkonfiguriert wird
 - weitere Exportkanaele ohne neuen Gate-Check zugeschaltet werden
 - Beobachtung und Reset nicht personell besetzt sind
+- `--verify-exposed-research` fehlschlaegt
 
 ## 9. Bezug
 

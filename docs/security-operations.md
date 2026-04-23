@@ -74,9 +74,13 @@ Eigenschaften:
 - nur mit aktivem Logging
 - nur mit Egress-Kontrolle
 - nur mit definiertem Incident- und Reset-Prozess
-- Stand 23. April 2026 weiter `NO-GO`, bis Ingress, `/service/login`,
-  operative Egress-Ziele und Beobachtungsprozess deployment-spezifisch
-  entschieden sind
+- nur mit explizitem Exposure-Start-Gate:
+  `EXPOSED_RESEARCH_ENABLED=1`, `PUBLIC_INGRESS_MAPPINGS`,
+  `APPROVED_EGRESS_RECIPIENTS`, `WATCH_OFFICER_NAME`,
+  `DUTY_ENGINEER_NAME`
+- Stand 23. April 2026 technisch deutlich weiter; die Runtime erzwingt jetzt
+  benannte Rollen, benannte Egress-Empfaenger und verbietet Platzhalterziele
+  fuer aktive Exporter im `exposed-research`-Modus
 - fuer diese deployment-spezifische Freigabe ist
   [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
   verbindlich zu fuehren
@@ -128,6 +132,10 @@ Wichtige Regel:
 - der aktuelle lokale Startpfad erzwingt dafuer eine explizite
   Ziel-Freigabe ueber `APPROVED_EGRESS_TARGETS` im Format
   `target_type:host:port`
+- im `exposed-research`-Modus muessen aktive Ausleitungsziele zusaetzlich
+  ueber `APPROVED_EGRESS_RECIPIENTS` als benannte Empfaenger dokumentiert sein
+- Dokumentations- und Platzhalterziele wie `.invalid` oder Test-Netze bleiben
+  in diesem Modus verboten
 
 ### 5.3 Ingress-Kontrolle
 
@@ -141,6 +149,9 @@ Vor Exponierung definieren:
   `ALLOW_NONLOCAL_BIND=1` erforderlich
 - die konkreten externen Runtime-Bindings muessen zusaetzlich ueber
   `APPROVED_INGRESS_BINDINGS` im Format `service:host:port` freigegeben sein
+- fuer echten `exposed-research`-Betrieb muessen oeffentliche Port-Abbildungen
+  zusaetzlich ueber `PUBLIC_INGRESS_MAPPINGS` im Format
+  `service:public_port:internal_port` dokumentiert sein
 
 ## 6. Systemhygiene
 
@@ -247,6 +258,20 @@ Aktueller lokaler V1-Pfad:
   `RUNTIME_STATUS_PATH` und `PCAP_CAPTURE_PATH`
 - verweigert Verzeichnis- oder Symlink-Artefaktpfade, um keine unsauberen
   Reset-Loeschpfade zu oeffnen
+
+### 9.4 Zielhost-Sweep vor Exponierung
+
+Vor echtem Internetbetrieb ausfuehren:
+
+- `uv run python -m honeypot.main --verify-exposed-research`
+
+Der Sweep prueft auf demselben Runtime-Pfad:
+
+- Start mit freigegebenem `exposed-research`-Profil
+- lesbaren Modbus-Pfad
+- lesbare HMI unter `/overview`
+- Alert-Lebenszyklus fuer `BREAKER_OPEN`
+- sauberen Stop
 
 ### 9.2 Reset-Ausloeser
 
