@@ -15,8 +15,11 @@ Phase I** gezogen:
 - browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
   wichtigsten sichtbaren und sicherheitsrelevanten Pfade, jetzt auch unter
   aktivem HMI-/Modbus-Traffic waehrend Mehrkanal-Recovery
+- optionales lokales Runtime-Monitoring schreibt jetzt einen Heartbeat mit
+  Dienst-Adressen, Exporter-Health sowie Alert-/Outbox-Zaehlern nach
+  `RUNTIME_STATUS_PATH`, ohne neue HTTP- oder Debug-Flaeche
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `243 passed`
+  Gesamttestlauf steht aktuell bei `246 passed`
 
 Wichtiger Kurs:
 
@@ -31,6 +34,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `47dab3c` `feat: add local runtime status heartbeat`
 - `d1ffc32` `test: gate client traffic during exporter recovery`
 - `ed51622` `test: soak background runner smtp recovery`
 - `fa2b966` `test: soak background runner mixed alert waves`
@@ -65,6 +69,7 @@ Wichtiger Kurs:
   - `ReadOnlyRegisterMap`
   - `ReadOnlyModbusTcpService`
   - `LocalHmiHttpService`
+  - optional `BackgroundRuntimeStatusService` mit lokalem Datei-Heartbeat
 - `main()` startet jetzt lokalen Modbus-Listener und lokalen HMI-HTTP-Dienst
   und bleibt bis `KeyboardInterrupt` aktiv
 - Sicherheitsregel im Startpfad:
@@ -90,6 +95,10 @@ Vorhanden:
   - vorhandenes Fallback-Locale-Bundle
   - Ports und numerische Schwellwerte
   - exporter-bezogene Pflichtfelder nur bei aktivierten Exportern
+- neue lokale Monitoring-Keys:
+  - `RUNTIME_STATUS_ENABLED`
+  - `RUNTIME_STATUS_PATH`
+  - `RUNTIME_STATUS_INTERVAL_SECONDS`
 
 Wichtige Regel:
 

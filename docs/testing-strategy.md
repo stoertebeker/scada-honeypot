@@ -459,6 +459,10 @@ Pflichttests:
   Modbus-Lesezugriffe waehrend Webhook/SMTP/Telegram-Recovery; dabei muessen
   HMI, Alarmseite und Modbus stabil bleiben, ohne Kanalfehler sichtbar
   nach aussen zu leaken
+- ein weiterer Runtime-Bootstrap-Test prueft jetzt den lokalen
+  Status-Heartbeat: `RUNTIME_STATUS_PATH` wird im laufenden Runtime-Slice
+  geschrieben, fuehrt Dienst-Adressen, Exporter-Health sowie Alert-/Outbox-
+  Zaehler mit und zeigt nach sauberem Shutdown `running=false`
 
 ## 13. Logging- und Event-Tests
 

@@ -78,6 +78,8 @@ Nach diesem lokalen V1-Release sind zwei Richtungen sauber getrennt:
    - weitere HMI-/Modbus-Slices
 
 2. Sicherheitskurs Richtung `pre-exposure`:
-   - Monitoring und Reset-Prozess
+   - Monitoring aktivieren und den lokalen Heartbeat unter
+     `RUNTIME_STATUS_PATH` pruefen
+   - Reset-Prozess validieren
    - Egress-Kontrolle
    - letzte bewusste Sicherheitsfreigabe

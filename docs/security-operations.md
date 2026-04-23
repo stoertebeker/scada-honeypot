@@ -57,7 +57,8 @@ Zweck:
 Eigenschaften:
 - Release-Gates aus Test- und Security-Doku muessen gruen sein
 - Reset-Mechanismus validiert
-- Monitoring aktiv
+- Monitoring aktiv; aktuell steht dafuer ein lokaler Heartbeat unter
+  `RUNTIME_STATUS_PATH` bereit, ohne neue Netzwerkflaeche zu oeffnen
 
 ### 3.4 `exposed-research`
 
