@@ -23,8 +23,11 @@ Phase I** gezogen:
   Neustart
 - aktiver Exporter-Egress braucht jetzt eine explizite Ziel-Freigabe ueber
   `APPROVED_EGRESS_TARGETS`; sonst verweigert `main()` den Start
+- ein kombinierter `pre-exposure`-Sweep deckt jetzt Monitoring, freigegebenes
+  Webhook-Ziel, erfolgreiche Ausleitung, Reset und Fresh-Start auf demselben
+  Runtime-Pfad ab
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `254 passed`
+  Gesamttestlauf steht aktuell bei `255 passed`
 
 Wichtiger Kurs:
 
@@ -39,6 +42,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `f87709b` `test: add pre-exposure release gate sweep`
 - `d66c41e` `feat: gate exporter egress targets`
 - `0c3a6cd` `feat: add local runtime reset path`
 - `47dab3c` `feat: add local runtime status heartbeat`

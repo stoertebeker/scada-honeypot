@@ -72,6 +72,7 @@ Vorhanden sind:
 - `uv run python -m honeypot.main --reset-runtime` entfernt jetzt reproduzierbar lokale Runtime-Artefakte wie `EVENT_STORE_PATH`, `JSONL_ARCHIVE_PATH`, `RUNTIME_STATUS_PATH`, `PCAP_CAPTURE_PATH` sowie SQLite-`-wal`/`-shm`-Sidecars fuer einen frischen Neustart
 - aktiver Exporter-Egress braucht jetzt eine explizite Ziel-Freigabe ueber `APPROVED_EGRESS_TARGETS`; `python -m honeypot.main` verweigert sonst den Start fuer Webhook-, SMTP- oder Telegram-Ziele
 - optionales Runtime-Monitoring schreibt jetzt einen lokalen Heartbeat nach `RUNTIME_STATUS_PATH` mit Dienst-Adressen, Exporter-Health, Alert- und Outbox-Zaehlern; Standardpfad ist `./logs/runtime-status.json`, ohne neuen HTTP- oder Debug-Endpunkt
+- ein integrierter `pre-exposure`-Gate-Sweep prueft jetzt denselben Runtime-Pfad mit aktivem Monitoring, freigegebenem Webhook-Ziel, erfolgreicher Outbox-Ausleitung, sauberem Reset und frischem Neustart
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
 - `Unit 21` bleibt strikt read-only; Setpoint-Zugriffe auf `40200-40249` werden sauber als `02 Illegal Data Address` abgewiesen
@@ -83,7 +84,7 @@ Vorhanden sind:
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
-- Gesamtteststand aktuell: `254 passed`
+- Gesamtteststand aktuell: `255 passed`
 
 Nicht Teil des ersten lokalen V1-Releases:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
@@ -141,7 +142,7 @@ Die Deckscrew ist jetzt sauber beim lokalen V1-Release angekommen. Der
 naechste konkrete Schlag sollte auf dem separaten `pre-exposure`-Sicherheitskurs
 liegen:
 
-1. letzte `pre-exposure`-Gates mit aktivem Monitoring, Reset-Prozess und Egress-Regeln pruefen
+1. formale Go/No-Go-Entscheidung fuer `pre-exposure` anhand der jetzt gruenen Gates festziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

@@ -472,6 +472,10 @@ Pflichttests:
   `APPROVED_EGRESS_TARGETS` wird normalisiert, Webhook/SMTP/Telegram-Ziele
   werden auf `target_type:host:port` verdichtet und `main()` verweigert den
   Start bei ungeprueften Ausleitungszielen
+- ein weiterer Release-Gate-Sweep prueft jetzt den kombinierten
+  `pre-exposure`-Pfad: Heartbeat aktiv, freigegebenes Webhook-Ziel, laufende
+  Runtime mit erfolgreicher Ausleitung, anschliessender Reset und sauberer
+  Fresh-Start auf demselben lokalen Pfad
 
 ## 13. Logging- und Event-Tests
 

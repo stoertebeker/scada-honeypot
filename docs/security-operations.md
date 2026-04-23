@@ -59,6 +59,8 @@ Eigenschaften:
 - Reset-Mechanismus validiert
 - Monitoring aktiv; aktuell steht dafuer ein lokaler Heartbeat unter
   `RUNTIME_STATUS_PATH` bereit, ohne neue Netzwerkflaeche zu oeffnen
+- ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
+  Reset und Fresh-Start ist jetzt im Testharness belegt
 
 ### 3.4 `exposed-research`
 
