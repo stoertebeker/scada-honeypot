@@ -80,9 +80,9 @@ Vorhanden sind:
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
-- Gesamtteststand aktuell: `242 passed`
+- Gesamtteststand aktuell: `243 passed`
 
-Noch nicht vorhanden:
+Nicht Teil des ersten lokalen V1-Releases:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
 - restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
 - weitere HMI-Seiten jenseits von `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends`
@@ -127,6 +127,8 @@ Die wichtigsten Dokumente:
   - Reihenfolge der Umsetzung
 - [docs/agent-handoff.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/agent-handoff.md)
   - kurzer Einsatzbrief fuer neue Agenten oder neue Umsetzungsrunden
+- [docs/release-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/release-checklist.md)
+  - lokale V1-Abnahme, Go/No-Go-Kriterien und bewusste Grenzen vor `pre-exposure`
 - [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
   - Isolation, Exposure-Gates, Reset, Betrieb
 
@@ -274,6 +276,12 @@ Diese Fragen kann der Kapitaen spaeter gut selbst zur Abnahme nutzen:
 
 ## Mini-Status
 
-Das Projekt ist dokumentarisch sauber abgesteckt. Der naechste echte Schritt
-waere nicht noch mehr Doku, sondern der Wechsel in den Umsetzungsmodus entlang
-der Roadmap.
+Der erste lokale V1-Release ist jetzt als **Release-Kandidat** an Deck.
+Die technische Abnahme laeuft ueber
+[docs/release-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/release-checklist.md).
+
+Wichtige Grenze:
+
+- dieser Stand ist fuer lokalen Laborbetrieb auf `127.0.0.1` release-faehig
+- `pre-exposure` oder echte Exponierung bleiben ein separater, bewusst
+  freizugebender Sicherheitskurs

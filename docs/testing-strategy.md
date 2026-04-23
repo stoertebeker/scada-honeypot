@@ -455,6 +455,10 @@ Pflichttests:
   runtime-nah ueber `build_local_runtime()`: vier Alert-Wellen im laufenden
   Betrieb, gleichzeitig gestrandetes SMTP und Telegram und spaetere
   Mehrkanal-Erholung ueber mehrere echte Runner-Intervalle
+- ein weiteres Release-Gate prueft jetzt parallel laufende HMI- und
+  Modbus-Lesezugriffe waehrend Webhook/SMTP/Telegram-Recovery; dabei muessen
+  HMI, Alarmseite und Modbus stabil bleiben, ohne Kanalfehler sichtbar
+  nach aussen zu leaken
 
 ## 13. Logging- und Event-Tests
 

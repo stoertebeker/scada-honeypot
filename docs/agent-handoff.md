@@ -13,9 +13,10 @@ Phase I** gezogen:
 - Webhook, SMTP und Telegram decken rule-basierte Folge-Alerts inzwischen bis
   zum Exporter-Double ab, inklusive stillem Retry und isoliertem Teilausfall
 - browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
-  wichtigsten sichtbaren und sicherheitsrelevanten Pfade
+  wichtigsten sichtbaren und sicherheitsrelevanten Pfade, jetzt auch unter
+  aktivem HMI-/Modbus-Traffic waehrend Mehrkanal-Recovery
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `242 passed`
+  Gesamttestlauf steht aktuell bei `243 passed`
 
 Wichtiger Kurs:
 
@@ -30,6 +31,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `d1ffc32` `test: gate client traffic during exporter recovery`
 - `ed51622` `test: soak background runner smtp recovery`
 - `fa2b966` `test: soak background runner mixed alert waves`
 - `341201b` `test: stress background runner wake cycles`
@@ -910,10 +912,10 @@ Operative Hinweise:
 Direkter Kurs fuer den naechsten Agenten:
 
 1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
-   rund; sinnvoller naechster Kurs ist jetzt ein Release-Gate- oder
-   Runtime-Sweep mit aktivem HMI-/Modbus-Traffic waehrend Mehrkanal-Recovery,
-   damit Exporter-Backoff, lokale Bedienung und Protokoll-Lesezugriffe auch
-   unter laengerem Recovery-Druck gemeinsam stabil bleiben
+   rund; der erste lokale V1-Release-Kandidat ist jetzt belastbar genug fuer
+   die Abnahme ueber die lokale Release-Checkliste. Weiterer Kurs nur bei
+   bewusstem Ausbau: `pre-exposure`-Gates, weitere HMI-/Modbus-Feinschnitte
+   oder zusaetzliche Rule-/Exporter-Ketten
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
