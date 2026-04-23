@@ -414,6 +414,176 @@ def test_outbox_runner_respects_backoff_per_target_across_multiple_cycles(tmp_pa
     assert "BREAKER_OPEN" in telegram_attempts[0]["text"]
 
 
+def test_outbox_runner_handles_multiple_alerts_with_staggered_target_backoff_windows(tmp_path) -> None:
+    recorder, clock = build_recorder(tmp_path)
+
+    breaker_event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    breaker_alert = recorder.build_alert(
+        event=breaker_event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+    recorder.record(breaker_event, alert=breaker_alert, outbox_targets=("webhook", "smtp", "telegram"))
+
+    comms_event = recorder.build_event(
+        event_type="system.communication.inverter_block_lost",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="system",
+        component="plant-sim",
+        asset_id="invb-02",
+        action="simulate_comm_loss",
+        result="accepted",
+        alarm_code="COMM_LOSS_INVERTER_BLOCK",
+        resulting_value="lost",
+        tags=("fault-path", "communications", "inverter-block"),
+    )
+    comms_alert = recorder.build_alert(
+        event=comms_event,
+        alarm_code="COMM_LOSS_INVERTER_BLOCK",
+        severity="medium",
+        state="active_unacknowledged",
+        message="Kommunikationsverlust fuer Inverter-Block invb-02",
+    )
+    recorder.record(comms_event, alert=comms_alert, outbox_targets=("webhook", "smtp", "telegram"))
+
+    webhook_batches: list[dict] = []
+    smtp_attempt_bodies: list[str] = []
+    telegram_batches: list[dict] = []
+    telegram_attempt_states = [429, 200]
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        webhook_batches.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(202, json={"accepted": True})
+
+    class FlakySmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message: EmailMessage):
+            smtp_attempt_bodies.append(message.get_content())
+            raise OSError("connection refused")
+
+    def telegram_handler(request: httpx.Request) -> httpx.Response:
+        telegram_batches.append(json.loads(request.content.decode("utf-8")))
+        status_code = telegram_attempt_states.pop(0)
+        if status_code == 200:
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(status_code, json={"ok": False})
+
+    runner = OutboxRunner(
+        store=recorder.store,
+        exporters={
+            "webhook": WebhookExporter(
+                url="https://example.invalid/hook",
+                transport=httpx.MockTransport(webhook_handler),
+            ),
+            "smtp": SmtpExporter(
+                host="mail.example.invalid",
+                port=2525,
+                mail_from="alerts@example.invalid",
+                rcpt_to="soc@example.invalid",
+                retry_after_seconds=90,
+                client_factory=lambda host, port, timeout: FlakySmtpClient(),
+            ),
+            "telegram": TelegramExporter(
+                bot_token="token-123",
+                chat_id="chat-99",
+                retry_after_seconds=45,
+                transport=httpx.MockTransport(telegram_handler),
+            ),
+        },
+        retry_backoff_seconds=90,
+        clock=clock,
+    )
+
+    def entries_for(target_type: str):
+        return tuple(entry for entry in recorder.store.fetch_outbox_entries() if entry.target_type == target_type)
+
+    initial_now = clock.now()
+    first_result = runner.drain_once()
+    first_webhook_entries = entries_for("webhook")
+    first_smtp_entries = entries_for("smtp")
+    first_telegram_entries = entries_for("telegram")
+
+    second_result = runner.drain_once()
+
+    t45 = clock.advance(timedelta(seconds=45))
+    third_result = runner.drain_once()
+    third_smtp_entries = entries_for("smtp")
+    third_telegram_entries = entries_for("telegram")
+
+    t90 = clock.advance(timedelta(seconds=45))
+    fourth_result = runner.drain_once()
+    fourth_webhook_entries = entries_for("webhook")
+    fourth_smtp_entries = entries_for("smtp")
+    fourth_telegram_entries = entries_for("telegram")
+
+    assert first_result.leased_count == 6
+    assert first_result.delivered_count == 2
+    assert first_result.retried_count == 4
+    assert all(entry.status == "delivered" for entry in first_webhook_entries)
+    assert all(entry.status == "pending" for entry in first_smtp_entries)
+    assert all(entry.retry_count == 1 for entry in first_smtp_entries)
+    assert all(entry.next_attempt_at == initial_now + timedelta(seconds=90) for entry in first_smtp_entries)
+    assert all(entry.last_error == "SMTP-Transportfehler: OSError" for entry in first_smtp_entries)
+    assert all(entry.status == "pending" for entry in first_telegram_entries)
+    assert all(entry.retry_count == 1 for entry in first_telegram_entries)
+    assert all(entry.next_attempt_at == initial_now + timedelta(seconds=45) for entry in first_telegram_entries)
+    assert all(entry.last_error == "Telegram antwortete mit HTTP 429" for entry in first_telegram_entries)
+
+    assert second_result.leased_count == 0
+    assert second_result.delivered_count == 0
+    assert second_result.retried_count == 0
+
+    assert third_result.leased_count == 2
+    assert third_result.delivered_count == 2
+    assert third_result.retried_count == 0
+    assert all(entry.status == "pending" for entry in third_smtp_entries)
+    assert all(entry.retry_count == 1 for entry in third_smtp_entries)
+    assert all(entry.status == "delivered" for entry in third_telegram_entries)
+
+    assert fourth_result.leased_count == 2
+    assert fourth_result.delivered_count == 0
+    assert fourth_result.retried_count == 2
+    assert all(entry.status == "delivered" for entry in fourth_webhook_entries)
+    assert all(entry.status == "pending" for entry in fourth_smtp_entries)
+    assert all(entry.retry_count == 2 for entry in fourth_smtp_entries)
+    assert all(entry.next_attempt_at == t90 + timedelta(seconds=90) for entry in fourth_smtp_entries)
+    assert all(entry.last_error == "SMTP-Transportfehler: OSError" for entry in fourth_smtp_entries)
+    assert all(entry.status == "delivered" for entry in fourth_telegram_entries)
+
+    assert len(webhook_batches) == 1
+    assert len(telegram_batches) == 2
+    assert len(smtp_attempt_bodies) == 2
+    assert len(webhook_batches[0]["items"]) == 2
+    assert "BREAKER_OPEN" in smtp_attempt_bodies[0]
+    assert "COMM_LOSS_INVERTER_BLOCK" in smtp_attempt_bodies[0]
+    assert "BREAKER_OPEN" in telegram_batches[0]["text"]
+    assert "COMM_LOSS_INVERTER_BLOCK" in telegram_batches[0]["text"]
+    assert "BREAKER_OPEN" in telegram_batches[1]["text"]
+    assert "COMM_LOSS_INVERTER_BLOCK" in telegram_batches[1]["text"]
+
+
 def test_background_outbox_runner_service_delivers_pending_entry_without_manual_drain(tmp_path) -> None:
     recorder, clock = seed_webhook_alert(tmp_path)
 

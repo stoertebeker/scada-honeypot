@@ -437,6 +437,9 @@ Pflichttests:
 - mindestens ein Release-Gate prueft jetzt auch die parallele Mehrfachausleitung
   desselben Folge-Alerts ueber mehrere Zielkanaele; faellt ein Kanal aus,
   liefern die uebrigen Kanaele weiter aus
+- ein Unit-Sweep prueft jetzt zusaetzlich target-spezifisches Outbox-Leasing
+  und gestaffelte Backoff-Fenster ueber mehrere Runner-Zyklen mit mehreren
+  gleichzeitigen Alerts
 
 ## 13. Logging- und Event-Tests
 

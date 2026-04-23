@@ -15,7 +15,7 @@ Phase I** gezogen:
 - browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
   wichtigsten sichtbaren und sicherheitsrelevanten Pfade
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `236 passed`
+  Gesamttestlauf steht aktuell bei `237 passed`
 
 Wichtiger Kurs:
 
@@ -30,6 +30,8 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `2acaaf0` `test: harden outbox target backoff cycles`
+- `6fa2e21` `docs: sync project status and handoff`
 - `600e4b8` `test: gate partial multi-target exporter failure`
 - `e900e78` `test: drain follow-up alert via all exporters`
 - `6c677c5` `test: gate low output telegram failure`
@@ -37,7 +39,6 @@ Wichtiger Kurs:
 - `57e2dc1` `test: gate multi-block telegram failure`
 - `91c2ebd` `test: drain low output follow-up via telegram`
 - `24f274c` `test: drain grid path follow-up via telegram`
-- `1491047` `test: drain multi-block follow-up via telegram`
 - `7b24f4d` `test: gate low output smtp failure`
 - `f639bfc` `test: gate grid path smtp failure`
 
@@ -905,9 +906,9 @@ Operative Hinweise:
 Direkter Kurs fuer den naechsten Agenten:
 
 1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
-   rund; sinnvoller naechster Kurs ist jetzt ein Last-/Timing-Sweep fuer
-   Outbox-Leasing, Backoff und mehrere gleichzeitige Folge-Alerts ueber
-   Webhook, SMTP und Telegram
+   rund; sinnvoller naechster Kurs ist jetzt ein Background-Runner-Sweep mit
+   mehreren gleichzeitigen Folge-Alerts, gemischten Retry-Zustaenden und
+   wiederholtem `wake()`/Intervall-Verhalten ueber Webhook, SMTP und Telegram
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 
