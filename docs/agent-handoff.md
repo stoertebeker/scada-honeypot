@@ -26,6 +26,9 @@ Phase I** gezogen:
 - ein kombinierter `pre-exposure`-Sweep deckt jetzt Monitoring, freigegebenes
   Webhook-Ziel, erfolgreiche Ausleitung, Reset und Fresh-Start auf demselben
   Runtime-Pfad ab
+- Non-Local-Bind fuer Modbus und HMI ist jetzt technisch moeglich, bleibt aber
+  `deny-by-default`; ohne `ALLOW_NONLOCAL_BIND=1` blockiert der Runtime-Pfad
+  externe Bindung weiter
 - die formale Lageentscheidung steht jetzt ebenfalls:
   `pre-exposure` ist `GO`, `exposed-research` bleibt `NO-GO`, bis
   deployment-spezifische Ingress-, `/service/login`- und Egress-Entscheide
@@ -33,10 +36,11 @@ Phase I** gezogen:
 - dafuer liegt jetzt eine konkrete Einsatzkarte in
   `docs/exposed-research-checklist.md` bereit
 - zusaetzlich liegt jetzt eine ausgefuellte Beispielbewertung vor, die den
-  heutigen Stand wegen lokaler Bind-Grenzen und offener Deployment-Entscheide
+  heutigen Stand wegen fehlender expliziter Non-Local-Bind-Freigabe und
+  offener Deployment-Entscheide
   bewusst als `NO-GO` fuer echte Exponierung dokumentiert
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `255 passed`
+  Gesamttestlauf steht aktuell bei `257 passed`
 
 Wichtiger Kurs:
 
@@ -51,6 +55,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `21229f8` `feat: gate nonlocal runtime binds`
 - `83c3327` `docs: add exposed research checklist`
 - `10a2d4d` `docs: record pre-exposure go decision`
 - `2801c7d` `docs: sync pre-exposure gate status`
@@ -101,9 +106,12 @@ Wichtiger Kurs:
   Artefakte an
 - `main()` erzwingt jetzt bei aktiven Exportern eine explizite Egress-
   Freigabe ueber `APPROVED_EGRESS_TARGETS`
+- `build_local_runtime()` blockiert externe Bindung fuer Modbus/HMI jetzt
+  weiter `deny-by-default`; fuer bewusste Exponierung ist explizit
+  `ALLOW_NONLOCAL_BIND=1` erforderlich
 - Sicherheitsregel im Startpfad:
-  - `MODBUS_BIND_HOST` muss derzeit `127.0.0.1` bleiben
-  - `HMI_BIND_HOST` muss derzeit `127.0.0.1` bleiben
+  - `MODBUS_BIND_HOST` und `HMI_BIND_HOST` bleiben ohne Freigabe lokal
+  - Non-Local-Bind braucht explizit `ALLOW_NONLOCAL_BIND=1`
   - Design-Local-Default fuer `MODBUS_PORT` ist `1502`
   - Design-Local-Default fuer `HMI_PORT` ist `8080`
 
@@ -130,6 +138,8 @@ Vorhanden:
   - `RUNTIME_STATUS_INTERVAL_SECONDS`
 - neuer Egress-Key:
   - `APPROVED_EGRESS_TARGETS`
+- neuer Exposure-Key:
+  - `ALLOW_NONLOCAL_BIND`
 
 Wichtige Regel:
 

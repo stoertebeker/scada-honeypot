@@ -38,7 +38,8 @@ Checkliste auszufuellen ist und warum der Stand heute fuer
 Bewertung:
 
 - Ingress ist technisch derzeit **nicht** fuer Exponierung freigezogen
-- der aktuelle Runtime-Pfad blockiert bewusst unkontrollierte externe Bindung
+- Non-Local-Bind waere jetzt nur mit explizitem `ALLOW_NONLOCAL_BIND=1`
+  zulaessig und ist fuer dieses Beispiel bewusst nicht freigegeben
 
 ## 3. Entscheidung zu `/service/login`
 
@@ -118,7 +119,7 @@ Bewertung:
 Begruendung:
 
 - Ingress ist nicht deployment-spezifisch freigezogen
-- Modbus und HMI bleiben aktuell bewusst auf `127.0.0.1`
+- fuer dieses Deployment ist keine explizite Non-Local-Bind-Freigabe gesetzt
 - verantwortete Egress-Ziele sind nicht benannt
 - beobachtende und freigebende Rollen sind nicht konkret festgelegt
 

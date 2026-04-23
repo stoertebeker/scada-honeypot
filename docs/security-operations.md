@@ -137,6 +137,8 @@ Vor Exponierung definieren:
 - welche HMI-Pfade aktiv sind
 - ob `service/login` fuer das jeweilige Deployment aktiv bleibt
 - ob der Tracker in V1 ueberhaupt sichtbar ist
+- fuer Non-Local-Bind im aktuellen Runtime-Pfad ist bewusst
+  `ALLOW_NONLOCAL_BIND=1` erforderlich
 
 ## 6. Systemhygiene
 

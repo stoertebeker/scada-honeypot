@@ -472,6 +472,10 @@ Pflichttests:
   `APPROVED_EGRESS_TARGETS` wird normalisiert, Webhook/SMTP/Telegram-Ziele
   werden auf `target_type:host:port` verdichtet und `main()` verweigert den
   Start bei ungeprueften Ausleitungszielen
+- weitere Unit-Tests pruefen jetzt das Runtime-Bind-Gate:
+  externe `MODBUS_BIND_HOST`-/`HMI_BIND_HOST`-Werte bleiben ohne
+  `ALLOW_NONLOCAL_BIND=1` blockiert und werden nur bei expliziter Freigabe
+  zugelassen
 - ein weiterer Release-Gate-Sweep prueft jetzt den kombinierten
   `pre-exposure`-Pfad: Heartbeat aktiv, freigegebenes Webhook-Ziel, laufende
   Runtime mit erfolgreicher Ausleitung, anschliessender Reset und sauberer
