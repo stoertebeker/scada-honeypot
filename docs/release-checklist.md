@@ -51,6 +51,10 @@ Nicht Teil dieses Releases:
    - HMI und Modbus bleiben unter Retry-/Recovery-Lagen stabil
    - Folge-Alerts fluten `alert_log` und Outbox nicht
 
+6. Reset-Pfad bekannt:
+   - `uv run python -m honeypot.main --reset-runtime`
+   - entfernt lokale Runtime-Artefakte fuer einen frischen Neustart
+
 ## Go/No-Go
 
 `GO` nur wenn:
@@ -80,6 +84,7 @@ Nach diesem lokalen V1-Release sind zwei Richtungen sauber getrennt:
 2. Sicherheitskurs Richtung `pre-exposure`:
    - Monitoring aktivieren und den lokalen Heartbeat unter
      `RUNTIME_STATUS_PATH` pruefen
-   - Reset-Prozess validieren
+   - Reset-Prozess ueber `uv run python -m honeypot.main --reset-runtime`
+     validieren
    - Egress-Kontrolle
    - letzte bewusste Sicherheitsfreigabe

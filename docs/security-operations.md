@@ -220,6 +220,14 @@ Es muss einen klaren Ruecksetzpfad geben:
 - frischer Containerzustand
 - oder reproduzierbare Neuinitialisierung
 
+Aktueller lokaler V1-Pfad:
+
+- `uv run python -m honeypot.main --reset-runtime`
+- entfernt `EVENT_STORE_PATH`, SQLite-`-wal`/`-shm`, `JSONL_ARCHIVE_PATH`,
+  `RUNTIME_STATUS_PATH` und `PCAP_CAPTURE_PATH`
+- verweigert Verzeichnis- oder Symlink-Artefaktpfade, um keine unsauberen
+  Reset-Loeschpfade zu oeffnen
+
 ### 9.2 Reset-Ausloeser
 
 Reset soll mindestens moeglich sein nach:

@@ -463,6 +463,11 @@ Pflichttests:
   Status-Heartbeat: `RUNTIME_STATUS_PATH` wird im laufenden Runtime-Slice
   geschrieben, fuehrt Dienst-Adressen, Exporter-Health sowie Alert-/Outbox-
   Zaehler mit und zeigt nach sauberem Shutdown `running=false`
+- ein weiterer Runtime-Integrationspfad prueft jetzt
+  `uv run python -m honeypot.main --reset-runtime` indirekt ueber dieselbe
+  CLI-Logik: lokale Artefakte wie SQLite, JSONL, Statusdatei, `PCAP` sowie
+  `-wal`/`-shm`-Sidecars werden entfernt und ein frischer Runtime-Start laedt
+  danach wieder den definierten Anfangszustand
 
 ## 13. Logging- und Event-Tests
 

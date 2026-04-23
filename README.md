@@ -69,6 +69,7 @@ Vorhanden sind:
 - HMI-Aufrufe und Service-Bedienungen schreiben jetzt eine saubere HTTP-/HMI-Eventspur mit `component=hmi-web`, `service=web-hmi`, Pfad, HTTP-Status und `session_id` in den lokalen Eventstore
 - browserbasierte `Playwright`-Smokes unter `tests/e2e/test_hmi_service_playwright.py` pruefen jetzt `/service/login -> /service/panel -> breaker open -> /alarms`, `breaker open -> /single-line`, `/weather` als read-only Shared-Truth-Seite gegen `Unit 21`, `power_limit -> /overview -> /trends`, `reactive_power_target -> /service/panel -> /overview`, `plant_mode_request` als gelatchten Bedienwunsch ohne heimlichen `operating_mode`-Wechsel, `breaker open -> breaker close -> /meter -> /alarms`, `inverter block control -> /inverters`, `block reset after COMM_LOSS_INVERTER_BLOCK -> /inverters -> /alarms`, fehlgeschlagenen Service-Login plus `401` auf `/service/panel`, Session-Ablauf nach Idle-Timeout, deaktiviertes Service-Login mit ruhigem `403`, wiederholte Fehl-Logins mit sichtbarem Rule-Alert in `/alarms`, weitere Fehlversuche ohne duplizierten Login-Fehler-Alert, erfolgreichen Login mit sichtbarem `cleared` fuer `REPEATED_LOGIN_FAILURE`, `GRID_PATH_UNAVAILABLE` als zweiten history-only Rule-Alert mitsamt unterdruecktem Folge-Duplikat, `MULTI_BLOCK_UNAVAILABLE` bei doppeltem Block-Comm-Loss mitsamt sichtbarem `cleared` nach Reset eines Blocks und ohne duplizierten Folge-Alert bei weiterem Blockverlust sowie `LOW_SITE_OUTPUT_UNEXPECTED` nach mehrfachen Block-Ausfaellen inklusive unterdruecktem Folge-Duplikat und sichtbarem `cleared` nach Erholung gegen den echten lokalen Runtime-Pfad
 - lokaler Prozesseinstieg ueber `uv run python -m honeypot.main` bootstrapt jetzt `normal_operation`, `SQLiteEventStore`, den Modbus-Listener auf `127.0.0.1:1502` und die HMI auf `127.0.0.1:8080`
+- `uv run python -m honeypot.main --reset-runtime` entfernt jetzt reproduzierbar lokale Runtime-Artefakte wie `EVENT_STORE_PATH`, `JSONL_ARCHIVE_PATH`, `RUNTIME_STATUS_PATH`, `PCAP_CAPTURE_PATH` sowie SQLite-`-wal`/`-shm`-Sidecars fuer einen frischen Neustart
 - optionales Runtime-Monitoring schreibt jetzt einen lokalen Heartbeat nach `RUNTIME_STATUS_PATH` mit Dienst-Adressen, Exporter-Health, Alert- und Outbox-Zaehlern; Standardpfad ist `./logs/runtime-status.json`, ohne neuen HTTP- oder Debug-Endpunkt
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
 - `Unit 21` bildet jetzt `weather_station` mit eigenem Identitaetsblock, Status-/Alarmregistern, Fallback auf `fixture.weather` und einer aus `quality` abgeleiteten `weather_confidence_pct_x10` ab
@@ -81,7 +82,7 @@ Vorhanden sind:
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` im aktuellen Laborstand auf `127.0.0.1` festhalten
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
-- Gesamtteststand aktuell: `246 passed`
+- Gesamtteststand aktuell: `249 passed`
 
 Nicht Teil des ersten lokalen V1-Releases:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts
@@ -139,13 +140,12 @@ Die Deckscrew ist jetzt sauber beim lokalen V1-Release angekommen. Der
 naechste konkrete Schlag sollte auf dem separaten `pre-exposure`-Sicherheitskurs
 liegen:
 
-1. Reset-Mechanismus validieren und als reproduzierbaren Betriebsweg festziehen
+1. Egress-Kontrolle fuer bewusste Exponierung festziehen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
-1. Egress-Kontrolle fuer bewusste Exponierung festziehen
-2. letzte `pre-exposure`-Gates mit aktivem Monitoring und Reset-Prozess pruefen
-3. erst danach weitere V1-Erweiterungen oder Exponierungskurse
+1. letzte `pre-exposure`-Gates mit aktivem Monitoring, Reset-Prozess und Egress-Regeln pruefen
+2. erst danach weitere V1-Erweiterungen oder Exponierungskurse
 
 ## Beispielkonfiguration
 

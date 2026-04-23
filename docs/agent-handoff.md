@@ -18,8 +18,11 @@ Phase I** gezogen:
 - optionales lokales Runtime-Monitoring schreibt jetzt einen Heartbeat mit
   Dienst-Adressen, Exporter-Health sowie Alert-/Outbox-Zaehlern nach
   `RUNTIME_STATUS_PATH`, ohne neue HTTP- oder Debug-Flaeche
+- ein lokaler Reset-Pfad ueber `uv run python -m honeypot.main --reset-runtime`
+  entfernt jetzt reproduzierbar Runtime-Artefakte fuer einen frischen
+  Neustart
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `246 passed`
+  Gesamttestlauf steht aktuell bei `249 passed`
 
 Wichtiger Kurs:
 
@@ -34,6 +37,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `0c3a6cd` `feat: add local runtime reset path`
 - `47dab3c` `feat: add local runtime status heartbeat`
 - `d1ffc32` `test: gate client traffic during exporter recovery`
 - `ed51622` `test: soak background runner smtp recovery`
@@ -61,6 +65,8 @@ Wichtiger Kurs:
 - lokaler Prozesseinstieg in `src/honeypot/main.py`
 - Startkommando funktioniert:
   `uv run python -m honeypot.main`
+- Resetkommando funktioniert:
+  `uv run python -m honeypot.main --reset-runtime`
 - `build_local_runtime()` bootstrapt aktuell:
   - `RuntimeConfig`
   - `PlantSnapshot(normal_operation)`
@@ -72,6 +78,8 @@ Wichtiger Kurs:
   - optional `BackgroundRuntimeStatusService` mit lokalem Datei-Heartbeat
 - `main()` startet jetzt lokalen Modbus-Listener und lokalen HMI-HTTP-Dienst
   und bleibt bis `KeyboardInterrupt` aktiv
+- `cli()` bietet jetzt zusaetzlich den lokalen Reset-Pfad fuer Runtime-
+  Artefakte an
 - Sicherheitsregel im Startpfad:
   - `MODBUS_BIND_HOST` muss derzeit `127.0.0.1` bleiben
   - `HMI_BIND_HOST` muss derzeit `127.0.0.1` bleiben
