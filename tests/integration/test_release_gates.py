@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import socket
 from pathlib import Path
 from struct import pack, unpack
@@ -8,13 +9,14 @@ from time import monotonic, sleep
 import httpx
 
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter, WebhookExporter
-from honeypot.main import build_local_runtime
+from honeypot.main import build_local_runtime, cli
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
 from honeypot.rule_engine import (
     GRID_PATH_UNAVAILABLE_ALERT_CODE,
     LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
 )
+from honeypot.runtime_egress import enforce_runtime_egress_policy
 
 
 def write_env(tmp_path: Path, *lines: str) -> Path:
@@ -1446,3 +1448,142 @@ def test_release_gate_partial_multi_target_failure_keeps_other_exporters_deliver
     assert "Telegram" not in alarms_page.text
     assert transaction_id == 0x7D44
     assert protocol_id == 0
+
+
+def test_release_gate_pre_exposure_runtime_sweep_with_monitoring_reset_and_approved_egress(tmp_path: Path) -> None:
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    status_path = tmp_path / "logs" / "runtime-status.json"
+    env_file = write_env(
+        tmp_path,
+        "SITE_CODE=pre-exposure-01",
+        "WEBHOOK_EXPORTER_ENABLED=1",
+        "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+        "APPROVED_EGRESS_TARGETS=webhook:example.invalid:443",
+        "RUNTIME_STATUS_ENABLED=1",
+        f"RUNTIME_STATUS_PATH={status_path}",
+        "JSONL_ARCHIVE_ENABLED=0",
+        f"EVENT_STORE_PATH={event_store_path}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+
+    captured_payloads: list[str] = []
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        captured_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    runtime.outbox_runner.exporters["webhook"] = WebhookExporter(
+        url="https://example.invalid/hook",
+        retry_after_seconds=45,
+        transport=httpx.MockTransport(webhook_handler),
+    )
+
+    approved_targets = enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
+    assert approved_targets == ("webhook:example.invalid:443",)
+
+    def read_status() -> dict:
+        return json.loads(status_path.read_text(encoding="utf-8"))
+
+    event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    alert = runtime.event_recorder.build_alert(
+        event=event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        modbus_address = runtime.modbus_service.address
+
+        deadline = monotonic() + 3.0
+        while monotonic() < deadline:
+            if status_path.is_file():
+                payload = read_status()
+                if (
+                    payload["runtime"]["running"] is True
+                    and payload["runtime"]["outbox_runner"]["enabled"] is True
+                    and payload["exporters"]["webhook"]["status"] == "healthy"
+                ):
+                    break
+            sleep(0.05)
+
+        overview = httpx.get(
+            f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+        modbus_response = send_modbus_request(
+            modbus_address,
+            transaction_id=0x7C11,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+        runtime.event_recorder.record(event, alert=alert, outbox_targets=("webhook",))
+
+        delivery_deadline = monotonic() + 3.0
+        while monotonic() < delivery_deadline:
+            outbox_entries = runtime.event_store.fetch_outbox_entries()
+            if outbox_entries and outbox_entries[0].status == "delivered":
+                break
+            sleep(0.05)
+    finally:
+        runtime.stop()
+
+    stopped_deadline = monotonic() + 3.0
+    while monotonic() < stopped_deadline:
+        if status_path.is_file() and read_status()["runtime"]["running"] is False:
+            break
+        sleep(0.05)
+
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
+
+    assert overview.status_code == 200
+    assert "Plant Overview" in overview.text
+    assert transaction_id == 0x7C11
+    assert protocol_id == 0
+    assert runtime.outbox_runner_service.drain_count >= 1
+    assert outbox_entries[0].status == "delivered"
+    assert "BREAKER_OPEN" in captured_payloads[0]
+    assert read_status()["runtime"]["running"] is False
+
+    assert cli(["--env-file", str(env_file), "--reset-runtime"]) == 0
+    assert event_store_path.exists() is False
+    assert status_path.exists() is False
+
+    fresh_runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    try:
+        fresh_runtime.start()
+        fresh_hmi_address = fresh_runtime.hmi_service.address
+        fresh_overview = httpx.get(
+            f"http://{fresh_hmi_address[0]}:{fresh_hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+    finally:
+        fresh_runtime.stop()
+
+    assert fresh_runtime.snapshot.fixture_name == "normal_operation"
+    assert fresh_runtime.event_store.count_rows("outbox") == 0
+    assert fresh_runtime.event_store.count_rows("alert_log") == 0
+    assert fresh_overview.status_code == 200

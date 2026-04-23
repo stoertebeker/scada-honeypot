@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Annotated
 from typing import Literal
 
 from pydantic import AnyUrl, Field, ValidationError, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 LOCALE_PATTERN = re.compile(r"^[a-z]{2}(?:-[A-Z]{2})?$")
 ATTACKER_UI_LOCALE_DIR = Path("resources/locales/attacker-ui")
@@ -107,7 +108,7 @@ class RuntimeConfig(BaseSettings):
     telegram_exporter_enabled: bool = False
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
-    approved_egress_targets: tuple[str, ...] = ()
+    approved_egress_targets: Annotated[tuple[str, ...], NoDecode] = ()
 
     log_level: Literal["debug", "info", "warning", "error", "critical"] = "info"
     trend_window_minutes: int = Field(default=180, ge=1, le=1440)
