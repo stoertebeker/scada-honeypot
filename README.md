@@ -135,14 +135,17 @@ Die wichtigsten Dokumente:
   - lokale V1-Abnahme, Go/No-Go-Kriterien und bewusste Grenzen vor `pre-exposure`
 - [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
   - Isolation, Exposure-Gates, Reset, Betrieb
+- [docs/pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
+  - formale `GO`-Entscheidung fuer `pre-exposure` und klare Grenzen vor
+    `exposed-research`
 
 ## Empfohlener naechster Baukurs
 
-Die Deckscrew ist jetzt sauber beim lokalen V1-Release angekommen. Der
-naechste konkrete Schlag sollte auf dem separaten `pre-exposure`-Sicherheitskurs
-liegen:
+Die Deckscrew hat jetzt auch den formalen `pre-exposure`-Entscheid an Deck.
+Der naechste konkrete Schlag liegt damit nicht mehr im Grundbau, sondern im
+deployment-spezifischen Sicherheitskurs vor echter Exponierung:
 
-1. formale Go/No-Go-Entscheidung fuer `pre-exposure` anhand der jetzt gruenen Gates festziehen
+1. Ingress- und `/service/login`-Entscheidung fuer das konkrete Zielumfeld dokumentieren
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 

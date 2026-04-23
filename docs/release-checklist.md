@@ -89,3 +89,15 @@ Nach diesem lokalen V1-Release sind zwei Richtungen sauber getrennt:
      validieren
    - Egress-Kontrolle ueber `APPROVED_EGRESS_TARGETS` pruefen
    - letzte bewusste Sicherheitsfreigabe
+
+## Stand nach lokaler V1-Abnahme
+
+Seit dem 23. April 2026 ist die formale Entscheidung fuer den naechsten
+Betriebsmodus dokumentiert:
+
+- `pre-exposure` -> `GO`
+- `exposed-research` -> weiter `NO-GO`
+
+Verbindliche Lagekarte:
+
+- [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)

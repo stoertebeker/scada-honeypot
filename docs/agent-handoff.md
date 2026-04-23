@@ -26,6 +26,10 @@ Phase I** gezogen:
 - ein kombinierter `pre-exposure`-Sweep deckt jetzt Monitoring, freigegebenes
   Webhook-Ziel, erfolgreiche Ausleitung, Reset und Fresh-Start auf demselben
   Runtime-Pfad ab
+- die formale Lageentscheidung steht jetzt ebenfalls:
+  `pre-exposure` ist `GO`, `exposed-research` bleibt `NO-GO`, bis
+  deployment-spezifische Ingress-, `/service/login`- und Egress-Entscheide
+  dokumentiert sind
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
   Gesamttestlauf steht aktuell bei `255 passed`
 
@@ -42,6 +46,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `2801c7d` `docs: sync pre-exposure gate status`
 - `f87709b` `test: add pre-exposure release gate sweep`
 - `d66c41e` `feat: gate exporter egress targets`
 - `0c3a6cd` `feat: add local runtime reset path`

@@ -61,6 +61,8 @@ Eigenschaften:
   `RUNTIME_STATUS_PATH` bereit, ohne neue Netzwerkflaeche zu oeffnen
 - ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
   Reset und Fresh-Start ist jetzt im Testharness belegt
+- Stand 23. April 2026: formales `GO` fuer `pre-exposure`, siehe
+  [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
 
 ### 3.4 `exposed-research`
 
@@ -72,6 +74,9 @@ Eigenschaften:
 - nur mit aktivem Logging
 - nur mit Egress-Kontrolle
 - nur mit definiertem Incident- und Reset-Prozess
+- Stand 23. April 2026 weiter `NO-GO`, bis Ingress, `/service/login`,
+  operative Egress-Ziele und Beobachtungsprozess deployment-spezifisch
+  entschieden sind
 
 ## 4. Harte Sicherheitsgrenzen
 
