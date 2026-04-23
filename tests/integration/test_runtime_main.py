@@ -83,6 +83,75 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert_port_closed(hmi_address)
 
 
+def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-nonlocal-01",
+                "ALLOW_NONLOCAL_BIND=1",
+                "MODBUS_BIND_HOST=0.0.0.0",
+                "HMI_BIND_HOST=0.0.0.0",
+                f"EVENT_STORE_PATH={event_store_path}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    modbus_address: tuple[str, int] | None = None
+    hmi_address: tuple[str, int] | None = None
+    loopback_modbus_address: tuple[str, int] | None = None
+    loopback_hmi_address: tuple[str, int] | None = None
+    try:
+        runtime.start()
+        modbus_address = runtime.modbus_service.address
+        hmi_address = runtime.hmi_service.address
+        loopback_modbus_address = ("127.0.0.1", modbus_address[1])
+        loopback_hmi_address = ("127.0.0.1", hmi_address[1])
+        response = send_request(
+            loopback_modbus_address,
+            transaction_id=0x5331,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 8),
+        )
+        overview_response = httpx.get(
+            f"http://{loopback_hmi_address[0]}:{loopback_hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+    finally:
+        runtime.stop()
+
+    transaction_id, protocol_id, unit_id, pdu = parse_response(response)
+    byte_count = pdu[1]
+    registers = unpack(f">{byte_count // 2}H", pdu[2:])
+    events = runtime.event_store.fetch_events()
+
+    assert runtime.config.allow_nonlocal_bind is True
+    assert runtime.config.site_code == "runtime-test-nonlocal-01"
+    assert runtime.config.modbus_bind_host == "0.0.0.0"
+    assert runtime.config.hmi_bind_host == "0.0.0.0"
+    assert modbus_address == ("0.0.0.0", loopback_modbus_address[1])
+    assert hmi_address == ("0.0.0.0", loopback_hmi_address[1])
+    assert transaction_id == 0x5331
+    assert protocol_id == 0
+    assert unit_id == 1
+    assert registers == (100, 1001, 1, 0, 28784, 25389, 12337, 8224)
+    assert overview_response.status_code == 200
+    assert "Plant Overview" in overview_response.text
+    assert len(events) == 2
+    assert events[0].event_type == "protocol.modbus.holding_registers_read"
+    assert events[1].event_type == "hmi.page.overview_viewed"
+    assert loopback_modbus_address is not None
+    assert loopback_hmi_address is not None
+    assert_port_closed(loopback_modbus_address)
+    assert_port_closed(loopback_hmi_address)
+
+
 def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
