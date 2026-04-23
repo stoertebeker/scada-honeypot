@@ -447,6 +447,10 @@ Pflichttests:
   auch ueber drei Alert-Wellen mit gemischten Zielkanaelen, interval-
   getriebenen Retries ohne explizites `wake()` und spaeterem Sammel-Retry nur
   fuer die noch gestrandeten SMTP-Ziele
+- ein weiterer Unit-Sweep deckt jetzt auch spaetere SMTP-Erholung nach
+  mehreren Backoff-Zyklen ab: vier Alert-Wellen, gemischte Zielkanaele,
+  interval-getriebene Retries und gestaffelte spaete Zustellung zuvor
+  gestrandeter SMTP-Ziele
 
 ## 13. Logging- und Event-Tests
 
