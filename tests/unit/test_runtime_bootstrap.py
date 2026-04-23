@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, main
+from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, cli, main
 
 
 def test_bootstrap_runtime_exposes_documented_modules() -> None:
@@ -228,6 +228,23 @@ def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     assert "honeypot runtime ready for site-01" in captured.out
     assert "modbus://127.0.0.1:1502" in captured.out
     assert "http://127.0.0.1:8080/overview" in captured.out
+
+
+def test_cli_reset_runtime_prints_report(capsys, monkeypatch, tmp_path: Path) -> None:
+    del tmp_path
+
+    class _Report:
+        site_code = "site-99"
+        removed_paths = (Path("/tmp/a"), Path("/tmp/b"))
+        missing_paths = (Path("/tmp/c"),)
+
+    monkeypatch.setattr("honeypot.main.reset_local_runtime_artifacts", lambda env_file=".env": _Report())
+
+    assert cli(["--env-file", ".env.test", "--reset-runtime"]) == 0
+    captured = capsys.readouterr()
+    assert "honeypot runtime artifacts reset for site-99" in captured.out
+    assert "removed=2" in captured.out
+    assert "missing=1" in captured.out
 
 
 class _FakeRuntime:

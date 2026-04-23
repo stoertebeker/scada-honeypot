@@ -1,6 +1,8 @@
 """Lokaler Prozesseinstieg fuer den ersten gemeinsamen Runtime-Pfad."""
 
+import argparse
 from dataclasses import dataclass, field
+from pathlib import Path
 from time import sleep
 
 from fastapi import FastAPI
@@ -19,6 +21,7 @@ from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
+from honeypot.runtime_reset import reset_local_runtime_artifacts
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import SystemClock
@@ -265,5 +268,27 @@ def main(*, env_file: str | None = ".env") -> int:
     return 0
 
 
+def cli(argv: list[str] | None = None) -> int:
+    """Bietet Start- und Reset-Pfad fuer den lokalen Runtime-Betrieb."""
+
+    parser = argparse.ArgumentParser(prog="python -m honeypot.main")
+    parser.add_argument("--env-file", default=".env", help="Pfad zur Runtime-.env-Datei")
+    parser.add_argument(
+        "--reset-runtime",
+        action="store_true",
+        help="entfernt lokale Runtime-Artefakte fuer einen frischen Neustart",
+    )
+    args = parser.parse_args(argv)
+    env_file = None if args.env_file == "" else str(Path(args.env_file))
+    if args.reset_runtime:
+        report = reset_local_runtime_artifacts(env_file=env_file)
+        print(
+            f"honeypot runtime artifacts reset for {report.site_code}: "
+            f"removed={len(report.removed_paths)} missing={len(report.missing_paths)}"
+        )
+        return 0
+    return main(env_file=env_file)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

@@ -9,7 +9,7 @@ import httpx
 
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter
 from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
-from honeypot.main import build_local_runtime
+from honeypot.main import build_local_runtime, cli
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
 from honeypot.rule_engine import (
     GRID_PATH_UNAVAILABLE_ALERT_CODE,
@@ -186,6 +186,98 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
     assert len(process_events) == 6
     assert hmi_address is not None
     assert_port_closed(hmi_address)
+
+
+def test_cli_reset_runtime_clears_local_artifacts_and_supports_clean_restart(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    archive_path = tmp_path / "logs" / "events.jsonl"
+    status_path = tmp_path / "logs" / "runtime-status.json"
+    pcap_path = tmp_path / "pcap" / "session.pcapng"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-reset-01",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "JSONL_ARCHIVE_ENABLED=1",
+                f"JSONL_ARCHIVE_PATH={archive_path}",
+                "RUNTIME_STATUS_ENABLED=1",
+                f"RUNTIME_STATUS_PATH={status_path}",
+                f"PCAP_CAPTURE_PATH={pcap_path}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    event = runtime.event_recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    alert = runtime.event_recorder.build_alert(
+        event=event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+
+    runtime.start()
+    try:
+        runtime.event_recorder.record(event, alert=alert, outbox_targets=("webhook",))
+        wait_for(lambda: status_path.is_file())
+        pcap_path.parent.mkdir(parents=True, exist_ok=True)
+        pcap_path.write_bytes(b"pcap")
+        wal_path = Path(f"{event_store_path}-wal")
+        shm_path = Path(f"{event_store_path}-shm")
+        wal_path.write_bytes(b"wal")
+        shm_path.write_bytes(b"shm")
+    finally:
+        runtime.stop()
+
+    assert event_store_path.exists()
+    assert archive_path.exists()
+    assert status_path.exists()
+    assert pcap_path.exists()
+    assert Path(f"{event_store_path}-wal").exists()
+    assert Path(f"{event_store_path}-shm").exists()
+
+    assert cli(["--env-file", str(env_file), "--reset-runtime"]) == 0
+
+    assert event_store_path.exists() is False
+    assert archive_path.exists() is False
+    assert status_path.exists() is False
+    assert pcap_path.exists() is False
+    assert Path(f"{event_store_path}-wal").exists() is False
+    assert Path(f"{event_store_path}-shm").exists() is False
+
+    fresh_runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    try:
+        fresh_runtime.start()
+        overview_response = httpx.get(
+            f"http://{fresh_runtime.hmi_service.address[0]}:{fresh_runtime.hmi_service.address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+    finally:
+        fresh_runtime.stop()
+
+    assert fresh_runtime.snapshot.fixture_name == "normal_operation"
+    assert fresh_runtime.event_store.count_rows("event_log") == 1
+    assert fresh_runtime.event_store.count_rows("alert_log") == 0
+    assert fresh_runtime.event_store.count_rows("outbox") == 0
+    assert overview_response.status_code == 200
 
 
 def test_build_local_runtime_drains_webhook_outbox_in_background(tmp_path: Path) -> None:
@@ -1663,3 +1755,12 @@ def assert_port_closed(address: tuple[str, int]) -> None:
             raise AssertionError(f"Port {address[0]}:{address[1]} ist nach runtime.stop() noch offen")
     except OSError:
         return
+
+
+def wait_for(predicate, *, timeout: float = 3.0) -> None:
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if predicate():
+            return
+        sleep(0.05)
+    raise AssertionError("Bedingung wurde nicht rechtzeitig erfuellt")
