@@ -443,6 +443,10 @@ Pflichttests:
 - ein weiterer Unit-Sweep prueft den `BackgroundOutboxRunnerService` mit
   wiederholtem `wake()`, neuen Alerts waehrend offener Retry-Fenster und
   spaeterem Batch-Retry auf einem noch gestrandeten Zielkanal
+- ein weiterer Unit-Sweep prueft den `BackgroundOutboxRunnerService` jetzt
+  auch ueber drei Alert-Wellen mit gemischten Zielkanaelen, interval-
+  getriebenen Retries ohne explizites `wake()` und spaeterem Sammel-Retry nur
+  fuer die noch gestrandeten SMTP-Ziele
 
 ## 13. Logging- und Event-Tests
 

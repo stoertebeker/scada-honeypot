@@ -793,3 +793,219 @@ def test_background_outbox_runner_service_handles_new_alerts_during_open_retry_w
     assert "BREAKER_OPEN" in telegram_batches[2]["text"]
     assert "BREAKER_OPEN" in smtp_attempt_bodies[2]
     assert "COMM_LOSS_INVERTER_BLOCK" in smtp_attempt_bodies[2]
+
+
+def test_background_outbox_runner_service_handles_three_alert_waves_with_mixed_targets(tmp_path) -> None:
+    recorder, clock = build_recorder(tmp_path)
+
+    def wait_for(predicate, *, timeout: float = 1.5) -> None:
+        deadline = monotonic() + timeout
+        while monotonic() < deadline:
+            if predicate():
+                return
+            sleep(0.02)
+        raise AssertionError("Bedingung wurde nicht rechtzeitig erreicht")
+
+    def status_map():
+        return {(entry.payload_ref, entry.target_type): entry for entry in recorder.store.fetch_outbox_entries()}
+
+    breaker_event = recorder.build_event(
+        event_type="process.breaker.state_changed",
+        category="process",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="grid-01",
+        action="breaker_open_request",
+        result="accepted",
+        alarm_code="BREAKER_OPEN",
+        resulting_value="open",
+        tags=("control-path", "grid", "breaker"),
+    )
+    breaker_alert = recorder.build_alert(
+        event=breaker_event,
+        alarm_code="BREAKER_OPEN",
+        severity="high",
+        state="active_unacknowledged",
+        message="Breaker open erkannt",
+    )
+    recorder.record(breaker_event, alert=breaker_alert, outbox_targets=("webhook", "smtp", "telegram"))
+
+    webhook_batches: list[dict] = []
+    smtp_attempt_bodies: list[str] = []
+    telegram_batches: list[dict] = []
+    telegram_attempt_states = [429, 200, 200, 200]
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        webhook_batches.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(202, json={"accepted": True})
+
+    class FlakySmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message: EmailMessage):
+            smtp_attempt_bodies.append(message.get_content())
+            raise OSError("connection refused")
+
+    def telegram_handler(request: httpx.Request) -> httpx.Response:
+        telegram_batches.append(json.loads(request.content.decode("utf-8")))
+        status_code = telegram_attempt_states.pop(0)
+        if status_code == 200:
+            return httpx.Response(200, json={"ok": True})
+        return httpx.Response(status_code, json={"ok": False})
+
+    runner = OutboxRunner(
+        store=recorder.store,
+        exporters={
+            "webhook": WebhookExporter(
+                url="https://example.invalid/hook",
+                transport=httpx.MockTransport(webhook_handler),
+            ),
+            "smtp": SmtpExporter(
+                host="mail.example.invalid",
+                port=2525,
+                mail_from="alerts@example.invalid",
+                rcpt_to="soc@example.invalid",
+                retry_after_seconds=90,
+                client_factory=lambda host, port, timeout: FlakySmtpClient(),
+            ),
+            "telegram": TelegramExporter(
+                bot_token="token-123",
+                chat_id="chat-99",
+                retry_after_seconds=45,
+                transport=httpx.MockTransport(telegram_handler),
+            ),
+        },
+        retry_backoff_seconds=90,
+        clock=clock,
+    )
+    service = BackgroundOutboxRunnerService(runner=runner, drain_interval_seconds=0.2)
+
+    try:
+        initial_now = clock.now()
+        service.start_in_thread()
+
+        wait_for(
+            lambda: (
+                (breaker_alert.alert_id, "webhook") in status_map()
+                and status_map()[(breaker_alert.alert_id, "webhook")].status == "delivered"
+                and status_map()[(breaker_alert.alert_id, "smtp")].retry_count == 1
+                and status_map()[(breaker_alert.alert_id, "telegram")].retry_count == 1
+            )
+        )
+        first_status = status_map()
+        assert first_status[(breaker_alert.alert_id, "smtp")].next_attempt_at == initial_now + timedelta(seconds=90)
+        assert first_status[(breaker_alert.alert_id, "telegram")].next_attempt_at == initial_now + timedelta(seconds=45)
+
+        comms_event = recorder.build_event(
+            event_type="system.communication.inverter_block_lost",
+            category="system",
+            severity="medium",
+            source_ip="203.0.113.24",
+            actor_type="system",
+            component="plant-sim",
+            asset_id="invb-02",
+            action="simulate_comm_loss",
+            result="accepted",
+            alarm_code="COMM_LOSS_INVERTER_BLOCK",
+            resulting_value="lost",
+            tags=("fault-path", "communications", "inverter-block"),
+        )
+        comms_alert = recorder.build_alert(
+            event=comms_event,
+            alarm_code="COMM_LOSS_INVERTER_BLOCK",
+            severity="medium",
+            state="active_unacknowledged",
+            message="Kommunikationsverlust fuer Inverter-Block invb-02",
+        )
+        recorder.record(comms_event, alert=comms_alert, outbox_targets=("webhook", "smtp", "telegram"))
+
+        service.wake()
+        wait_for(
+            lambda: (
+                (comms_alert.alert_id, "webhook") in status_map()
+                and status_map()[(comms_alert.alert_id, "webhook")].status == "delivered"
+                and status_map()[(comms_alert.alert_id, "smtp")].retry_count == 1
+                and status_map()[(comms_alert.alert_id, "telegram")].status == "delivered"
+            )
+        )
+
+        clock.advance(timedelta(seconds=45))
+        wait_for(lambda: status_map()[(breaker_alert.alert_id, "telegram")].status == "delivered")
+
+        low_output_event = recorder.build_event(
+            event_type="system.site.low_output_observed",
+            category="system",
+            severity="medium",
+            source_ip="203.0.113.24",
+            actor_type="system",
+            component="plant-sim",
+            asset_id="site",
+            action="observe_site_output",
+            result="observed",
+            resulting_value=1.9,
+            tags=("diagnostics", "site-output"),
+        )
+        low_output_alert = recorder.build_alert(
+            event=low_output_event,
+            alarm_code="LOW_SITE_OUTPUT_UNEXPECTED",
+            severity="high",
+            state="active_unacknowledged",
+            message="Parkleistung deutlich unter erwarteter Verfuegbarkeit",
+        )
+        recorder.record(low_output_event, alert=low_output_alert, outbox_targets=("webhook", "telegram"))
+
+        service.wake()
+        wait_for(
+            lambda: (
+                (low_output_alert.alert_id, "webhook") in status_map()
+                and status_map()[(low_output_alert.alert_id, "webhook")].status == "delivered"
+                and status_map()[(low_output_alert.alert_id, "telegram")].status == "delivered"
+            )
+        )
+
+        now_t90 = clock.advance(timedelta(seconds=45))
+        wait_for(
+            lambda: (
+                status_map()[(breaker_alert.alert_id, "smtp")].retry_count == 2
+                and status_map()[(comms_alert.alert_id, "smtp")].retry_count == 2
+            )
+        )
+        final_status = status_map()
+
+    finally:
+        service.stop()
+
+    assert final_status[(breaker_alert.alert_id, "webhook")].status == "delivered"
+    assert final_status[(comms_alert.alert_id, "webhook")].status == "delivered"
+    assert final_status[(low_output_alert.alert_id, "webhook")].status == "delivered"
+    assert final_status[(breaker_alert.alert_id, "telegram")].status == "delivered"
+    assert final_status[(comms_alert.alert_id, "telegram")].status == "delivered"
+    assert final_status[(low_output_alert.alert_id, "telegram")].status == "delivered"
+    assert final_status[(breaker_alert.alert_id, "smtp")].status == "pending"
+    assert final_status[(comms_alert.alert_id, "smtp")].status == "pending"
+    assert final_status[(breaker_alert.alert_id, "smtp")].next_attempt_at == now_t90 + timedelta(seconds=90)
+    assert final_status[(comms_alert.alert_id, "smtp")].next_attempt_at == now_t90 + timedelta(seconds=90)
+    assert final_status[(breaker_alert.alert_id, "smtp")].last_error == "SMTP-Transportfehler: OSError"
+    assert final_status[(comms_alert.alert_id, "smtp")].last_error == "SMTP-Transportfehler: OSError"
+
+    assert len(webhook_batches) == 3
+    assert len(telegram_batches) == 4
+    assert len(smtp_attempt_bodies) == 3
+    assert len(webhook_batches[0]["items"]) == 1
+    assert len(webhook_batches[1]["items"]) == 1
+    assert len(webhook_batches[2]["items"]) == 1
+    assert "BREAKER_OPEN" in telegram_batches[0]["text"]
+    assert "COMM_LOSS_INVERTER_BLOCK" in telegram_batches[1]["text"]
+    assert "BREAKER_OPEN" in telegram_batches[2]["text"]
+    assert "LOW_SITE_OUTPUT_UNEXPECTED" in telegram_batches[3]["text"]
+    assert "BREAKER_OPEN" in smtp_attempt_bodies[0]
+    assert "COMM_LOSS_INVERTER_BLOCK" in smtp_attempt_bodies[1]
+    assert "BREAKER_OPEN" in smtp_attempt_bodies[2]
+    assert "COMM_LOSS_INVERTER_BLOCK" in smtp_attempt_bodies[2]
+    assert service.drain_count >= 5
