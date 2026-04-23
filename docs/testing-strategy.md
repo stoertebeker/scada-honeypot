@@ -476,9 +476,13 @@ Pflichttests:
   externe `MODBUS_BIND_HOST`-/`HMI_BIND_HOST`-Werte bleiben ohne
   `ALLOW_NONLOCAL_BIND=1` blockiert und werden nur bei expliziter Freigabe
   zugelassen
+- weitere Unit- und Release-Gate-Tests pruefen jetzt das Ingress-Gate:
+  Non-Local-Bind reicht nicht allein; die konkreten Bindings muessen zusaetzlich
+  ueber `APPROVED_INGRESS_BINDINGS` freigegeben sein
 - ein zusaetzlicher Runtime-Integrationstest prueft jetzt den bewussten
-  Non-Local-Startpfad: `ALLOW_NONLOCAL_BIND=1`, Binding auf `0.0.0.0`,
-  funktionierende HMI-/Modbus-Antworten ueber kontrollierte Loopback-Zugriffe
+  Non-Local-Startpfad: `ALLOW_NONLOCAL_BIND=1`, explizite
+  `APPROVED_INGRESS_BINDINGS`, Binding auf `0.0.0.0`, funktionierende
+  HMI-/Modbus-Antworten ueber kontrollierte Loopback-Zugriffe
 - ein weiterer Release-Gate-Sweep prueft jetzt den kombinierten
   `pre-exposure`-Pfad: Heartbeat aktiv, freigegebenes Webhook-Ziel, laufende
   Runtime mit erfolgreicher Ausleitung, anschliessender Reset und sauberer

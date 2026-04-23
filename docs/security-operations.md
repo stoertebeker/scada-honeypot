@@ -139,6 +139,8 @@ Vor Exponierung definieren:
 - ob der Tracker in V1 ueberhaupt sichtbar ist
 - fuer Non-Local-Bind im aktuellen Runtime-Pfad ist bewusst
   `ALLOW_NONLOCAL_BIND=1` erforderlich
+- die konkreten externen Runtime-Bindings muessen zusaetzlich ueber
+  `APPROVED_INGRESS_BINDINGS` im Format `service:host:port` freigegeben sein
 
 ## 6. Systemhygiene
 

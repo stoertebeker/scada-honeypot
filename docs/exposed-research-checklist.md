@@ -33,6 +33,7 @@ Verbindlich festzuhalten:
 - offene Ports:
 - offene Protokolle:
 - Bind-Interfaces:
+- freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
 - vorgeschaltete NAT-/Firewall-Regeln:
 - externe Erreichbarkeit:
   - nein / ja, bewusst dokumentiert
@@ -41,6 +42,8 @@ Pflichtchecks:
 
 - nur benoetigte Ports freigegeben
 - keine unbewusste Bindung auf Management- oder Produktivnetze
+- Non-Local-Bind ist bewusst ueber `ALLOW_NONLOCAL_BIND=1` aktiviert
+- die freigegebenen Bindings entsprechen den geplanten offenen Ports
 - Modbus- und HMI-Pfade entsprechen dem geplanten Scope
 
 ## 3. Entscheidung zu `/service/login`

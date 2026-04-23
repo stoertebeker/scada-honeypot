@@ -29,9 +29,13 @@ Phase I** gezogen:
 - Non-Local-Bind fuer Modbus und HMI ist jetzt technisch moeglich, bleibt aber
   `deny-by-default`; ohne `ALLOW_NONLOCAL_BIND=1` blockiert der Runtime-Pfad
   externe Bindung weiter
+- zusaetzlich muessen konkrete externe Runtime-Bindings jetzt explizit ueber
+  `APPROVED_INGRESS_BINDINGS` freigegeben werden; Non-Local-Bind allein reicht
+  nicht mehr
 - ein runtime-naher Integrationstest deckt jetzt zusaetzlich den bewussten
-  Non-Local-Startpfad mit `ALLOW_NONLOCAL_BIND=1` und funktionierenden
-  Loopback-Zugriffen auf den gebundenen Dienst ab
+  Non-Local-Startpfad mit `ALLOW_NONLOCAL_BIND=1`,
+  `APPROVED_INGRESS_BINDINGS` und funktionierenden Loopback-Zugriffen auf den
+  gebundenen Dienst ab
 - die formale Lageentscheidung steht jetzt ebenfalls:
   `pre-exposure` ist `GO`, `exposed-research` bleibt `NO-GO`, bis
   deployment-spezifische Ingress-, `/service/login`- und Egress-Entscheide
@@ -39,11 +43,11 @@ Phase I** gezogen:
 - dafuer liegt jetzt eine konkrete Einsatzkarte in
   `docs/exposed-research-checklist.md` bereit
 - zusaetzlich liegt jetzt eine ausgefuellte Beispielbewertung vor, die den
-  heutigen Stand wegen fehlender expliziter Non-Local-Bind-Freigabe und
-  offener Deployment-Entscheide
+  heutigen Stand wegen fehlender expliziter Non-Local-Bind- und Ingress-
+  Freigaben sowie offener Deployment-Entscheide
   bewusst als `NO-GO` fuer echte Exponierung dokumentiert
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `258 passed`
+  Gesamttestlauf steht aktuell bei `264 passed`
 
 Wichtiger Kurs:
 
@@ -58,6 +62,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `8ee4865` `feat: gate nonlocal ingress approvals`
 - `eca1a13` `test: cover nonlocal runtime startup`
 - `21229f8` `feat: gate nonlocal runtime binds`
 - `83c3327` `docs: add exposed research checklist`
@@ -113,9 +118,12 @@ Wichtiger Kurs:
 - `build_local_runtime()` blockiert externe Bindung fuer Modbus/HMI jetzt
   weiter `deny-by-default`; fuer bewusste Exponierung ist explizit
   `ALLOW_NONLOCAL_BIND=1` erforderlich
+- `build_local_runtime()` verlangt bei Non-Local-Bind jetzt zusaetzlich
+  konkrete Freigaben ueber `APPROVED_INGRESS_BINDINGS`
 - Sicherheitsregel im Startpfad:
   - `MODBUS_BIND_HOST` und `HMI_BIND_HOST` bleiben ohne Freigabe lokal
   - Non-Local-Bind braucht explizit `ALLOW_NONLOCAL_BIND=1`
+  - konkrete externe Bindings brauchen `APPROVED_INGRESS_BINDINGS`
   - Design-Local-Default fuer `MODBUS_PORT` ist `1502`
   - Design-Local-Default fuer `HMI_PORT` ist `8080`
 
@@ -144,6 +152,8 @@ Vorhanden:
   - `APPROVED_EGRESS_TARGETS`
 - neuer Exposure-Key:
   - `ALLOW_NONLOCAL_BIND`
+- neuer Ingress-Key:
+  - `APPROVED_INGRESS_BINDINGS`
 
 Wichtige Regel:
 

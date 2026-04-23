@@ -30,6 +30,8 @@ Checkliste auszufuellen ist und warum der Stand heute fuer
 - Bind-Interfaces:
   - `MODBUS_BIND_HOST=127.0.0.1`
   - `HMI_BIND_HOST=127.0.0.1`
+- freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
+  - keine
 - vorgeschaltete NAT-/Firewall-Regeln:
   - keine
 - externe Erreichbarkeit:
@@ -39,7 +41,8 @@ Bewertung:
 
 - Ingress ist technisch derzeit **nicht** fuer Exponierung freigezogen
 - Non-Local-Bind waere jetzt nur mit explizitem `ALLOW_NONLOCAL_BIND=1`
-  zulaessig und ist fuer dieses Beispiel bewusst nicht freigegeben
+  **und** passenden `APPROVED_INGRESS_BINDINGS` zulaessig und ist fuer dieses
+  Beispiel bewusst nicht freigegeben
 
 ## 3. Entscheidung zu `/service/login`
 
@@ -119,7 +122,8 @@ Bewertung:
 Begruendung:
 
 - Ingress ist nicht deployment-spezifisch freigezogen
-- fuer dieses Deployment ist keine explizite Non-Local-Bind-Freigabe gesetzt
+- fuer dieses Deployment sind weder explizite Non-Local-Bind-Freigabe noch
+  konkrete `APPROVED_INGRESS_BINDINGS` gesetzt
 - verantwortete Egress-Ziele sind nicht benannt
 - beobachtende und freigebende Rollen sind nicht konkret festgelegt
 
