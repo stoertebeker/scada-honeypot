@@ -133,10 +133,7 @@ def build_local_runtime(
     """Verdrahtet den aktuellen lokalen Runtime-Slice mit Fixture, Store, Modbus und HMI."""
 
     config = load_runtime_config(env_file=env_file)
-    if config.modbus_bind_host != "127.0.0.1":
-        raise RuntimeError("MODBUS_BIND_HOST muss im aktuellen V1-Laborbetrieb auf 127.0.0.1 bleiben")
-    if config.hmi_bind_host != "127.0.0.1":
-        raise RuntimeError("HMI_BIND_HOST muss im aktuellen V1-Laborbetrieb auf 127.0.0.1 bleiben")
+    _enforce_runtime_bind_policy(config)
 
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
@@ -212,6 +209,19 @@ def build_local_runtime(
         outbox_runner_service=outbox_runner_service,
         runtime_status_service=runtime_status_service,
     )
+
+
+def _enforce_runtime_bind_policy(config: RuntimeConfig) -> None:
+    if config.allow_nonlocal_bind:
+        return
+    if config.modbus_bind_host != "127.0.0.1":
+        raise RuntimeError(
+            "MODBUS_BIND_HOST ausserhalb von 127.0.0.1 erfordert ALLOW_NONLOCAL_BIND=1"
+        )
+    if config.hmi_bind_host != "127.0.0.1":
+        raise RuntimeError(
+            "HMI_BIND_HOST ausserhalb von 127.0.0.1 erfordert ALLOW_NONLOCAL_BIND=1"
+        )
 
 
 def _build_exporters(config: RuntimeConfig) -> dict[str, HoneypotExporter]:

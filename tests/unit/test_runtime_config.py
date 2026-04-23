@@ -22,6 +22,7 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.enable_service_login is True
     assert config.enable_tracker is False
     assert config.modbus_port == 1502
+    assert config.allow_nonlocal_bind is False
     assert config.attacker_ui_locale_resolution_chain == ("en",)
     assert config.event_store_backend == "sqlite"
     assert config.runtime_status_enabled is False
@@ -131,3 +132,12 @@ def test_runtime_config_normalizes_approved_egress_targets(monkeypatch, tmp_path
         "webhook:example.invalid:443",
         "smtp:mail.example.invalid:25",
     )
+
+
+def test_runtime_config_reads_nonlocal_bind_gate(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    config = RuntimeConfig(_env_file=None, allow_nonlocal_bind=True)
+
+    assert config.allow_nonlocal_bind is True

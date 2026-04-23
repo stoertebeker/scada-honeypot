@@ -83,6 +83,7 @@ class RuntimeConfig(BaseSettings):
     modbus_port: int = Field(default=1502, ge=1, le=65535)
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
+    allow_nonlocal_bind: bool = False
     enable_service_login: bool = True
 
     event_store_backend: Literal["sqlite"] = "sqlite"

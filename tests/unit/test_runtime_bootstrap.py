@@ -25,7 +25,7 @@ def test_build_local_runtime_rejects_nonlocal_modbus_bind_host(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeError, match="MODBUS_BIND_HOST"):
+    with pytest.raises(RuntimeError, match="ALLOW_NONLOCAL_BIND=1"):
         build_local_runtime(env_file=str(env_file))
 
 
@@ -37,8 +37,28 @@ def test_build_local_runtime_rejects_nonlocal_hmi_bind_host(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeError, match="HMI_BIND_HOST"):
+    with pytest.raises(RuntimeError, match="ALLOW_NONLOCAL_BIND=1"):
         build_local_runtime(env_file=str(env_file))
+
+
+def test_build_local_runtime_allows_nonlocal_binds_when_explicitly_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            "ALLOW_NONLOCAL_BIND=1\n"
+            "MODBUS_BIND_HOST=0.0.0.0\n"
+            "HMI_BIND_HOST=0.0.0.0\n"
+            f"EVENT_STORE_PATH={event_store_path}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.config.allow_nonlocal_bind is True
+    assert runtime.modbus_service.address == ("0.0.0.0", 0)
+    assert runtime.hmi_service.address == ("0.0.0.0", 0)
 
 
 def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> None:
