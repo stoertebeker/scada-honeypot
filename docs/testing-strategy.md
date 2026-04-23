@@ -491,6 +491,7 @@ Pflichttests:
   `uv run python -m honeypot.main --verify-exposed-research`:
   Start mit freigegebenem Profil, Modbus-Read, HMI-Read auf `/overview`,
   Alert-Aktivierung und `cleared` fuer `BREAKER_OPEN`, danach sauberer Stop
+  und ein protokollierter Sweep-Eintrag unter `FINDINGS_LOG_PATH`
 - ein weiterer Release-Gate-Sweep prueft jetzt den kombinierten
   `pre-exposure`-Pfad: Heartbeat aktiv, freigegebenes Webhook-Ziel, laufende
   Runtime mit erfolgreicher Ausleitung, anschliessender Reset und sauberer

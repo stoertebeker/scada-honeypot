@@ -106,6 +106,7 @@ def test_main_rejects_exposed_research_without_named_roles(tmp_path: Path) -> No
 def test_verify_exposed_research_runtime_rejects_placeholder_export_target(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
+    findings_path = tmp_path / "logs" / "findings.md"
     env_file.write_text(
         (
             "ALLOW_NONLOCAL_BIND=1\n"
@@ -118,6 +119,7 @@ def test_verify_exposed_research_runtime_rejects_placeholder_export_target(tmp_p
             "PUBLIC_INGRESS_MAPPINGS=modbus:502:1502,hmi:80:8080\n"
             "WATCH_OFFICER_NAME=blue-watch\n"
             "DUTY_ENGINEER_NAME=ops-duty\n"
+            f"FINDINGS_LOG_PATH={findings_path}\n"
             "WEBHOOK_EXPORTER_ENABLED=1\n"
             "WEBHOOK_EXPORTER_URL=https://198.51.100.42/hook\n"
             "APPROVED_EGRESS_TARGETS=webhook:198.51.100.42:443\n"
@@ -129,6 +131,10 @@ def test_verify_exposed_research_runtime_rejects_placeholder_export_target(tmp_p
 
     with pytest.raises(RuntimeError, match="Dokumentations- oder Platzhalterziele"):
         verify_exposed_research_runtime(env_file=str(env_file))
+
+    findings_content = findings_path.read_text(encoding="utf-8")
+    assert "verify-exposed-research failed" in findings_content
+    assert "Dokumentations- oder Platzhalterziele" in findings_content
 
 
 def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> None:

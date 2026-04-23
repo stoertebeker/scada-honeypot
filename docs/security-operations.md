@@ -272,6 +272,7 @@ Der Sweep prueft auf demselben Runtime-Pfad:
 - lesbare HMI unter `/overview`
 - Alert-Lebenszyklus fuer `BREAKER_OPEN`
 - sauberen Stop
+- schreibt einen dokumentierten Sweep-Eintrag nach `FINDINGS_LOG_PATH`
 
 ### 9.2 Reset-Ausloeser
 

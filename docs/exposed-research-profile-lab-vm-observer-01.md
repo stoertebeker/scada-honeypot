@@ -152,6 +152,7 @@ Mindestablauf:
 Pflicht-Sweep vor Live-Betrieb:
 
 - `uv run python -m honeypot.main --verify-exposed-research`
+- erwartet danach einen neuen Eintrag unter `FINDINGS_LOG_PATH`
 
 ## 8. Go/No-Go fuer dieses Referenzprofil
 

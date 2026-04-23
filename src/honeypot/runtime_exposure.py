@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from ipaddress import ip_address, ip_network
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from honeypot.config_core import RuntimeConfig
@@ -34,6 +36,41 @@ class PublicIngressMapping:
     @property
     def spec(self) -> str:
         return f"{self.service}:{self.public_port}:{self.internal_port}"
+
+
+def append_exposed_research_finding(
+    *,
+    config: RuntimeConfig,
+    status: str,
+    summary: str,
+    details: tuple[str, ...] = (),
+) -> Path:
+    """Schreibt einen nachvollziehbaren Sweep-Eintrag fuer exposed-research."""
+
+    findings_path = config.findings_log_path
+    findings_path.parent.mkdir(parents=True, exist_ok=True)
+    is_new_file = not findings_path.exists()
+    timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    public_mappings = ", ".join(config.public_ingress_mappings) or "none"
+    recipients = ", ".join(config.approved_egress_recipients) or "none"
+
+    with findings_path.open("a", encoding="utf-8") as handle:
+        if is_new_file:
+            handle.write("# Exposed Research Findings\n\n")
+            handle.write(
+                "Automatisch erzeugte Sweep-Eintraege fuer `uv run python -m honeypot.main --verify-exposed-research`.\n\n"
+            )
+        handle.write(f"## {timestamp} verify-exposed-research {status}\n")
+        handle.write(f"- site_code: `{config.site_code}`\n")
+        handle.write(f"- watch_officer: `{config.watch_officer_name or 'unset'}`\n")
+        handle.write(f"- duty_engineer: `{config.duty_engineer_name or 'unset'}`\n")
+        handle.write(f"- public_ingress_mappings: `{public_mappings}`\n")
+        handle.write(f"- approved_egress_recipients: `{recipients}`\n")
+        handle.write(f"- summary: {summary}\n")
+        for detail in details:
+            handle.write(f"- {detail}\n")
+        handle.write("\n")
+    return findings_path
 
 
 def enforce_exposed_research_policy(

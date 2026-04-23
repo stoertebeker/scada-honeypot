@@ -187,8 +187,13 @@ def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(tmp_path: 
 
     runtime = build_local_runtime(env_file=str(env_file))
     alerts = runtime.event_store.fetch_alerts()
+    findings_content = findings_path.read_text(encoding="utf-8")
 
     assert any(alert.alarm_code == "BREAKER_OPEN" and alert.state == "cleared" for alert in alerts)
+    assert "verify-exposed-research passed" in findings_content
+    assert "`blue-watch`" in findings_content
+    assert "`ops-duty`" in findings_content
+    assert "observer-collector-live" in findings_content
 
 
 def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path: Path) -> None:

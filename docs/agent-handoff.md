@@ -62,9 +62,9 @@ Phase I** gezogen:
 - zusaetzlich gibt es jetzt den Zielhost-Sweep
   `uv run python -m honeypot.main --verify-exposed-research`, der Start,
   HMI, Modbus und den Alert-Pfad `BREAKER_OPEN` auf demselben Runtime-Pfad
-  prueft
+  prueft und einen Sweep-Eintrag nach `FINDINGS_LOG_PATH` schreibt
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `272 passed`
+  Gesamttestlauf steht aktuell bei `273 passed`
 
 Wichtiger Kurs:
 

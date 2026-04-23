@@ -161,7 +161,8 @@ Dieses `GO` gilt nur, wenn auf dem echten Zielhost zusaetzlich abgeglichen ist:
    verantwortete Webhook-Empfaenger ist
 3. `blue-watch` und `ops-duty` fuer den Pilotlauf personell besetzt sind
 4. `uv run python -m honeypot.main --verify-exposed-research` auf dem Zielhost
-   erfolgreich gelaufen ist
+   erfolgreich gelaufen ist und einen Eintrag in `./logs/findings.md`
+   geschrieben hat
 
 ## 8. Offene Restrisiken
 

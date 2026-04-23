@@ -4,7 +4,11 @@ import pytest
 
 from honeypot.config_core import RuntimeConfig
 from honeypot.exporter_runner import WebhookExporter
-from honeypot.runtime_exposure import enforce_exposed_research_policy, planned_public_ingress_mappings
+from honeypot.runtime_exposure import (
+    append_exposed_research_finding,
+    enforce_exposed_research_policy,
+    planned_public_ingress_mappings,
+)
 
 
 def _config(monkeypatch, tmp_path: Path, **kwargs) -> RuntimeConfig:
@@ -94,3 +98,35 @@ def test_exposed_research_policy_accepts_named_roles_recipients_and_realistic_ta
         "hmi:80:8080",
         "modbus:502:1502",
     )
+
+
+def test_append_exposed_research_finding_writes_actionable_markdown(monkeypatch, tmp_path: Path) -> None:
+    findings_path = tmp_path / "logs" / "findings.md"
+    config = _config(
+        monkeypatch,
+        tmp_path,
+        site_code="site-exposed-01",
+        findings_log_path=findings_path,
+        watch_officer_name="blue-watch",
+        duty_engineer_name="ops-duty",
+        public_ingress_mappings="modbus:502:1502,hmi:80:8080",
+        approved_egress_recipients="webhook:observer-collector-live",
+    )
+
+    written_path = append_exposed_research_finding(
+        config=config,
+        status="passed",
+        summary="smoke run ok",
+        details=("modbus_address=127.0.0.1:1502",),
+    )
+
+    content = written_path.read_text(encoding="utf-8")
+
+    assert written_path == findings_path
+    assert "# Exposed Research Findings" in content
+    assert "verify-exposed-research passed" in content
+    assert "`site-exposed-01`" in content
+    assert "`blue-watch`" in content
+    assert "`ops-duty`" in content
+    assert "modbus:502:1502, hmi:80:8080" in content
+    assert "observer-collector-live" in content

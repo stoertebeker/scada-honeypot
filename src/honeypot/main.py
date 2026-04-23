@@ -22,7 +22,7 @@ from honeypot.exporter_runner import (
 )
 from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.runtime_egress import enforce_runtime_egress_policy
-from honeypot.runtime_exposure import enforce_exposed_research_policy
+from honeypot.runtime_exposure import append_exposed_research_finding, enforce_exposed_research_policy
 from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
@@ -274,13 +274,14 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
     """Fuehrt einen lokalen Start-/Read-/Alert-/Stop-Sweep fuer exposed-research aus."""
 
     runtime = build_local_runtime(env_file=env_file)
-    enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
-    enforce_exposed_research_policy(config=runtime.config, exporters=runtime.exporters)
-
     modbus_address: tuple[str, int] | None = None
     hmi_address: tuple[str, int] | None = None
+    runtime_started = False
     try:
+        enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
+        enforce_exposed_research_policy(config=runtime.config, exporters=runtime.exporters)
         runtime.start()
+        runtime_started = True
         modbus_address = _loopback_runtime_address(runtime.modbus_service.address)
         hmi_address = _loopback_runtime_address(runtime.hmi_service.address)
         modbus_response = _send_modbus_request(
@@ -297,8 +298,17 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
         )
         runtime.modbus_service.register_map.request_breaker_open()
         runtime.modbus_service.register_map.request_breaker_close()
+    except Exception as exc:
+        append_exposed_research_finding(
+            config=runtime.config,
+            status="failed",
+            summary=str(exc),
+            details=("sweep_status=failed",),
+        )
+        raise
     finally:
-        runtime.stop()
+        if runtime_started:
+            runtime.stop()
 
     _, protocol_id, unit_id, pdu = _parse_modbus_response(modbus_response)
     byte_count = pdu[1]
@@ -311,6 +321,16 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
         raise RuntimeError("exposed-research-Sweep: HMI-/overview antwortet nicht mit dem erwarteten Profil")
     if len(breaker_alerts) < 2 or breaker_alerts[-1].state != "cleared":
         raise RuntimeError("exposed-research-Sweep: Alert-Pfad fuer BREAKER_OPEN wurde nicht sauber aktiv/cleared verifiziert")
+    append_exposed_research_finding(
+        config=runtime.config,
+        status="passed",
+        summary="runtime start, modbus read, hmi overview and breaker alert lifecycle verified",
+        details=(
+            f"modbus_address={modbus_address[0]}:{modbus_address[1]}",
+            f"hmi_address={hmi_address[0]}:{hmi_address[1]}",
+            "sweep_status=passed",
+        ),
+    )
     print(
         "exposed-research sweep ok: "
         f"modbus={modbus_address[0]}:{modbus_address[1]} "
