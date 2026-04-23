@@ -21,8 +21,10 @@ Phase I** gezogen:
 - ein lokaler Reset-Pfad ueber `uv run python -m honeypot.main --reset-runtime`
   entfernt jetzt reproduzierbar Runtime-Artefakte fuer einen frischen
   Neustart
+- aktiver Exporter-Egress braucht jetzt eine explizite Ziel-Freigabe ueber
+  `APPROVED_EGRESS_TARGETS`; sonst verweigert `main()` den Start
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `249 passed`
+  Gesamttestlauf steht aktuell bei `254 passed`
 
 Wichtiger Kurs:
 
@@ -37,6 +39,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `d66c41e` `feat: gate exporter egress targets`
 - `0c3a6cd` `feat: add local runtime reset path`
 - `47dab3c` `feat: add local runtime status heartbeat`
 - `d1ffc32` `test: gate client traffic during exporter recovery`
@@ -80,6 +83,8 @@ Wichtiger Kurs:
   und bleibt bis `KeyboardInterrupt` aktiv
 - `cli()` bietet jetzt zusaetzlich den lokalen Reset-Pfad fuer Runtime-
   Artefakte an
+- `main()` erzwingt jetzt bei aktiven Exportern eine explizite Egress-
+  Freigabe ueber `APPROVED_EGRESS_TARGETS`
 - Sicherheitsregel im Startpfad:
   - `MODBUS_BIND_HOST` muss derzeit `127.0.0.1` bleiben
   - `HMI_BIND_HOST` muss derzeit `127.0.0.1` bleiben
@@ -107,6 +112,8 @@ Vorhanden:
   - `RUNTIME_STATUS_ENABLED`
   - `RUNTIME_STATUS_PATH`
   - `RUNTIME_STATUS_INTERVAL_SECONDS`
+- neuer Egress-Key:
+  - `APPROVED_EGRESS_TARGETS`
 
 Wichtige Regel:
 

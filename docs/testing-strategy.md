@@ -468,6 +468,10 @@ Pflichttests:
   CLI-Logik: lokale Artefakte wie SQLite, JSONL, Statusdatei, `PCAP` sowie
   `-wal`/`-shm`-Sidecars werden entfernt und ein frischer Runtime-Start laedt
   danach wieder den definierten Anfangszustand
+- mehrere Unit-Tests pruefen jetzt das Egress-Gate fuer aktive Exporter:
+  `APPROVED_EGRESS_TARGETS` wird normalisiert, Webhook/SMTP/Telegram-Ziele
+  werden auf `target_type:host:port` verdichtet und `main()` verweigert den
+  Start bei ungeprueften Ausleitungszielen
 
 ## 13. Logging- und Event-Tests
 

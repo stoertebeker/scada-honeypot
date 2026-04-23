@@ -45,6 +45,7 @@ Nicht Teil dieses Releases:
    - `HMI_BIND_HOST=127.0.0.1`
    - keine echte Fernsteuerung externer Systeme
    - keine realen Identitaetsmerkmale im Deployment
+   - aktive Exportziele bewusst ueber `APPROVED_EGRESS_TARGETS` freigegeben
 
 5. Recovery-/Stabilitaetsgates:
    - Exporter-Ausfall bleibt intern in der Outbox
@@ -86,5 +87,5 @@ Nach diesem lokalen V1-Release sind zwei Richtungen sauber getrennt:
      `RUNTIME_STATUS_PATH` pruefen
    - Reset-Prozess ueber `uv run python -m honeypot.main --reset-runtime`
      validieren
-   - Egress-Kontrolle
+   - Egress-Kontrolle ueber `APPROVED_EGRESS_TARGETS` pruefen
    - letzte bewusste Sicherheitsfreigabe

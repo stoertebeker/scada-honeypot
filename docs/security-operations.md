@@ -112,6 +112,9 @@ Ausnahmen nur bewusst fuer:
 Wichtige Regel:
 - Exporter duerfen technisch moeglich sein
 - ausgehender Traffic muss operativ trotzdem kontrolliert bleiben
+- der aktuelle lokale Startpfad erzwingt dafuer eine explizite
+  Ziel-Freigabe ueber `APPROVED_EGRESS_TARGETS` im Format
+  `target_type:host:port`
 
 ### 5.3 Ingress-Kontrolle
 
