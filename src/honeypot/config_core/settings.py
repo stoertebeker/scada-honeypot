@@ -67,6 +67,9 @@ class RuntimeConfig(BaseSettings):
     event_store_path: Path = Path("./tmp/honeypot-events.db")
     jsonl_archive_enabled: bool = True
     jsonl_archive_path: Path = Path("./logs/events.jsonl")
+    runtime_status_enabled: bool = False
+    runtime_status_path: Path = Path("./logs/runtime-status.json")
+    runtime_status_interval_seconds: int = Field(default=5, ge=1, le=3600)
     pcap_capture_enabled: bool = False
     pcap_capture_path: Path = Path("./pcap/session.pcapng")
     alert_min_severity: Literal["low", "medium", "high", "critical"] = "medium"

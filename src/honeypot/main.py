@@ -1,6 +1,6 @@
 """Lokaler Prozesseinstieg fuer den ersten gemeinsamen Runtime-Pfad."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import sleep
 
 from fastapi import FastAPI
@@ -17,6 +17,7 @@ from honeypot.exporter_runner import (
 )
 from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
+from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
@@ -31,6 +32,7 @@ MODULES: tuple[str, ...] = (
     "rule_engine",
     "protocol_modbus",
     "hmi_web",
+    "monitoring",
     "exporter_sdk",
     "exporter_runner",
 )
@@ -55,8 +57,10 @@ class LocalRuntime:
     hmi_app: FastAPI
     hmi_service: LocalHmiHttpService
     modbus_service: ReadOnlyModbusTcpService
+    exporters: dict[str, HoneypotExporter] = field(default_factory=dict)
     outbox_runner: OutboxRunner | None = None
     outbox_runner_service: BackgroundOutboxRunnerService | None = None
+    runtime_status_service: BackgroundRuntimeStatusService | None = None
 
     def start(self) -> "LocalRuntime":
         try:
@@ -84,6 +88,15 @@ class LocalRuntime:
             self.hmi_service.stop()
             self.modbus_service.stop()
             raise
+        try:
+            if self.runtime_status_service is not None:
+                self.runtime_status_service.start_in_thread()
+        except Exception:
+            if self.outbox_runner_service is not None:
+                self.outbox_runner_service.stop()
+            self.hmi_service.stop()
+            self.modbus_service.stop()
+            raise
         return self
 
     def stop(self) -> None:
@@ -94,7 +107,11 @@ class LocalRuntime:
             try:
                 self.hmi_service.stop()
             finally:
-                self.modbus_service.stop()
+                try:
+                    self.modbus_service.stop()
+                finally:
+                    if self.runtime_status_service is not None:
+                        self.runtime_status_service.stop()
 
 
 def bootstrap_runtime() -> RuntimeManifest:
@@ -161,6 +178,22 @@ def build_local_runtime(
             clock=event_recorder.clock,
         )
         outbox_runner_service = BackgroundOutboxRunnerService(runner=outbox_runner)
+    runtime_status_service = None
+    if config.runtime_status_enabled:
+        runtime_status_service = BackgroundRuntimeStatusService(
+            writer=RuntimeStatusWriter(
+                site_code=config.site_code,
+                fixture_name=snapshot.fixture_name,
+                path=config.runtime_status_path,
+                event_store=event_store,
+                modbus_service=modbus_service,
+                hmi_service=hmi_service,
+                exporters=exporters,
+                outbox_runner_service=outbox_runner_service,
+                clock=event_recorder.clock,
+            ),
+            interval_seconds=config.runtime_status_interval_seconds,
+        )
     return LocalRuntime(
         config=config,
         manifest=manifest,
@@ -170,8 +203,10 @@ def build_local_runtime(
         hmi_app=hmi_app,
         hmi_service=hmi_service,
         modbus_service=modbus_service,
+        exporters=exporters,
         outbox_runner=outbox_runner,
         outbox_runner_service=outbox_runner_service,
+        runtime_status_service=runtime_status_service,
     )
 
 

@@ -24,6 +24,8 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.modbus_port == 1502
     assert config.attacker_ui_locale_resolution_chain == ("en",)
     assert config.event_store_backend == "sqlite"
+    assert config.runtime_status_enabled is False
+    assert config.runtime_status_interval_seconds == 5
 
 
 def test_load_runtime_config_reads_env_file(monkeypatch, tmp_path: Path) -> None:
@@ -105,3 +107,11 @@ def test_enabled_smtp_exporter_requires_host_from_and_to(monkeypatch, tmp_path: 
             smtp_from="alerts@example.invalid",
             smtp_to="soc@example.invalid",
         )
+
+
+def test_runtime_status_interval_must_be_positive(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, runtime_status_interval_seconds=0)

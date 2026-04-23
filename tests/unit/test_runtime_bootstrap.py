@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+from time import monotonic, sleep
 from types import SimpleNamespace
 
 import pytest
@@ -67,8 +69,10 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
     )
     assert runtime.hmi_app is not None
     assert runtime.hmi_service.address == ("127.0.0.1", 0)
+    assert runtime.exporters == {}
     assert runtime.outbox_runner is None
     assert runtime.outbox_runner_service is None
+    assert runtime.runtime_status_service is None
 
 
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:
@@ -136,6 +140,71 @@ def test_build_local_runtime_wires_telegram_outbox_runner_when_enabled(tmp_path:
     assert tuple(runtime.outbox_runner.exporters) == ("telegram",)
 
 
+def test_build_local_runtime_wires_runtime_status_service_when_enabled(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    status_path = tmp_path / "logs" / "runtime-status.json"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "RUNTIME_STATUS_ENABLED=1\n"
+            f"RUNTIME_STATUS_PATH={status_path}\n"
+            "RUNTIME_STATUS_INTERVAL_SECONDS=2\n"
+            "WEBHOOK_EXPORTER_ENABLED=1\n"
+            "WEBHOOK_EXPORTER_URL=https://example.invalid/hook\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.runtime_status_service is not None
+    assert runtime.runtime_status_service.writer.path == status_path
+    assert runtime.runtime_status_service.interval_seconds == 2
+    assert tuple(runtime.exporters) == ("webhook",)
+
+
+def test_runtime_status_service_writes_local_status_file(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    status_path = tmp_path / "logs" / "runtime-status.json"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "RUNTIME_STATUS_ENABLED=1\n"
+            f"RUNTIME_STATUS_PATH={status_path}\n"
+            "RUNTIME_STATUS_INTERVAL_SECONDS=1\n"
+            "WEBHOOK_EXPORTER_ENABLED=1\n"
+            "WEBHOOK_EXPORTER_URL=https://example.invalid/hook\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.runtime_status_service is not None
+
+    runtime.start()
+    try:
+        _wait_for(lambda: status_path.is_file())
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        assert payload["site_code"] == "site-01"
+        assert payload["fixture_name"] == "normal_operation"
+        assert payload["runtime"]["running"] is True
+        assert payload["runtime"]["modbus"]["port"] == runtime.modbus_service.address[1]
+        assert payload["runtime"]["hmi"]["port"] == runtime.hmi_service.address[1]
+        assert payload["runtime"]["outbox_runner"]["enabled"] is True
+        assert payload["exporters"]["webhook"]["status"] == "healthy"
+    finally:
+        runtime.stop()
+
+    _wait_for(
+        lambda: status_path.is_file()
+        and json.loads(status_path.read_text(encoding="utf-8"))["runtime"]["running"] is False
+    )
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert payload["runtime"]["running"] is False
+
+
 def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     del tmp_path
     fake_runtime = _FakeRuntime()
@@ -171,3 +240,12 @@ class _FakeRuntime:
 
     def start(self):
         return self
+
+
+def _wait_for(predicate, *, timeout: float = 2.0) -> None:
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if predicate():
+            return
+        sleep(0.01)
+    raise AssertionError("Bedingung wurde nicht rechtzeitig erfuellt")
