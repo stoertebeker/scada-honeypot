@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from honeypot.exporter_runner import WebhookExporter
 from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, cli, main
 
 
@@ -230,6 +231,17 @@ def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     assert "http://127.0.0.1:8080/overview" in captured.out
 
 
+def test_main_rejects_unapproved_exporter_egress(monkeypatch, tmp_path: Path) -> None:
+    del tmp_path
+    fake_runtime = _FakeRuntime()
+    fake_runtime.exporters = {"webhook": WebhookExporter(url="https://example.invalid/hook")}
+
+    monkeypatch.setattr("honeypot.main.build_local_runtime", lambda env_file=".env": fake_runtime)
+
+    with pytest.raises(RuntimeError, match="APPROVED_EGRESS_TARGETS"):
+        main()
+
+
 def test_cli_reset_runtime_prints_report(capsys, monkeypatch, tmp_path: Path) -> None:
     del tmp_path
 
@@ -249,11 +261,12 @@ def test_cli_reset_runtime_prints_report(capsys, monkeypatch, tmp_path: Path) ->
 
 class _FakeRuntime:
     def __init__(self) -> None:
-        self.config = SimpleNamespace(site_code="site-01")
+        self.config = SimpleNamespace(site_code="site-01", approved_egress_targets=())
         self.manifest = bootstrap_runtime()
         self.snapshot = SimpleNamespace(fixture_name="normal_operation")
         self.modbus_service = SimpleNamespace(address=("127.0.0.1", 1502))
         self.hmi_service = SimpleNamespace(address=("127.0.0.1", 8080))
+        self.exporters = {}
 
     def start(self):
         return self

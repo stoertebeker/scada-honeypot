@@ -22,6 +22,27 @@ def _normalize_optional_string(value: object) -> str | None:
     return str(value)
 
 
+def _normalize_string_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        raw_items = value.split(",")
+    elif isinstance(value, tuple | list | set | frozenset):
+        raw_items = list(value)
+    else:
+        raw_items = [value]
+
+    normalized_items: list[str] = []
+    for item in raw_items:
+        normalized = _normalize_optional_string(item)
+        if normalized is None:
+            continue
+        lowered = normalized.lower()
+        if lowered not in normalized_items:
+            normalized_items.append(lowered)
+    return tuple(normalized_items)
+
+
 def _locale_resolution_chain(locale: str, fallback_locale: str) -> tuple[str, ...]:
     candidates: list[str] = [locale]
     if "-" in locale:
@@ -86,6 +107,7 @@ class RuntimeConfig(BaseSettings):
     telegram_exporter_enabled: bool = False
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    approved_egress_targets: tuple[str, ...] = ()
 
     log_level: Literal["debug", "info", "warning", "error", "critical"] = "info"
     trend_window_minutes: int = Field(default=180, ge=1, le=1440)
@@ -120,6 +142,11 @@ class RuntimeConfig(BaseSettings):
     @classmethod
     def normalize_optional_strings(cls, value: object) -> str | None:
         return _normalize_optional_string(value)
+
+    @field_validator("approved_egress_targets", mode="before")
+    @classmethod
+    def normalize_approved_egress_targets(cls, value: object) -> tuple[str, ...]:
+        return _normalize_string_tuple(value)
 
     @field_validator("attacker_ui_locale", "attacker_ui_fallback_locale")
     @classmethod

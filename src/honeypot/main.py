@@ -18,6 +18,7 @@ from honeypot.exporter_runner import (
     WebhookExporter,
 )
 from honeypot.exporter_sdk import HoneypotExporter
+from honeypot.runtime_egress import enforce_runtime_egress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
@@ -262,7 +263,9 @@ def _run_until_stopped(runtime: LocalRuntime) -> None:
 def main(*, env_file: str | None = ".env") -> int:
     """Startet den aktuellen lokalen Runtime-Slice fuer Modbus und HMI auf localhost."""
 
-    runtime = build_local_runtime(env_file=env_file).start()
+    runtime = build_local_runtime(env_file=env_file)
+    enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
+    runtime.start()
     print(_runtime_banner(runtime))
     _run_until_stopped(runtime)
     return 0
