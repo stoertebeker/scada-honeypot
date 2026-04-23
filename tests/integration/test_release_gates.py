@@ -1093,6 +1093,225 @@ def test_release_gate_low_output_telegram_failure_stays_internal_and_alarm_view_
     assert protocol_id == 0
 
 
+def test_release_gate_hmi_and_modbus_remain_stable_during_multi_target_recovery(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        "WEBHOOK_EXPORTER_ENABLED=1",
+        "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+        "SMTP_EXPORTER_ENABLED=1",
+        "SMTP_HOST=mail.example.invalid",
+        "SMTP_PORT=2525",
+        "SMTP_FROM=alerts@example.invalid",
+        "SMTP_TO=soc@example.invalid",
+        "TELEGRAM_EXPORTER_ENABLED=1",
+        "TELEGRAM_BOT_TOKEN=token-123",
+        "TELEGRAM_CHAT_ID=chat-99",
+        "OUTBOX_RETRY_BACKOFF_SECONDS=1",
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    webhook_payloads: list[str] = []
+    telegram_payloads: list[str] = []
+    smtp_payloads: list[str] = []
+    telegram_attempt_statuses = [429, 429, 200, 200]
+    smtp_attempt_statuses = ["fail", "fail", "fail", "fail", "success", "success"]
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        webhook_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    def telegram_handler(request: httpx.Request) -> httpx.Response:
+        telegram_payloads.append(request.content.decode("utf-8"))
+        status_code = telegram_attempt_statuses.pop(0) if telegram_attempt_statuses else 200
+        return httpx.Response(status_code, json={"ok": status_code == 200})
+
+    class RecoveringSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            smtp_payloads.append(message.get_content())
+            state = smtp_attempt_statuses.pop(0) if smtp_attempt_statuses else "success"
+            if state == "success":
+                return {}
+            raise OSError("connection refused")
+
+    runtime.outbox_runner.exporters["webhook"] = WebhookExporter(
+        url="https://example.invalid/hook",
+        retry_after_seconds=1,
+        transport=httpx.MockTransport(webhook_handler),
+    )
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        retry_after_seconds=1,
+        client_factory=lambda host, port, timeout: RecoveringSmtpClient(),
+    )
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        retry_after_seconds=1,
+        transport=httpx.MockTransport(telegram_handler),
+    )
+
+    low_output_event = runtime.event_recorder.build_event(
+        event_type="system.site.low_output_observed",
+        category="system",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="system",
+        component="plant-sim",
+        asset_id="site",
+        action="observe_site_output",
+        result="observed",
+        resulting_value=1.9,
+        tags=("diagnostics", "site-output"),
+    )
+    low_output_alert = runtime.event_recorder.build_alert(
+        event=low_output_event,
+        alarm_code=LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+        severity="high",
+        state="active_unacknowledged",
+        message="Parkleistung deutlich unter erwarteter Verfuegbarkeit",
+    )
+    runtime.event_recorder.record(
+        low_output_event,
+        alert=low_output_alert,
+        current_state_updates=build_low_output_state(plant_power_mw=1.9),
+        outbox_targets=("webhook", "smtp", "telegram"),
+    )
+
+    grid_event = runtime.event_recorder.build_event(
+        event_type="system.grid.export_path_unavailable",
+        category="system",
+        severity="high",
+        source_ip="203.0.113.24",
+        actor_type="system",
+        component="rule-engine",
+        asset_id="grid-01",
+        action="raise_follow_up_alert",
+        result="derived",
+        alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+        resulting_value="open_breaker_and_zero_export",
+        tags=("follow-up", "grid", "site"),
+    )
+    grid_alert = runtime.event_recorder.build_alert(
+        event=grid_event,
+        alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+        severity="critical",
+        state="active_unacknowledged",
+        message="Netzpfad fuer Export derzeit nicht verfuegbar",
+    )
+    runtime.event_recorder.record(
+        grid_event,
+        alert=grid_alert,
+        current_state_updates=build_low_output_state(
+            plant_power_mw=0.0,
+            breaker_state="open",
+            export_path_available=False,
+            alarms=(GRID_PATH_UNAVAILABLE_ALERT_CODE,),
+        ),
+        outbox_targets=("webhook", "smtp", "telegram"),
+    )
+
+    overview_status_codes: list[int] = []
+    alarms_status_codes: list[int] = []
+    modbus_transaction_ids: list[int] = []
+
+    try:
+        runtime.start()
+        hmi_address = runtime.hmi_service.address
+        modbus_address = runtime.modbus_service.address
+        with httpx.Client(
+            base_url=f"http://{hmi_address[0]}:{hmi_address[1]}",
+            timeout=5.0,
+            trust_env=False,
+        ) as client:
+            deadline = monotonic() + 6.0
+            cycle = 0
+            while monotonic() < deadline:
+                overview = client.get("/overview")
+                alarms_page = client.get("/alarms")
+                modbus_response = send_modbus_request(
+                    modbus_address,
+                    transaction_id=0x7E00 + cycle,
+                    unit_id=1,
+                    function_code=READ_HOLDING_REGISTERS,
+                    body=pack(">HH", 0, 8),
+                )
+                transaction_id, protocol_id, _, _ = unpack(">HHHB", modbus_response[:7])
+                overview_status_codes.append(overview.status_code)
+                alarms_status_codes.append(alarms_page.status_code)
+                modbus_transaction_ids.append(transaction_id)
+
+                outbox_entries = runtime.event_store.fetch_outbox_entries()
+                if len(outbox_entries) == 6 and all(entry.status == "delivered" for entry in outbox_entries):
+                    break
+
+                assert overview.status_code == 200
+                assert "Plant Overview" in overview.text
+                assert "SMTP" not in overview.text
+                assert "Telegram" not in overview.text
+                assert alarms_page.status_code == 200
+                assert "Alarm Console" in alarms_page.text
+                assert "LOW_SITE_OUTPUT_UNEXPECTED" in alarms_page.text
+                assert "GRID_PATH_UNAVAILABLE" in alarms_page.text
+                assert "SMTP" not in alarms_page.text
+                assert "Telegram" not in alarms_page.text
+                assert protocol_id == 0
+                assert transaction_id == 0x7E00 + cycle
+
+                cycle += 1
+                sleep(0.1)
+    finally:
+        runtime.stop()
+
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    alerts = runtime.event_store.fetch_alerts()
+    events = runtime.event_store.fetch_events()
+    status_by_target = {
+        target: [entry for entry in outbox_entries if entry.target_type == target]
+        for target in ("webhook", "smtp", "telegram")
+    }
+
+    assert len(outbox_entries) == 6
+    assert runtime.outbox_runner_service.drain_count >= 6
+    assert len(overview_status_codes) >= 3
+    assert all(status == 200 for status in overview_status_codes)
+    assert all(status == 200 for status in alarms_status_codes)
+    assert modbus_transaction_ids == [0x7E00 + index for index in range(len(modbus_transaction_ids))]
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert all(entry.retry_count == 0 for entry in status_by_target["webhook"])
+    assert max(entry.retry_count for entry in status_by_target["smtp"]) >= 2
+    assert max(entry.retry_count for entry in status_by_target["telegram"]) >= 1
+    assert all(entry.last_error is None for entry in outbox_entries)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in webhook_payloads)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in webhook_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in smtp_payloads)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in smtp_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in telegram_payloads)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in telegram_payloads)
+    assert sum(1 for event in events if event.event_type == "hmi.page.overview_viewed") >= len(overview_status_codes)
+    assert sum(1 for event in events if event.event_type == "hmi.page.alarms_viewed") >= len(alarms_status_codes)
+    assert sum(1 for event in events if event.event_type == "protocol.modbus.holding_registers_read") >= len(modbus_transaction_ids)
+    assert any(
+        alert.alarm_code == LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE and alert.state != "cleared"
+        for alert in alerts
+    )
+    assert any(
+        alert.alarm_code == GRID_PATH_UNAVAILABLE_ALERT_CODE and alert.state != "cleared"
+        for alert in alerts
+    )
+
+
 def test_release_gate_partial_multi_target_failure_keeps_other_exporters_delivering(tmp_path: Path) -> None:
     env_file = write_env(
         tmp_path,
