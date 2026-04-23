@@ -72,6 +72,7 @@ Vorhanden sind:
 - `uv run python -m honeypot.main --reset-runtime` entfernt jetzt reproduzierbar lokale Runtime-Artefakte wie `EVENT_STORE_PATH`, `JSONL_ARCHIVE_PATH`, `RUNTIME_STATUS_PATH`, `PCAP_CAPTURE_PATH` sowie SQLite-`-wal`/`-shm`-Sidecars fuer einen frischen Neustart
 - aktiver Exporter-Egress braucht jetzt eine explizite Ziel-Freigabe ueber `APPROVED_EGRESS_TARGETS`; `python -m honeypot.main` verweigert sonst den Start fuer Webhook-, SMTP- oder Telegram-Ziele
 - Non-Local-Bind fuer Modbus oder HMI ist jetzt technisch moeglich, bleibt aber `deny-by-default`; externe Bindung braucht explizit `ALLOW_NONLOCAL_BIND=1`
+- ein runtime-naher Integrationstest belegt jetzt den bewussten Non-Local-Startpfad mit `ALLOW_NONLOCAL_BIND=1`, `0.0.0.0`-Binding und kontrollierten Loopback-Zugriffen auf denselben lokalen Dienst
 - optionales Runtime-Monitoring schreibt jetzt einen lokalen Heartbeat nach `RUNTIME_STATUS_PATH` mit Dienst-Adressen, Exporter-Health, Alert- und Outbox-Zaehlern; Standardpfad ist `./logs/runtime-status.json`, ohne neuen HTTP- oder Debug-Endpunkt
 - ein integrierter `pre-exposure`-Gate-Sweep prueft jetzt denselben Runtime-Pfad mit aktivem Monitoring, freigegebenem Webhook-Ziel, erfolgreicher Outbox-Ausleitung, sauberem Reset und frischem Neustart
 - der HMI-Dienst laeuft als echter lokaler HTTP-Server; `GET /overview`, `GET /single-line`, `GET /inverters`, `GET /weather`, `GET /meter`, `GET /alarms` und `GET /trends` sind damit nicht mehr nur im ASGI-Testpfad, sondern im Runtime-Slice erreichbar
@@ -85,7 +86,7 @@ Vorhanden sind:
 - Runtime-Guardrails im Startpfad, die `MODBUS_BIND_HOST` und `HMI_BIND_HOST` weiter `deny-by-default` auf lokalem Kurs halten; externe Bindung braucht bewusst `ALLOW_NONLOCAL_BIND=1`
 - lokaler Modbus-Default auf `1502/tcp`, damit `uv run python -m honeypot.main` ohne privilegierte Ports laeuft; `502/tcp` bleibt fachlicher Standard fuer bewusste Deployments
 - Unit-, Contract- und erste Integrations-Tests fuer Konfiguration, Fixtures, Asset-Domain-Snapshot, Zeitkern, Simulationsszenarien, Event-/Persistenzvertrag, den erweiterten Rule-Engine-Kern, die ersten `FC03`/`FC06`/`FC16`-Modbus-Slices und den lokalen Runtime-Startpfad
-- Gesamtteststand aktuell: `257 passed`
+- Gesamtteststand aktuell: `258 passed`
 
 Nicht Teil des ersten lokalen V1-Releases:
 - weiterer Rule-Engine-Feinschliff fuer mehrstufige Alert-Kaskaden und spaetere Suppression-Strategien jenseits identischer aktiver Alerts

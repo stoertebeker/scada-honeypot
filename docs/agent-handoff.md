@@ -29,6 +29,9 @@ Phase I** gezogen:
 - Non-Local-Bind fuer Modbus und HMI ist jetzt technisch moeglich, bleibt aber
   `deny-by-default`; ohne `ALLOW_NONLOCAL_BIND=1` blockiert der Runtime-Pfad
   externe Bindung weiter
+- ein runtime-naher Integrationstest deckt jetzt zusaetzlich den bewussten
+  Non-Local-Startpfad mit `ALLOW_NONLOCAL_BIND=1` und funktionierenden
+  Loopback-Zugriffen auf den gebundenen Dienst ab
 - die formale Lageentscheidung steht jetzt ebenfalls:
   `pre-exposure` ist `GO`, `exposed-research` bleibt `NO-GO`, bis
   deployment-spezifische Ingress-, `/service/login`- und Egress-Entscheide
@@ -40,7 +43,7 @@ Phase I** gezogen:
   offener Deployment-Entscheide
   bewusst als `NO-GO` fuer echte Exponierung dokumentiert
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `257 passed`
+  Gesamttestlauf steht aktuell bei `258 passed`
 
 Wichtiger Kurs:
 
@@ -55,6 +58,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `eca1a13` `test: cover nonlocal runtime startup`
 - `21229f8` `feat: gate nonlocal runtime binds`
 - `83c3327` `docs: add exposed research checklist`
 - `10a2d4d` `docs: record pre-exposure go decision`
