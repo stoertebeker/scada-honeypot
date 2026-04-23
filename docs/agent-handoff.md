@@ -15,7 +15,7 @@ Phase I** gezogen:
 - browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
   wichtigsten sichtbaren und sicherheitsrelevanten Pfade
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `241 passed`
+  Gesamttestlauf steht aktuell bei `242 passed`
 
 Wichtiger Kurs:
 
@@ -30,6 +30,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `ed51622` `test: soak background runner smtp recovery`
 - `fa2b966` `test: soak background runner mixed alert waves`
 - `341201b` `test: stress background runner wake cycles`
 - `d5a2811` `test: stress outbox staggered target retries`
@@ -909,10 +910,10 @@ Operative Hinweise:
 Direkter Kurs fuer den naechsten Agenten:
 
 1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
-   rund; sinnvoller naechster Kurs ist jetzt ein runtime-naherer
-   Dauerlauf-Sweep fuer Outbox und Background-Runner mit mehr Alert-Wellen,
-   mehreren gleichzeitigen gestrandeten Zielkanaelen und spaeterer
-   Ziel-Erholung ueber mehrere echte Runner-Intervalle
+   rund; sinnvoller naechster Kurs ist jetzt ein Release-Gate- oder
+   Runtime-Sweep mit aktivem HMI-/Modbus-Traffic waehrend Mehrkanal-Recovery,
+   damit Exporter-Backoff, lokale Bedienung und Protokoll-Lesezugriffe auch
+   unter laengerem Recovery-Druck gemeinsam stabil bleiben
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 

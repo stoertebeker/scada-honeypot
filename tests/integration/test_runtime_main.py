@@ -1382,6 +1382,236 @@ def test_build_local_runtime_drains_low_output_follow_up_to_all_exporters_in_bac
     )
 
 
+def test_build_local_runtime_recovers_multiple_stranded_targets_over_runner_intervals(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-test-16",
+                f"EVENT_STORE_PATH={event_store_path}",
+                "WEBHOOK_EXPORTER_ENABLED=1",
+                "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
+                "SMTP_EXPORTER_ENABLED=1",
+                "SMTP_HOST=mail.example.invalid",
+                "SMTP_PORT=2525",
+                "SMTP_FROM=alerts@example.invalid",
+                "SMTP_TO=soc@example.invalid",
+                "TELEGRAM_EXPORTER_ENABLED=1",
+                "TELEGRAM_BOT_TOKEN=token-123",
+                "TELEGRAM_CHAT_ID=chat-99",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    assert runtime.outbox_runner is not None
+    assert runtime.outbox_runner_service is not None
+    runtime.outbox_runner_service.drain_interval_seconds = 0.05
+    webhook_payloads: list[str] = []
+    telegram_payloads: list[str] = []
+    smtp_payloads: list[str] = []
+    telegram_attempt_statuses = [429, 429, 429, 200, 200, 200, 200]
+    smtp_attempt_statuses = ["fail", "fail", "fail", "fail", "fail", "success", "success", "success"]
+
+    def wait_for(predicate, *, timeout: float = 6.0) -> None:
+        deadline = monotonic() + timeout
+        while monotonic() < deadline:
+            if predicate():
+                return
+            sleep(0.05)
+        raise AssertionError("Bedingung wurde nicht rechtzeitig erreicht")
+
+    def fetch_entries():
+        return runtime.event_store.fetch_outbox_entries()
+
+    def webhook_handler(request: httpx.Request) -> httpx.Response:
+        webhook_payloads.append(request.content.decode("utf-8"))
+        return httpx.Response(202, json={"accepted": True})
+
+    def telegram_handler(request: httpx.Request) -> httpx.Response:
+        telegram_payloads.append(request.content.decode("utf-8"))
+        status_code = telegram_attempt_statuses.pop(0) if telegram_attempt_statuses else 200
+        return httpx.Response(
+            status_code,
+            json={"ok": status_code == 200, "error_code": status_code if status_code != 200 else None},
+        )
+
+    class RecoveringSmtpClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def send_message(self, message):
+            smtp_payloads.append(message.get_content())
+            state = smtp_attempt_statuses.pop(0) if smtp_attempt_statuses else "success"
+            if state == "success":
+                return {}
+            raise OSError("connection refused")
+
+    runtime.outbox_runner.exporters["webhook"] = runtime.outbox_runner.exporters["webhook"].__class__(
+        url="https://example.invalid/hook",
+        retry_after_seconds=1,
+        transport=httpx.MockTransport(webhook_handler),
+    )
+    runtime.outbox_runner.exporters["smtp"] = SmtpExporter(
+        host="mail.example.invalid",
+        port=2525,
+        mail_from="alerts@example.invalid",
+        rcpt_to="soc@example.invalid",
+        retry_after_seconds=1,
+        client_factory=lambda host, port, timeout: RecoveringSmtpClient(),
+    )
+    runtime.outbox_runner.exporters["telegram"] = TelegramExporter(
+        bot_token="token-123",
+        chat_id="chat-99",
+        retry_after_seconds=1,
+        transport=httpx.MockTransport(telegram_handler),
+    )
+
+    def record_alert(*, event_type: str, category: str, severity: str, asset_id: str, action: str, alarm_code: str, message: str):
+        event = runtime.event_recorder.build_event(
+            event_type=event_type,
+            category=category,
+            severity=severity,
+            source_ip="203.0.113.24",
+            actor_type="system",
+            component="runtime-soak",
+            asset_id=asset_id,
+            action=action,
+            result="accepted",
+            alarm_code=alarm_code,
+            resulting_value=alarm_code.lower(),
+            tags=("runtime-soak", "outbox", "exporter-recovery"),
+        )
+        alert = runtime.event_recorder.build_alert(
+            event=event,
+            alarm_code=alarm_code,
+            severity="high" if alarm_code != MULTI_BLOCK_UNAVAILABLE_ALERT_CODE else "critical",
+            state="active_unacknowledged",
+            message=message,
+        )
+        runtime.event_recorder.record(event, alert=alert, outbox_targets=("webhook", "smtp", "telegram"))
+        return alert
+
+    alerts = []
+    try:
+        runtime.start()
+
+        alerts.append(
+            record_alert(
+                event_type="process.breaker.state_changed",
+                category="process",
+                severity="high",
+                asset_id="grid-01",
+                action="breaker_open_request",
+                alarm_code="BREAKER_OPEN",
+                message="Breaker open erkannt",
+            )
+        )
+        sleep(0.12)
+        alerts.append(
+            record_alert(
+                event_type="system.communication.inverter_block_lost",
+                category="system",
+                severity="medium",
+                asset_id="invb-02",
+                action="simulate_comm_loss",
+                alarm_code="COMM_LOSS_INVERTER_BLOCK",
+                message="Kommunikationsverlust fuer Inverter-Block invb-02",
+            )
+        )
+        sleep(0.12)
+        alerts.append(
+            record_alert(
+                event_type="system.site.low_output_observed",
+                category="system",
+                severity="medium",
+                asset_id="site",
+                action="observe_site_output",
+                alarm_code=LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+                message="Parkleistung deutlich unter erwarteter Verfuegbarkeit",
+            )
+        )
+        sleep(0.12)
+        alerts.append(
+            record_alert(
+                event_type="system.grid.export_path_unavailable",
+                category="system",
+                severity="high",
+                asset_id="site",
+                action="raise_follow_up_alert",
+                alarm_code=GRID_PATH_UNAVAILABLE_ALERT_CODE,
+                message="Netzpfad fuer Export derzeit nicht verfuegbar",
+            )
+        )
+
+        wait_for(lambda: len(fetch_entries()) == 12)
+        wait_for(
+            lambda: (
+                sum(1 for entry in fetch_entries() if entry.target_type == "smtp" and entry.status == "pending") >= 3
+                and sum(1 for entry in fetch_entries() if entry.target_type == "telegram" and entry.status == "pending") >= 2
+            )
+        )
+        stranded_entries = fetch_entries()
+
+        wait_for(
+            lambda: (
+                sum(1 for entry in fetch_entries() if entry.target_type == "telegram" and entry.status == "delivered") == 4
+                and any(entry.target_type == "smtp" and entry.status == "pending" for entry in fetch_entries())
+            )
+        )
+        partial_recovery_entries = fetch_entries()
+
+        wait_for(lambda: len(fetch_entries()) == 12 and all(entry.status == "delivered" for entry in fetch_entries()))
+    finally:
+        runtime.stop()
+
+    outbox_entries = runtime.event_store.fetch_outbox_entries()
+    alerts_in_store = runtime.event_store.fetch_alerts()
+    entries_by_target = {
+        target: [entry for entry in outbox_entries if entry.target_type == target]
+        for target in ("webhook", "smtp", "telegram")
+    }
+
+    assert len(outbox_entries) == 12
+    assert runtime.outbox_runner_service.drain_count >= 8
+    assert sum(1 for entry in stranded_entries if entry.target_type == "smtp" and entry.status == "pending") >= 3
+    assert sum(1 for entry in stranded_entries if entry.target_type == "telegram" and entry.status == "pending") >= 2
+    assert sum(1 for entry in partial_recovery_entries if entry.target_type == "telegram" and entry.status == "delivered") == 4
+    assert any(entry.target_type == "smtp" and entry.status == "pending" for entry in partial_recovery_entries)
+    assert all(entry.status == "delivered" for entry in outbox_entries)
+    assert all(entry.retry_count == 0 for entry in entries_by_target["webhook"])
+    assert max(entry.retry_count for entry in entries_by_target["smtp"]) >= 2
+    assert max(entry.retry_count for entry in entries_by_target["telegram"]) >= 1
+    assert all(entry.last_error is None for entry in outbox_entries)
+    assert len(entries_by_target["webhook"]) == 4
+    assert len(entries_by_target["smtp"]) == 4
+    assert len(entries_by_target["telegram"]) == 4
+    assert any("BREAKER_OPEN" in payload for payload in webhook_payloads)
+    assert any("COMM_LOSS_INVERTER_BLOCK" in payload for payload in webhook_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in webhook_payloads)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in webhook_payloads)
+    assert any("BREAKER_OPEN" in payload for payload in smtp_payloads)
+    assert any("COMM_LOSS_INVERTER_BLOCK" in payload for payload in smtp_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in smtp_payloads)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in smtp_payloads)
+    assert any("BREAKER_OPEN" in payload for payload in telegram_payloads)
+    assert any("COMM_LOSS_INVERTER_BLOCK" in payload for payload in telegram_payloads)
+    assert any(LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE in payload for payload in telegram_payloads)
+    assert any(GRID_PATH_UNAVAILABLE_ALERT_CODE in payload for payload in telegram_payloads)
+    assert {alert.alarm_code for alert in alerts_in_store if alert.alert_id in {item.alert_id for item in alerts}} == {
+        "BREAKER_OPEN",
+        "COMM_LOSS_INVERTER_BLOCK",
+        LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+        GRID_PATH_UNAVAILABLE_ALERT_CODE,
+    }
+
+
 def _build_inverter_blocks_state(*lost_asset_ids: str) -> list[dict[str, str]]:
     lost_assets = set(lost_asset_ids)
     return [

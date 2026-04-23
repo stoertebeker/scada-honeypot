@@ -451,6 +451,10 @@ Pflichttests:
   mehreren Backoff-Zyklen ab: vier Alert-Wellen, gemischte Zielkanaele,
   interval-getriebene Retries und gestaffelte spaete Zustellung zuvor
   gestrandeter SMTP-Ziele
+- ein weiterer Integrations-Sweep prueft jetzt denselben Recovery-Pfad
+  runtime-nah ueber `build_local_runtime()`: vier Alert-Wellen im laufenden
+  Betrieb, gleichzeitig gestrandetes SMTP und Telegram und spaetere
+  Mehrkanal-Erholung ueber mehrere echte Runner-Intervalle
 
 ## 13. Logging- und Event-Tests
 
