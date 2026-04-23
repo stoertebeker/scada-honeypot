@@ -15,7 +15,7 @@ Phase I** gezogen:
 - browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
   wichtigsten sichtbaren und sicherheitsrelevanten Pfade
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `237 passed`
+  Gesamttestlauf steht aktuell bei `238 passed`
 
 Wichtiger Kurs:
 
@@ -30,6 +30,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `d5a2811` `test: stress outbox staggered target retries`
 - `2acaaf0` `test: harden outbox target backoff cycles`
 - `6fa2e21` `docs: sync project status and handoff`
 - `600e4b8` `test: gate partial multi-target exporter failure`
@@ -906,9 +907,10 @@ Operative Hinweise:
 Direkter Kurs fuer den naechsten Agenten:
 
 1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
-   rund; sinnvoller naechster Kurs ist jetzt ein Background-Runner-Sweep mit
-   mehreren gleichzeitigen Folge-Alerts, gemischten Retry-Zustaenden und
-   wiederholtem `wake()`/Intervall-Verhalten ueber Webhook, SMTP und Telegram
+   rund; sinnvoller naechster Kurs ist jetzt ein noch groesserer
+   Background-Runner-Sweep mit mehreren neuen Alerts waehrend offener
+   Retry-Fenster, gemischten Zielkanaelen und laengerem Batch-/Backoff-Verlauf
+   ueber Webhook, SMTP und Telegram
 
 Empfohlener naechster atomarer Fix in Phase D/E:
 

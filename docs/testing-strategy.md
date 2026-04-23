@@ -440,6 +440,9 @@ Pflichttests:
 - ein Unit-Sweep prueft jetzt zusaetzlich target-spezifisches Outbox-Leasing
   und gestaffelte Backoff-Fenster ueber mehrere Runner-Zyklen mit mehreren
   gleichzeitigen Alerts
+- ein weiterer Unit-Sweep prueft den `BackgroundOutboxRunnerService` mit
+  wiederholtem `wake()`, neuen Alerts waehrend offener Retry-Fenster und
+  spaeterem Batch-Retry auf einem noch gestrandeten Zielkanal
 
 ## 13. Logging- und Event-Tests
 
