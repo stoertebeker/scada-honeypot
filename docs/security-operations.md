@@ -77,6 +77,9 @@ Eigenschaften:
 - Stand 23. April 2026 weiter `NO-GO`, bis Ingress, `/service/login`,
   operative Egress-Ziele und Beobachtungsprozess deployment-spezifisch
   entschieden sind
+- fuer diese deployment-spezifische Freigabe ist
+  [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
+  verbindlich zu fuehren
 
 ## 4. Harte Sicherheitsgrenzen
 

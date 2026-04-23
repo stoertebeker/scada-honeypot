@@ -81,4 +81,5 @@ stattdessen:
 
 1. deployment-spezifische Ingress-Entscheidung dokumentieren
 2. `/service/login` bewusst auf `an` oder `aus` festzurren
-3. Exponierungs-Checkliste fuer genau dieses Zielumfeld abzeichnen
+3. [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
+   fuer genau dieses Zielumfeld abzeichnen

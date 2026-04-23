@@ -30,6 +30,8 @@ Phase I** gezogen:
   `pre-exposure` ist `GO`, `exposed-research` bleibt `NO-GO`, bis
   deployment-spezifische Ingress-, `/service/login`- und Egress-Entscheide
   dokumentiert sind
+- dafuer liegt jetzt eine konkrete Einsatzkarte in
+  `docs/exposed-research-checklist.md` bereit
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
   Gesamttestlauf steht aktuell bei `255 passed`
 
@@ -46,6 +48,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `10a2d4d` `docs: record pre-exposure go decision`
 - `2801c7d` `docs: sync pre-exposure gate status`
 - `f87709b` `test: add pre-exposure release gate sweep`
 - `d66c41e` `feat: gate exporter egress targets`

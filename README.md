@@ -138,6 +138,9 @@ Die wichtigsten Dokumente:
 - [docs/pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
   - formale `GO`-Entscheidung fuer `pre-exposure` und klare Grenzen vor
     `exposed-research`
+- [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
+  - deployment-spezifische Abnahme fuer Ingress, `/service/login`, Egress,
+    Monitoring und Incident-Kurs vor echter Exponierung
 
 ## Empfohlener naechster Baukurs
 
@@ -146,6 +149,7 @@ Der naechste konkrete Schlag liegt damit nicht mehr im Grundbau, sondern im
 deployment-spezifischen Sicherheitskurs vor echter Exponierung:
 
 1. Ingress- und `/service/login`-Entscheidung fuer das konkrete Zielumfeld dokumentieren
+2. Exponierungs-Checkliste fuer genau dieses Zielumfeld abzeichnen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
