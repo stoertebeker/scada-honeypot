@@ -50,6 +50,10 @@ Phase I** gezogen:
   `docs/exposed-research-profile-lab-vm-observer-01.md` mit festen
   Entscheidungen zu Ingress, `/service/login`, Webhook-Egress, Monitoring und
   Incident-Kurs
+- zusaetzlich liegt jetzt die deployment-spezifisch ausgefuellte Einsatzkarte
+  `docs/exposed-research-checklist-lab-vm-observer-01.md` vor; der Kurs ist
+  damit fachlich konkret, bleibt aber bis zu echten Firewall-, Empfaenger-
+  und Rollenfreigaben bewusst auf `NO-GO`
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
   Gesamttestlauf steht aktuell bei `264 passed`
 

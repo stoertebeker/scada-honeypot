@@ -149,6 +149,9 @@ Die wichtigsten Dokumente:
 - [docs/exposed-research-profile-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-profile-lab-vm-observer-01.md)
   - konkretes Referenzprofil fuer die erste kontrollierte `exposed-research`-
     Exponierung mit festen Ingress-, `/service/login`- und Egress-Entscheiden
+- [docs/exposed-research-checklist-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-lab-vm-observer-01.md)
+  - deployment-spezifisch ausgefuellte Einsatzkarte fuer das erste
+    freizugebende `exposed-research`-Profil mit klaren Restpunkten vor `GO`
 
 ## Empfohlener naechster Baukurs
 
@@ -160,6 +163,9 @@ deployment-spezifischen Sicherheitskurs vor echter Exponierung:
 2. Exponierungs-Checkliste fuer genau dieses Zielumfeld abzeichnen
 3. Referenzprofil `lab-vm-observer-01` deployment-spezifisch kopieren und
    final abzeichnen
+4. die offenen Restpunkte aus
+   `docs/exposed-research-checklist-lab-vm-observer-01.md` auf dem Zielumfeld
+   schliessen
 
 Danach bleibt der weitere Baukurs laut Roadmap:
 
