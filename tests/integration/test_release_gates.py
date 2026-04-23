@@ -7,6 +7,7 @@ from struct import pack, unpack
 from time import monotonic, sleep
 
 import httpx
+import pytest
 
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter, WebhookExporter
 from honeypot.main import build_local_runtime, cli
@@ -148,6 +149,19 @@ def test_release_gate_disabled_service_login_returns_quiet_403(tmp_path: Path) -
     assert "date" not in header_names
     assert "Access Denied" in response.text
     assert "FastAPI" not in response.text
+
+
+def test_release_gate_nonlocal_bind_requires_approved_ingress_bindings(tmp_path: Path) -> None:
+    env_file = write_env(
+        tmp_path,
+        "ALLOW_NONLOCAL_BIND=1",
+        "MODBUS_BIND_HOST=0.0.0.0",
+        "HMI_BIND_HOST=0.0.0.0",
+        f"EVENT_STORE_PATH={tmp_path / 'events' / 'honeypot.db'}",
+    )
+
+    with pytest.raises(RuntimeError, match="APPROVED_INGRESS_BINDINGS"):
+        build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
 
 
 def test_release_gate_exporter_failure_stays_internal_and_clients_remain_stable(tmp_path: Path) -> None:

@@ -93,6 +93,7 @@ def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enab
                 "ALLOW_NONLOCAL_BIND=1",
                 "MODBUS_BIND_HOST=0.0.0.0",
                 "HMI_BIND_HOST=0.0.0.0",
+                "APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:0,hmi:0.0.0.0:0",
                 f"EVENT_STORE_PATH={event_store_path}",
             )
         )

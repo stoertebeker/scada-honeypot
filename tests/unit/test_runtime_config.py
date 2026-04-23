@@ -28,6 +28,7 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.runtime_status_enabled is False
     assert config.runtime_status_interval_seconds == 5
     assert config.approved_egress_targets == ()
+    assert config.approved_ingress_bindings == ()
 
 
 def test_load_runtime_config_reads_env_file(monkeypatch, tmp_path: Path) -> None:
@@ -131,6 +132,21 @@ def test_runtime_config_normalizes_approved_egress_targets(monkeypatch, tmp_path
     assert config.approved_egress_targets == (
         "webhook:example.invalid:443",
         "smtp:mail.example.invalid:25",
+    )
+
+
+def test_runtime_config_normalizes_approved_ingress_bindings(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    config = RuntimeConfig(
+        _env_file=None,
+        approved_ingress_bindings="MODBUS:0.0.0.0:1502, hmi:0.0.0.0:8080, modbus:0.0.0.0:1502",
+    )
+
+    assert config.approved_ingress_bindings == (
+        "modbus:0.0.0.0:1502",
+        "hmi:0.0.0.0:8080",
     )
 
 

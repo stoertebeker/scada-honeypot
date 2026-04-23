@@ -19,6 +19,7 @@ from honeypot.exporter_runner import (
 )
 from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.runtime_egress import enforce_runtime_egress_policy
+from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
@@ -134,6 +135,11 @@ def build_local_runtime(
 
     config = load_runtime_config(env_file=env_file)
     _enforce_runtime_bind_policy(config)
+    enforce_runtime_ingress_policy(
+        config=config,
+        modbus_port=config.modbus_port if modbus_port is None else modbus_port,
+        hmi_port=config.hmi_port if hmi_port is None else hmi_port,
+    )
 
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))

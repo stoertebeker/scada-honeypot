@@ -110,6 +110,7 @@ class RuntimeConfig(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     approved_egress_targets: Annotated[tuple[str, ...], NoDecode] = ()
+    approved_ingress_bindings: Annotated[tuple[str, ...], NoDecode] = ()
 
     log_level: Literal["debug", "info", "warning", "error", "critical"] = "info"
     trend_window_minutes: int = Field(default=180, ge=1, le=1440)
@@ -145,9 +146,9 @@ class RuntimeConfig(BaseSettings):
     def normalize_optional_strings(cls, value: object) -> str | None:
         return _normalize_optional_string(value)
 
-    @field_validator("approved_egress_targets", mode="before")
+    @field_validator("approved_egress_targets", "approved_ingress_bindings", mode="before")
     @classmethod
-    def normalize_approved_egress_targets(cls, value: object) -> tuple[str, ...]:
+    def normalize_string_tuple_settings(cls, value: object) -> tuple[str, ...]:
         return _normalize_string_tuple(value)
 
     @field_validator("attacker_ui_locale", "attacker_ui_fallback_locale")
