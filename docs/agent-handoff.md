@@ -46,6 +46,10 @@ Phase I** gezogen:
   heutigen Stand wegen fehlender expliziter Non-Local-Bind- und Ingress-
   Freigaben sowie offener Deployment-Entscheide
   bewusst als `NO-GO` fuer echte Exponierung dokumentiert
+- neu an Deck liegt jetzt ein konkretes Referenzprofil
+  `docs/exposed-research-profile-lab-vm-observer-01.md` mit festen
+  Entscheidungen zu Ingress, `/service/login`, Webhook-Egress, Monitoring und
+  Incident-Kurs
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
   Gesamttestlauf steht aktuell bei `264 passed`
 
@@ -62,6 +66,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `6a6f97a` `docs: sync ingress approval gate`
 - `8ee4865` `feat: gate nonlocal ingress approvals`
 - `eca1a13` `test: cover nonlocal runtime startup`
 - `21229f8` `feat: gate nonlocal runtime binds`
