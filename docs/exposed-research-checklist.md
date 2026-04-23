@@ -12,6 +12,9 @@ Vorbedingung:
 
 - [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
   steht auf `GO`
+- eine ausgefuellte Beispielkarte liegt in
+  [exposed-research-checklist-example.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-example.md)
+  und zeigt den aktuellen Projektstand bewusst als `NO-GO`
 
 ## 1. Einsatzdaten
 

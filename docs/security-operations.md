@@ -80,6 +80,9 @@ Eigenschaften:
 - fuer diese deployment-spezifische Freigabe ist
   [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
   verbindlich zu fuehren
+- eine ausgefuellte Beispielbewertung des heutigen Stands liegt in
+  [exposed-research-checklist-example.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-example.md)
+  und endet bewusst auf `NO-GO`
 
 ## 4. Harte Sicherheitsgrenzen
 

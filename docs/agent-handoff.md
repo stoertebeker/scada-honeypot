@@ -32,6 +32,9 @@ Phase I** gezogen:
   dokumentiert sind
 - dafuer liegt jetzt eine konkrete Einsatzkarte in
   `docs/exposed-research-checklist.md` bereit
+- zusaetzlich liegt jetzt eine ausgefuellte Beispielbewertung vor, die den
+  heutigen Stand wegen lokaler Bind-Grenzen und offener Deployment-Entscheide
+  bewusst als `NO-GO` fuer echte Exponierung dokumentiert
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
   Gesamttestlauf steht aktuell bei `255 passed`
 
@@ -48,6 +51,7 @@ Wichtiger Kurs:
 
 ## Letzte Commits
 
+- `83c3327` `docs: add exposed research checklist`
 - `10a2d4d` `docs: record pre-exposure go decision`
 - `2801c7d` `docs: sync pre-exposure gate status`
 - `f87709b` `test: add pre-exposure release gate sweep`

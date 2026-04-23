@@ -141,6 +141,9 @@ Die wichtigsten Dokumente:
 - [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
   - deployment-spezifische Abnahme fuer Ingress, `/service/login`, Egress,
     Monitoring und Incident-Kurs vor echter Exponierung
+- [docs/exposed-research-checklist-example.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-example.md)
+  - ausgefuellte Beispielbewertung, die den aktuellen Stand ehrlich als
+    `NO-GO` fuer echte Exponierung dokumentiert
 
 ## Empfohlener naechster Baukurs
 
