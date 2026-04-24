@@ -3,7 +3,9 @@
 !.env.example
 .DS_Store
 .venv/
-.schrammns_workflow/
+.schrammns_workflow/*
+!.schrammns_workflow/plans/
+!.schrammns_workflow/plans/**
 __pycache__/
 .pytest_cache/
 .ruff_cache/
