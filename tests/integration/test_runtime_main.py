@@ -122,6 +122,48 @@ def test_build_local_runtime_background_evolution_advances_snapshot_in_runtime(t
     assert len(runtime.trend_history.snapshot()) >= 2
 
 
+def test_build_local_runtime_background_evolution_updates_weather_driven_power_in_runtime(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    clock = FrozenClock(PlantSnapshot.from_fixture(load_plant_fixture("normal_operation")).start_time)
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-weather-01",
+                "WEATHER_PROVIDER=deterministic",
+                "WEATHER_LATITUDE=52.52",
+                "WEATHER_LONGITUDE=13.405",
+                "WEATHER_ELEVATION_M=34",
+                f"EVENT_STORE_PATH={event_store_path}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0, clock=clock)
+    try:
+        runtime.start()
+        initial_snapshot = runtime.modbus_service.register_map.snapshot
+        clock.advance(timedelta(hours=10))
+        runtime.evolution_service.wake()
+
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            updated_snapshot = runtime.modbus_service.register_map.snapshot
+            if updated_snapshot.observed_at > initial_snapshot.observed_at:
+                break
+            sleep(0.05)
+        else:
+            raise AssertionError("runtime evolution hat wettergetriebene Werte nicht fortgeschrieben")
+    finally:
+        runtime.stop()
+
+    assert updated_snapshot.weather_station.irradiance_w_m2 < initial_snapshot.weather_station.irradiance_w_m2
+    assert updated_snapshot.site.plant_power_mw < initial_snapshot.site.plant_power_mw
+    assert updated_snapshot.revenue_meter.export_energy_mwh_total is not None
+
+
 def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

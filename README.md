@@ -135,9 +135,9 @@ uv run python -m playwright install chromium
 - `monitoring`
   - lokaler Heartbeat nach `RUNTIME_STATUS_PATH`
 - `runtime_evolution`
-  - tickende `observed_at`-Zeit und kleine In-Memory-Trendhistorie fuer `/trends`
+  - tickende `observed_at`-Zeit, wettergetriebene Anlagenleistung und kleine In-Memory-Trendhistorie fuer `/trends`
 - `weather_core`
-  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern und Geo-Config
+  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
 - `exporter_sdk`
   - gemeinsamer Vertrag fuer Exporter
 - `exporter_runner`

@@ -26,12 +26,19 @@ from honeypot.runtime_exposure import append_exposed_research_finding, enforce_e
 from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
+from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS, ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.runtime_reset import reset_local_runtime_artifacts
 from honeypot.runtime_evolution import BackgroundPlantEvolutionService, TrendHistoryBuffer, trend_history_capacity
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import Clock, SystemClock
+from honeypot.weather_core import (
+    DeterministicDiurnalWeatherProvider,
+    OpenMeteoForecastProvider,
+    OpenMeteoSatelliteRadiationProvider,
+    WeatherObservationProvider,
+)
 
 MODULES: tuple[str, ...] = (
     "config_core",
@@ -166,6 +173,7 @@ def build_local_runtime(
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
     runtime_clock = SystemClock() if clock is None else clock
+    weather_provider = _build_weather_provider(config)
     event_store = SQLiteEventStore(config.event_store_path)
     event_recorder = EventRecorder(
         store=event_store,
@@ -178,6 +186,7 @@ def build_local_runtime(
         ),
     )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
+    simulator = PlantSimulator.from_snapshot(snapshot)
     trend_history = TrendHistoryBuffer(
         max_samples=trend_history_capacity(
             window_minutes=config.trend_window_minutes,
@@ -188,6 +197,12 @@ def build_local_runtime(
         register_map=register_map,
         history=trend_history,
         clock=runtime_clock,
+        simulator=simulator,
+        weather_provider=weather_provider,
+        timezone=config.timezone,
+        weather_latitude=config.weather_latitude,
+        weather_longitude=config.weather_longitude,
+        weather_elevation_m=config.weather_elevation_m,
         interval_seconds=EVOLUTION_INTERVAL_SECONDS,
     )
     hmi_app = create_hmi_app(
@@ -290,6 +305,22 @@ def _build_exporters(config: RuntimeConfig) -> dict[str, HoneypotExporter]:
             retry_after_seconds=config.outbox_retry_backoff_seconds,
         )
     return exporters
+
+
+def _build_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider | None:
+    if config.weather_provider == "disabled":
+        return None
+    if config.weather_provider == "deterministic":
+        return DeterministicDiurnalWeatherProvider()
+    if config.weather_provider == "open_meteo_forecast":
+        return OpenMeteoForecastProvider(
+            timeout_seconds=float(config.weather_request_timeout_seconds),
+            cache_ttl_seconds=config.weather_cache_ttl_seconds,
+        )
+    return OpenMeteoSatelliteRadiationProvider(
+        timeout_seconds=float(config.weather_request_timeout_seconds),
+        cache_ttl_seconds=config.weather_cache_ttl_seconds,
+    )
 
 
 def _runtime_banner(runtime: LocalRuntime) -> str:

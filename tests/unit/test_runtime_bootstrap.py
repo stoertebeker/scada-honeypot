@@ -192,6 +192,29 @@ def test_build_local_runtime_wires_background_evolution_service(tmp_path: Path) 
     assert runtime.trend_history.max_samples > 2
 
 
+def test_build_local_runtime_wires_deterministic_weather_provider(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "WEATHER_PROVIDER=deterministic\n"
+            "WEATHER_LATITUDE=52.52\n"
+            "WEATHER_LONGITUDE=13.405\n"
+            "WEATHER_ELEVATION_M=34\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.evolution_service.weather_provider is not None
+    assert runtime.evolution_service.weather_provider.provider_name == "deterministic"
+    assert runtime.evolution_service.weather_latitude == 52.52
+    assert runtime.evolution_service.weather_longitude == 13.405
+    assert runtime.evolution_service.weather_elevation_m == 34
+
+
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

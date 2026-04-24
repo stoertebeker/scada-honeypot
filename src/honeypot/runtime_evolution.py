@@ -9,8 +9,10 @@ from math import ceil
 from threading import Event, Lock, Thread
 
 from honeypot.asset_domain import PlantSnapshot
+from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ReadOnlyRegisterMap
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
+from honeypot.weather_core import WeatherObservationProvider
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +68,12 @@ class BackgroundPlantEvolutionService:
     register_map: ReadOnlyRegisterMap
     history: TrendHistoryBuffer
     clock: Clock = field(default_factory=SystemClock)
+    simulator: PlantSimulator | None = None
+    weather_provider: WeatherObservationProvider | None = None
+    timezone: str = "UTC"
+    weather_latitude: float | None = None
+    weather_longitude: float | None = None
+    weather_elevation_m: float | None = None
     interval_seconds: float = 5.0
     _stop_event: Event = field(default_factory=Event, init=False, repr=False)
     _wake_event: Event = field(default_factory=Event, init=False, repr=False)
@@ -109,23 +117,40 @@ class BackgroundPlantEvolutionService:
         snapshot = self.register_map.snapshot
         now = ensure_utc_datetime(self.clock.now())
         observed_at = now if now > snapshot.observed_at else ensure_utc_datetime(snapshot.observed_at + timedelta(seconds=1))
-        evolved_snapshot = snapshot.model_copy(
-            update={
-                "observed_at": observed_at,
-                "power_plant_controller": snapshot.power_plant_controller.model_copy(update={"last_update_ts": observed_at}),
-                "inverter_blocks": tuple(
-                    block.model_copy(update={"last_update_ts": observed_at}) for block in snapshot.inverter_blocks
-                ),
-                "weather_station": snapshot.weather_station.model_copy(update={"last_update_ts": observed_at}),
-                "revenue_meter": snapshot.revenue_meter.model_copy(update={"last_update_ts": observed_at}),
-                "grid_interconnect": snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at}),
-            }
-        )
+        evolved_snapshot = self._evolve_snapshot(snapshot=snapshot, observed_at=observed_at)
         self.register_map.replace_snapshot(evolved_snapshot)
         self.history.append_snapshot(evolved_snapshot)
         with self._lock:
             self._evolution_count += 1
         return evolved_snapshot
+
+    def _evolve_snapshot(self, *, snapshot: PlantSnapshot, observed_at: datetime) -> PlantSnapshot:
+        if self.simulator is None or self.weather_provider is None:
+            return snapshot.model_copy(
+                update={
+                    "observed_at": observed_at,
+                    "power_plant_controller": snapshot.power_plant_controller.model_copy(update={"last_update_ts": observed_at}),
+                    "inverter_blocks": tuple(
+                        block.model_copy(update={"last_update_ts": observed_at}) for block in snapshot.inverter_blocks
+                    ),
+                    "weather_station": snapshot.weather_station.model_copy(update={"last_update_ts": observed_at}),
+                    "revenue_meter": snapshot.revenue_meter.model_copy(update={"last_update_ts": observed_at}),
+                    "grid_interconnect": snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at}),
+                }
+            )
+
+        observation = self.weather_provider.observe(
+            observed_at=observed_at,
+            timezone=self.timezone,
+            latitude=self.weather_latitude,
+            longitude=self.weather_longitude,
+            elevation_m=self.weather_elevation_m,
+        )
+        return self.simulator.evolve_with_weather(
+            snapshot,
+            observed_at=observed_at,
+            weather_observation=observation,
+        )
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():

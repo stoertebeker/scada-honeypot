@@ -84,9 +84,9 @@ uv run pytest -q
 - `monitoring`
   - Heartbeat nach `RUNTIME_STATUS_PATH`
 - `runtime_evolution`
-  - tickende Snapshot-Zeit plus kleine In-Memory-Trendhistorie fuer `/trends`
+  - tickende Snapshot-Zeit plus wettergetriebene Leistungs-/Meterfortschreibung und kleine In-Memory-Trendhistorie fuer `/trends`
 - `weather_core`
-  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern und Geo-Config
+  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
 - `exporter_sdk`
   - gemeinsamer Exporter-Vertrag
 - `exporter_runner`

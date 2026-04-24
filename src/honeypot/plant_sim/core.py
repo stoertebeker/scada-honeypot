@@ -8,6 +8,8 @@ from typing import Any
 from honeypot.asset_domain import PlantAlarm, PlantSnapshot
 from honeypot.asset_domain.models import AssetStatus, CommunicationState, DataQuality
 from honeypot.event_core import EventRecorder
+from honeypot.time_core import ensure_utc_datetime
+from honeypot.weather_core import WeatherObservation
 
 SCENARIO_ALARM_CODES = frozenset(
     {
@@ -111,6 +113,83 @@ class PlantSimulator:
 
         irradiance_factor = min(irradiance, 1000) / 1000
         return round(self.nominal_capacity_kw * irradiance_factor, 1)
+
+    def evolve_with_weather(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        observed_at,
+        weather_observation: WeatherObservation,
+    ) -> PlantSnapshot:
+        """Leitet Wetter, Leistung und Meterwerte fuer einen neuen Beobachtungszeitpunkt fort."""
+
+        observed_at = ensure_utc_datetime(observed_at)
+        working_snapshot = snapshot.model_copy(
+            update={
+                "observed_at": observed_at,
+                "power_plant_controller": snapshot.power_plant_controller.model_copy(update={"last_update_ts": observed_at}),
+                "weather_station": _weather_station_from_observation(
+                    snapshot=snapshot,
+                    observation=weather_observation,
+                    observed_at=observed_at,
+                ),
+                "revenue_meter": snapshot.revenue_meter.model_copy(update={"last_update_ts": observed_at}),
+                "grid_interconnect": snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at}),
+            }
+        )
+        controlled_snapshot = self._apply_inverter_block_control_matrix(
+            working_snapshot,
+            block_control_states={},
+        )
+        inverter_blocks = tuple(
+            block.model_copy(update={"last_update_ts": observed_at}) for block in controlled_snapshot.inverter_blocks
+        )
+        export_power_kw = controlled_snapshot.revenue_meter.export_power_kw
+        interval_seconds = max((observed_at - snapshot.observed_at).total_seconds(), 0.0)
+        revenue_meter = controlled_snapshot.revenue_meter.model_copy(
+            update={
+                "last_update_ts": observed_at,
+                "export_energy_mwh_total": _integrate_export_energy_mwh(
+                    previous_total_mwh=snapshot.revenue_meter.export_energy_mwh_total,
+                    export_power_kw=export_power_kw,
+                    interval_seconds=interval_seconds,
+                ),
+                "power_factor": _estimate_power_factor(
+                    reactive_power_target=controlled_snapshot.power_plant_controller.reactive_power_target,
+                    export_power_kw=export_power_kw,
+                    nominal_capacity_kw=self.nominal_capacity_kw,
+                ),
+                "grid_voltage_v": _estimate_grid_voltage_v(
+                    export_power_kw=export_power_kw,
+                    nominal_capacity_kw=self.nominal_capacity_kw,
+                    reactive_power_target=controlled_snapshot.power_plant_controller.reactive_power_target,
+                ),
+                "grid_frequency_hz": _estimate_grid_frequency_hz(
+                    export_power_kw=export_power_kw,
+                    nominal_capacity_kw=self.nominal_capacity_kw,
+                    wind_speed_m_s=weather_observation.wind_speed_m_s,
+                ),
+            }
+        )
+        grid_interconnect = controlled_snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at})
+        site = controlled_snapshot.site.model_copy(
+            update={
+                "communications_health": _site_communications_health(
+                    inverter_blocks=inverter_blocks,
+                    weather_station=working_snapshot.weather_station,
+                )
+            }
+        )
+        return _build_snapshot(
+            working_snapshot,
+            site=site,
+            power_plant_controller=working_snapshot.power_plant_controller,
+            inverter_blocks=inverter_blocks,
+            weather_station=working_snapshot.weather_station,
+            revenue_meter=revenue_meter,
+            grid_interconnect=grid_interconnect,
+            alarms=controlled_snapshot.alarms,
+        )
 
     def simulate_normal_operation(self, snapshot: PlantSnapshot) -> PlantSnapshot:
         """Erzeugt einen gesunden Basiszustand ohne aktive Szenario-Alarme."""
@@ -963,6 +1042,7 @@ def _build_snapshot(
     site=None,
     power_plant_controller=None,
     inverter_blocks=None,
+    weather_station=None,
     revenue_meter=None,
     grid_interconnect=None,
     alarms: tuple[PlantAlarm, ...] | None = None,
@@ -971,6 +1051,7 @@ def _build_snapshot(
     base_site = snapshot.site if site is None else site
     final_site = base_site.model_copy(update={"active_alarm_count": len(_active_alarms(final_alarms))})
     power_plant_controller_model = snapshot.power_plant_controller if power_plant_controller is None else power_plant_controller
+    final_weather_station = snapshot.weather_station if weather_station is None else weather_station
     final_revenue_meter = snapshot.revenue_meter if revenue_meter is None else revenue_meter
     final_grid = snapshot.grid_interconnect if grid_interconnect is None else grid_interconnect
     return PlantSnapshot(
@@ -987,7 +1068,7 @@ def _build_snapshot(
             }
         ),
         inverter_blocks=snapshot.inverter_blocks if inverter_blocks is None else inverter_blocks,
-        weather_station=snapshot.weather_station,
+        weather_station=final_weather_station,
         revenue_meter=final_revenue_meter.model_copy(
             update={
                 "quality": determine_data_quality(
@@ -1117,3 +1198,84 @@ def _current_block_control_states(
         )
         for block in snapshot.inverter_blocks
     }
+
+
+def _weather_station_from_observation(
+    *,
+    snapshot: PlantSnapshot,
+    observation: WeatherObservation,
+    observed_at,
+):
+    status, communication_state = _weather_station_state(observation.quality)
+    return snapshot.weather_station.model_copy(
+        update={
+            "status": status,
+            "communication_state": communication_state,
+            "quality": observation.quality,
+            "last_update_ts": observed_at,
+            "irradiance_w_m2": observation.irradiance_w_m2,
+            "module_temperature_c": observation.module_temperature_c,
+            "ambient_temperature_c": observation.ambient_temperature_c,
+            "wind_speed_m_s": observation.wind_speed_m_s,
+        }
+    )
+
+
+def _weather_station_state(quality: str) -> tuple[AssetStatus, CommunicationState]:
+    if quality == "good":
+        return "online", "healthy"
+    if quality == "estimated":
+        return "online", "healthy"
+    if quality == "stale":
+        return "degraded", "degraded"
+    return "degraded", "lost"
+
+
+def _integrate_export_energy_mwh(
+    *,
+    previous_total_mwh: float | None,
+    export_power_kw: float,
+    interval_seconds: float,
+) -> float:
+    base_total = 0.0 if previous_total_mwh is None else previous_total_mwh
+    interval_hours = max(interval_seconds, 0.0) / 3600
+    incremental_mwh = (max(export_power_kw, 0.0) / 1000) * interval_hours
+    return round(base_total + incremental_mwh, 4)
+
+
+def _estimate_power_factor(
+    *,
+    reactive_power_target: float,
+    export_power_kw: float,
+    nominal_capacity_kw: float,
+) -> float:
+    loading_factor = 0.0 if nominal_capacity_kw <= 0 else min(max(export_power_kw / nominal_capacity_kw, 0.0), 1.0)
+    return round(max(0.92, min(1.0, 0.996 - abs(reactive_power_target) * 0.05 - (1.0 - loading_factor) * 0.01)), 3)
+
+
+def _estimate_grid_voltage_v(
+    *,
+    export_power_kw: float,
+    nominal_capacity_kw: float,
+    reactive_power_target: float,
+) -> float:
+    loading_factor = 0.0 if nominal_capacity_kw <= 0 else min(max(export_power_kw / nominal_capacity_kw, 0.0), 1.0)
+    return round(33200 - loading_factor * 110 - reactive_power_target * 40, 1)
+
+
+def _estimate_grid_frequency_hz(
+    *,
+    export_power_kw: float,
+    nominal_capacity_kw: float,
+    wind_speed_m_s: float,
+) -> float:
+    loading_factor = 0.0 if nominal_capacity_kw <= 0 else min(max(export_power_kw / nominal_capacity_kw, 0.0), 1.0)
+    return round(50.02 - loading_factor * 0.03 + min(max(wind_speed_m_s, 0.0), 15.0) * 0.001, 2)
+
+
+def _site_communications_health(*, inverter_blocks: tuple, weather_station) -> CommunicationState:
+    if any(block.communication_state == "lost" for block in inverter_blocks) or weather_station.communication_state == "lost":
+        return "degraded"
+    if any(block.communication_state != "healthy" for block in inverter_blocks) or weather_station.communication_state != "healthy":
+        return "degraded"
+    return "healthy"
