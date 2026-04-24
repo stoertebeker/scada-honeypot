@@ -11,7 +11,7 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
   freizugeben
-- Gesamtteststand: `280 passed`
+- Gesamtteststand: `285 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine kleine
   Runtime-Historie und `observed_at`, nicht mehr nur ueber den Fixture-Start
 
@@ -85,6 +85,8 @@ uv run pytest -q
   - Heartbeat nach `RUNTIME_STATUS_PATH`
 - `runtime_evolution`
   - tickende Snapshot-Zeit plus kleine In-Memory-Trendhistorie fuer `/trends`
+- `weather_core`
+  - interne Wetterabstraktion mit deterministischem Offline-Provider und Geo-Config
 - `exporter_sdk`
   - gemeinsamer Exporter-Vertrag
 - `exporter_runner`

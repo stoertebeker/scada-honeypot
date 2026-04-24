@@ -43,6 +43,7 @@ MODULES: tuple[str, ...] = (
     "protocol_modbus",
     "hmi_web",
     "runtime_evolution",
+    "weather_core",
     "monitoring",
     "exporter_sdk",
     "exporter_runner",

@@ -100,6 +100,8 @@ Diese Grenzen sind verbindlich:
 - keine Datei-Uploads
 - keine generischen Debug-Endpunkte
 - keine echten Fernwartungspfade
+- interne Wetterkoordinaten duerfen weder in HMI noch in Events, Findings oder
+  Exporter-Payloads sichtbar werden
 
 Wenn eine dieser Grenzen verletzt waere, darf die Anlage nicht betrieben
 werden.

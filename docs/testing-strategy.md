@@ -76,6 +76,7 @@ Darum braucht das Projekt spaeter:
 
 - deterministische Tests
 - kontrolliert dynamische Tests
+- einen internen Offline-Wetterpfad, damit Realismus-Tests nicht am Netz haengen
 
 ### 4.4 Keine echten Fremdsysteme in Standardtests
 

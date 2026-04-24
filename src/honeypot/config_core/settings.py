@@ -78,6 +78,13 @@ class RuntimeConfig(BaseSettings):
     enable_tracker: bool = False
     default_power_limit_pct: int = Field(default=100, ge=0, le=100)
     alarm_threshold_low_output_pct: int = Field(default=35, ge=0, le=100)
+    weather_provider: Literal["disabled", "deterministic", "open_meteo_forecast", "open_meteo_satellite"] = "disabled"
+    weather_latitude: float | None = None
+    weather_longitude: float | None = None
+    weather_elevation_m: float | None = None
+    weather_refresh_seconds: int = Field(default=900, ge=1, le=86400)
+    weather_cache_ttl_seconds: int = Field(default=900, ge=0, le=86400)
+    weather_request_timeout_seconds: int = Field(default=10, ge=1, le=300)
 
     modbus_bind_host: str = "127.0.0.1"
     modbus_port: int = Field(default=1502, ge=1, le=65535)
@@ -154,6 +161,17 @@ class RuntimeConfig(BaseSettings):
     def normalize_optional_strings(cls, value: object) -> str | None:
         return _normalize_optional_string(value)
 
+    @field_validator("weather_latitude", "weather_longitude", "weather_elevation_m", mode="before")
+    @classmethod
+    def normalize_optional_floats(cls, value: object) -> float | None:
+        normalized = _normalize_optional_string(value)
+        if normalized is None:
+            return None
+        try:
+            return float(normalized)
+        except ValueError as exc:
+            raise ValueError("muss numerisch sein") from exc
+
     @field_validator(
         "approved_egress_targets",
         "approved_ingress_bindings",
@@ -201,6 +219,26 @@ class RuntimeConfig(BaseSettings):
             raise ValueError(
                 "TELEGRAM_BOT_TOKEN und TELEGRAM_CHAT_ID sind erforderlich, wenn der Telegram-Exporter aktiv ist"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_weather_settings(self) -> "RuntimeConfig":
+        if self.weather_latitude is not None and not -90 <= self.weather_latitude <= 90:
+            raise ValueError("WEATHER_LATITUDE muss im Bereich -90..90 liegen")
+        if self.weather_longitude is not None and not -180 <= self.weather_longitude <= 180:
+            raise ValueError("WEATHER_LONGITUDE muss im Bereich -180..180 liegen")
+        if self.weather_elevation_m is not None and not -500 <= self.weather_elevation_m <= 9000:
+            raise ValueError("WEATHER_ELEVATION_M muss im Bereich -500..9000 liegen")
+        if (self.weather_latitude is None) != (self.weather_longitude is None):
+            raise ValueError("WEATHER_LATITUDE und WEATHER_LONGITUDE muessen gemeinsam gesetzt werden")
+        if self.weather_provider in {"open_meteo_forecast", "open_meteo_satellite"} and (
+            self.weather_latitude is None or self.weather_longitude is None
+        ):
+            raise ValueError(
+                "WEATHER_LATITUDE und WEATHER_LONGITUDE sind erforderlich, wenn ein Open-Meteo-Provider aktiv ist"
+            )
+        if self.weather_cache_ttl_seconds > self.weather_refresh_seconds:
+            raise ValueError("WEATHER_CACHE_TTL_SECONDS darf WEATHER_REFRESH_SECONDS nicht ueberschreiten")
         return self
 
     @property

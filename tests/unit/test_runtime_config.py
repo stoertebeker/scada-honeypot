@@ -34,6 +34,13 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.public_ingress_mappings == ()
     assert config.watch_officer_name is None
     assert config.duty_engineer_name is None
+    assert config.weather_provider == "disabled"
+    assert config.weather_latitude is None
+    assert config.weather_longitude is None
+    assert config.weather_elevation_m is None
+    assert config.weather_refresh_seconds == 900
+    assert config.weather_cache_ttl_seconds == 900
+    assert config.weather_request_timeout_seconds == 10
 
 
 def test_load_runtime_config_reads_env_file(monkeypatch, tmp_path: Path) -> None:
@@ -188,3 +195,41 @@ def test_runtime_config_reads_nonlocal_bind_gate(monkeypatch, tmp_path: Path) ->
     config = RuntimeConfig(_env_file=None, allow_nonlocal_bind=True)
 
     assert config.allow_nonlocal_bind is True
+
+
+def test_weather_coordinates_require_valid_ranges(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, weather_latitude=91)
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, weather_longitude=181)
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, weather_latitude=52.5, weather_longitude=None)
+
+
+def test_open_meteo_provider_requires_coordinates_when_enabled(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, weather_provider="open_meteo_forecast")
+
+
+def test_deterministic_weather_provider_can_run_without_coordinates(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    config = RuntimeConfig(
+        _env_file=None,
+        weather_provider="deterministic",
+        weather_refresh_seconds=600,
+        weather_cache_ttl_seconds=300,
+    )
+
+    assert config.weather_provider == "deterministic"
+    assert config.weather_latitude is None
+    assert config.weather_longitude is None
+    assert config.weather_refresh_seconds == 600
+    assert config.weather_cache_ttl_seconds == 300
