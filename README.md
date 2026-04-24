@@ -137,7 +137,7 @@ uv run python -m playwright install chromium
 - `runtime_evolution`
   - tickende `observed_at`-Zeit und kleine In-Memory-Trendhistorie fuer `/trends`
 - `weather_core`
-  - interne Wetterabstraktion mit deterministischem Offline-Provider und Geo-Config
+  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern und Geo-Config
 - `exporter_sdk`
   - gemeinsamer Vertrag fuer Exporter
 - `exporter_runner`

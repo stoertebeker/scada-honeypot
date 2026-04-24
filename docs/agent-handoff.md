@@ -86,7 +86,7 @@ uv run pytest -q
 - `runtime_evolution`
   - tickende Snapshot-Zeit plus kleine In-Memory-Trendhistorie fuer `/trends`
 - `weather_core`
-  - interne Wetterabstraktion mit deterministischem Offline-Provider und Geo-Config
+  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern und Geo-Config
 - `exporter_sdk`
   - gemeinsamer Exporter-Vertrag
 - `exporter_runner`
