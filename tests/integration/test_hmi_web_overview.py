@@ -18,6 +18,7 @@ from honeypot.hmi_web.app import (
 from honeypot.main import build_local_runtime
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ReadOnlyRegisterMap
+from honeypot.runtime_evolution import TrendSample
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
@@ -31,6 +32,24 @@ def build_config(tmp_path: Path) -> RuntimeConfig:
         _env_file=None,
         event_store_path=tmp_path / "events" / "placeholder.db",
         jsonl_archive_enabled=False,
+    )
+
+
+def _trend_sample(
+    snapshot: PlantSnapshot,
+    *,
+    observed_at: datetime,
+    plant_power_mw: float,
+    irradiance_w_m2: float,
+    export_power_mw: float,
+) -> TrendSample:
+    return TrendSample(
+        observed_at=observed_at,
+        plant_power_mw=plant_power_mw,
+        active_power_limit_pct=snapshot.power_plant_controller.active_power_limit_pct,
+        irradiance_w_m2=irradiance_w_m2,
+        export_power_mw=export_power_mw,
+        block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
     )
 
 
@@ -361,6 +380,48 @@ async def test_trends_page_renders_snapshot_derived_traces_and_logs_hmi_events(t
     assert trends_event.event_type == "hmi.page.trends_viewed"
     assert trends_event.resulting_state["series_count"] == 7
     assert trends_event.resulting_state["plant_power_mw"] == 5.8
+
+
+@pytest.mark.asyncio
+async def test_trends_page_uses_live_history_without_location_leak(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    config = RuntimeConfig(
+        _env_file=None,
+        event_store_path=tmp_path / "events" / "hmi-trends-live.db",
+        jsonl_archive_enabled=False,
+        weather_provider="deterministic",
+        weather_latitude=52.52,
+        weather_longitude=13.405,
+        weather_elevation_m=34,
+    )
+    history = (
+        _trend_sample(snapshot, observed_at=snapshot.start_time, plant_power_mw=5.8, irradiance_w_m2=840, export_power_mw=5.79),
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time + timedelta(minutes=5),
+            plant_power_mw=5.2,
+            irradiance_w_m2=710,
+            export_power_mw=5.15,
+        ),
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot.model_copy(update={"observed_at": history[-1].observed_at}),
+        trend_history_provider=lambda: history,
+        config=config,
+        event_recorder=None,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/trends")
+
+    assert response.status_code == 200
+    assert "Trend Overview" in response.text
+    assert "The trace shows recent live movement across output and irradiance." in response.text
+    assert "Start / 5.80 MW" in response.text
+    assert "Current values stay aligned with the baseline operating trace." not in response.text
+    assert "52.52" not in response.text
+    assert "13.405" not in response.text
 
 
 @pytest.mark.asyncio
@@ -1557,7 +1618,7 @@ async def test_runtime_trends_page_reads_curtailment_from_shared_truth(tmp_path:
 
     assert response.status_code == 200
     assert "Trend Overview" in response.text
-    assert "The trace shows curtailed output against the nominal baseline." in response.text
+    assert "The live trace shows curtailed output across the recent history window." in response.text
     assert "2026-04-01 10:05:00 UTC" in response.text
     assert "3.22 MW" in response.text
     assert "55.5 %" in response.text

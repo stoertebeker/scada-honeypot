@@ -233,7 +233,7 @@ class TrendSeriesView:
     asset_id: str
     title: str
     current_value: str
-    baseline_value: str
+    start_value: str
     polyline_points: str
     tone: str
     min_label: str
@@ -2152,9 +2152,8 @@ def build_trends_view_model(
 ) -> TrendsViewModel:
     """Bereitet eine kleine glaubhafte Verlaufssicht aus echter Mini-Historie auf."""
 
-    baseline_snapshot = PlantSnapshot.from_fixture(load_plant_fixture(snapshot.fixture_name))
-    context_label, context_tone = _trends_context(snapshot, baseline_snapshot, texts)
     history = _trend_history_or_fallback(snapshot, trend_history)
+    context_label, context_tone = _trends_context(snapshot, history, texts)
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
         OverviewMetric(
@@ -3071,7 +3070,7 @@ def _trend_series_view(
 ) -> TrendSeriesView:
     if not values:
         raise ValueError("values muss mindestens einen Verlaufspunkt enthalten")
-    baseline_value = values[0]
+    start_value = values[0]
     current_value = values[-1]
     min_value = min(values)
     max_value = max(values)
@@ -3079,7 +3078,7 @@ def _trend_series_view(
         asset_id=asset_id,
         title=title,
         current_value=value_formatter(current_value),
-        baseline_value=value_formatter(baseline_value),
+        start_value=value_formatter(start_value),
         polyline_points=_sparkline_points(values),
         tone=tone,
         min_label=value_formatter(min_value),
@@ -3109,13 +3108,6 @@ def _block_series(history: tuple[TrendSample, ...], asset_id: str) -> tuple[floa
     return tuple(dict(sample.block_power_kw).get(asset_id, 0.0) for sample in history)
 
 
-def _interpolate_values(start_value: float, end_value: float, *, steps: int) -> tuple[float, ...]:
-    if steps < 2:
-        raise ValueError("steps muss mindestens 2 sein")
-    delta = end_value - start_value
-    return tuple(round(start_value + delta * (index / (steps - 1)), 3) for index in range(steps))
-
-
 def _sparkline_points(values: tuple[float, ...], *, width: int = 280, height: int = 90, padding: int = 10) -> str:
     min_value = min(values)
     max_value = max(values)
@@ -3131,16 +3123,21 @@ def _sparkline_points(values: tuple[float, ...], *, width: int = 280, height: in
 
 def _trends_context(
     snapshot: PlantSnapshot,
-    baseline_snapshot: PlantSnapshot,
+    history: tuple[TrendSample, ...],
     texts: dict[str, str],
 ) -> tuple[str, str]:
     if snapshot.grid_interconnect.breaker_state != "closed":
         return texts["trends.context.breaker_open"], "alarm"
-    if snapshot.power_plant_controller.active_power_limit_pct < baseline_snapshot.power_plant_controller.active_power_limit_pct:
-        return texts["trends.context.curtailment_visible"], "warn"
     if snapshot.site.communications_health != "healthy":
         return texts["trends.context.comms_degraded"], "warn"
-    return texts["trends.context.baseline_aligned"], "good"
+    if snapshot.power_plant_controller.active_power_limit_pct < 100:
+        return texts["trends.context.curtailment_visible"], "warn"
+    if len(history) >= 2 and (
+        abs(history[-1].plant_power_mw - history[0].plant_power_mw) >= 0.1
+        or abs(history[-1].irradiance_w_m2 - history[0].irradiance_w_m2) >= 25
+    ):
+        return texts["trends.context.live_history_visible"], "good"
+    return texts["trends.context.stable_live_history"], "good"
 
 
 def _weather_output_context(snapshot: PlantSnapshot, texts: dict[str, str]) -> tuple[str, str]:

@@ -736,7 +736,7 @@ def test_playwright_power_limit_updates_overview_and_trends(runtime: LocalRuntim
 
     expect(page).to_have_url(re.compile(r".*/trends$"))
     expect(page.get_by_role("heading", name="Trend Overview")).to_be_visible()
-    expect(page.get_by_text("The trace shows curtailed output against the nominal baseline.")).to_be_visible()
+    expect(page.get_by_text("The live trace shows curtailed output across the recent history window.")).to_be_visible()
     expect(page.locator("body")).to_contain_text("55.5 %")
     expect(page.locator("body")).to_contain_text("3.22 MW")
 
