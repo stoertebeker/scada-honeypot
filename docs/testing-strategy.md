@@ -469,6 +469,9 @@ Pflichttests:
   CLI-Logik: lokale Artefakte wie SQLite, JSONL, Statusdatei, `PCAP` sowie
   `-wal`/`-shm`-Sidecars werden entfernt und ein frischer Runtime-Start laedt
   danach wieder den definierten Anfangszustand
+- ein weiterer Repo-Hardening-Test prueft jetzt Markdown- und Plan-Dateien auf
+  host-spezifische Heimverzeichnis-Pfade und Editor-/Datei-URIs, damit lokale
+  Entwicklungsumgebungen nicht versehentlich im Repo sichtbar werden
 - mehrere Unit-Tests pruefen jetzt das Egress-Gate fuer aktive Exporter:
   `APPROVED_EGRESS_TARGETS` wird normalisiert, Webhook/SMTP/Telegram-Ziele
   werden auf `target_type:host:port` verdichtet und `main()` verweigert den
