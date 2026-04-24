@@ -119,6 +119,8 @@ Die wichtigsten Dokumente:
   - Projektziel, Scope, Nicht-Ziele, Grundannahmen
 - [docs/architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
   - modularer Monolith, Hauptmodule, Datenfluss
+- [docs/scada-primer-and-module-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/scada-primer-and-module-guide.md)
+  - SCADA-Begriffe, Komponentenbedeutung und Modulkarte fuer Nicht-OT-Menschen
 - [docs/domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
   - fachliche Assets, Zustaende, Setpoints, Alarme
 - [docs/logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
@@ -129,6 +131,8 @@ Die wichtigsten Dokumente:
   - konkrete V1-Registerabbildung
 - [docs/hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
   - Seitenbaum, Login, Fehlerbilder, HMI-Regeln
+- [docs/test-attacker-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/test-attacker-guide.md)
+  - konkreter Bedienkurs fuer HMI, Service-Panel, Modbus und sichtbare Wirkung
 - [docs/testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
   - Testpyramide, Gates, Anti-Fingerprint
 - [docs/implementation-roadmap.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/implementation-roadmap.md)
@@ -154,6 +158,9 @@ Die wichtigsten Dokumente:
 - [docs/exposed-research-checklist-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-lab-vm-observer-01.md)
   - deployment-spezifisch ausgefuellte Einsatzkarte fuer das erste
     freizugebende `exposed-research`-Profil mit klaren Restpunkten vor `GO`
+- [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
+  - operative Schrittfolge fuer Zielhost, Sweep, Findings und kontrolliertes
+    Oeffnen des Ingress
 
 ## Empfohlener naechster Baukurs
 
@@ -202,18 +209,18 @@ Wichtige Variablengruppen:
   - `DEFAULT_POWER_LIMIT_PCT`
 
 - HMI und Protokoll:
-- `ENABLE_SERVICE_LOGIN`
-- `MODBUS_BIND_HOST`
-- `MODBUS_PORT`
-- `HMI_BIND_HOST`
-- `HMI_PORT`
-- `ALLOW_NONLOCAL_BIND`
-- `EXPOSED_RESEARCH_ENABLED`
-- `APPROVED_INGRESS_BINDINGS`
-- `PUBLIC_INGRESS_MAPPINGS`
-- `TIMEZONE`
-- `ATTACKER_UI_LOCALE`
-- `ATTACKER_UI_FALLBACK_LOCALE`
+  - `ENABLE_SERVICE_LOGIN`
+  - `MODBUS_BIND_HOST`
+  - `MODBUS_PORT`
+  - `HMI_BIND_HOST`
+  - `HMI_PORT`
+  - `ALLOW_NONLOCAL_BIND`
+  - `EXPOSED_RESEARCH_ENABLED`
+  - `APPROVED_INGRESS_BINDINGS`
+  - `PUBLIC_INGRESS_MAPPINGS`
+  - `TIMEZONE`
+  - `ATTACKER_UI_LOCALE`
+  - `ATTACKER_UI_FALLBACK_LOCALE`
 
 Fuer lokale Entwicklung und Tests binden `MODBUS_BIND_HOST` und
 `HMI_BIND_HOST` standardmaessig an `127.0.0.1`. Eine Bindung an `0.0.0.0`
@@ -233,18 +240,18 @@ Deployments kann bewusst auf `502` gewechselt werden.
   - `ALERT_MIN_SEVERITY`
 
 - Exporter:
-- `WEBHOOK_EXPORTER_ENABLED`
-- `WEBHOOK_EXPORTER_URL`
-- `SMTP_EXPORTER_ENABLED`
-- `SMTP_HOST`
-- `SMTP_PORT`
+  - `WEBHOOK_EXPORTER_ENABLED`
+  - `WEBHOOK_EXPORTER_URL`
+  - `SMTP_EXPORTER_ENABLED`
+  - `SMTP_HOST`
+  - `SMTP_PORT`
   - `SMTP_FROM`
   - `SMTP_TO`
-- `TELEGRAM_EXPORTER_ENABLED`
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `APPROVED_EGRESS_TARGETS`
-- `APPROVED_EGRESS_RECIPIENTS`
+  - `TELEGRAM_EXPORTER_ENABLED`
+  - `TELEGRAM_BOT_TOKEN`
+  - `TELEGRAM_CHAT_ID`
+  - `APPROVED_EGRESS_TARGETS`
+  - `APPROVED_EGRESS_RECIPIENTS`
 
 - Exponierungsbetrieb:
   - `WATCH_OFFICER_NAME`

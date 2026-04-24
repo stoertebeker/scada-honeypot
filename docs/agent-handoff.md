@@ -63,6 +63,10 @@ Phase I** gezogen:
   `uv run python -m honeypot.main --verify-exposed-research`, der Start,
   HMI, Modbus und den Alert-Pfad `BREAKER_OPEN` auf demselben Runtime-Pfad
   prueft und einen Sweep-Eintrag nach `FINDINGS_LOG_PATH` schreibt
+- fuer Nicht-SCADA-Menschen liegen jetzt zusaetzlich eine Einsteigerkarte in
+  `docs/scada-primer-and-module-guide.md`, ein Bedienkurs in
+  `docs/test-attacker-guide.md` und ein operatives Zielhost-Runbook in
+  `docs/exposed-research-runbook.md` an Deck
 - das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
   Gesamttestlauf steht aktuell bei `273 passed`
 
