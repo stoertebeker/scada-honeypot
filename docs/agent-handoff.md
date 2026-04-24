@@ -1,565 +1,71 @@
 # Agent-Handoff
 
-## Zwischenfazit
+## Kurzlage
 
-Das Repo ist nicht mehr nur in Dokumentationsnaehe. Die Deckscrew hat den
-lokalen V1-Prototypen inzwischen **bis weit in Phase D/E und zentrale Teile von
-Phase I** gezogen:
+Das Repo ist kein Geruest mehr, sondern ein weitgehend fertiger lokaler
+SCADA-Honeypot fuer einen fiktiven Solarpark.
 
-- gemeinsamer Fachkern aus `asset_domain`, `plant_sim`, `event_core`,
-  `storage` und lokalem Runtime-Startpfad steht
-- Modbus, HMI, Service-Panel, Rule-Engine und Outbox-/Exporter-Pfade laufen
-  auf derselben Snapshot- und Event-Wahrheit
-- Webhook, SMTP und Telegram decken rule-basierte Folge-Alerts inzwischen bis
-  zum Exporter-Double ab, inklusive stillem Retry und isoliertem Teilausfall
-- browserseitige HMI-Smokes, Release-Gates und Exporter-Hardening pruefen die
-  wichtigsten sichtbaren und sicherheitsrelevanten Pfade, jetzt auch unter
-  aktivem HMI-/Modbus-Traffic waehrend Mehrkanal-Recovery
-- optionales lokales Runtime-Monitoring schreibt jetzt einen Heartbeat mit
-  Dienst-Adressen, Exporter-Health sowie Alert-/Outbox-Zaehlern nach
-  `RUNTIME_STATUS_PATH`, ohne neue HTTP- oder Debug-Flaeche
-- ein lokaler Reset-Pfad ueber `uv run python -m honeypot.main --reset-runtime`
-  entfernt jetzt reproduzierbar Runtime-Artefakte fuer einen frischen
-  Neustart
-- aktiver Exporter-Egress braucht jetzt eine explizite Ziel-Freigabe ueber
-  `APPROVED_EGRESS_TARGETS`; sonst verweigert `main()` den Start
-- ein kombinierter `pre-exposure`-Sweep deckt jetzt Monitoring, freigegebenes
-  Webhook-Ziel, erfolgreiche Ausleitung, Reset und Fresh-Start auf demselben
-  Runtime-Pfad ab
-- Non-Local-Bind fuer Modbus und HMI ist jetzt technisch moeglich, bleibt aber
-  `deny-by-default`; ohne `ALLOW_NONLOCAL_BIND=1` blockiert der Runtime-Pfad
-  externe Bindung weiter
-- zusaetzlich muessen konkrete externe Runtime-Bindings jetzt explizit ueber
-  `APPROVED_INGRESS_BINDINGS` freigegeben werden; Non-Local-Bind allein reicht
-  nicht mehr
-- ein runtime-naher Integrationstest deckt jetzt zusaetzlich den bewussten
-  Non-Local-Startpfad mit `ALLOW_NONLOCAL_BIND=1`,
-  `APPROVED_INGRESS_BINDINGS` und funktionierenden Loopback-Zugriffen auf den
-  gebundenen Dienst ab
-- die formale Lageentscheidung steht jetzt ebenfalls:
-  `pre-exposure` ist `GO`, `exposed-research` bleibt `NO-GO`, bis
-  deployment-spezifische Ingress-, `/service/login`- und Egress-Entscheide
-  dokumentiert sind
-- dafuer liegt jetzt eine konkrete Einsatzkarte in
-  `docs/exposed-research-checklist.md` bereit
-- zusaetzlich liegt jetzt eine ausgefuellte Beispielbewertung vor, die den
-  heutigen Stand wegen fehlender expliziter Non-Local-Bind- und Ingress-
-  Freigaben sowie offener Deployment-Entscheide
-  bewusst als `NO-GO` fuer echte Exponierung dokumentiert
-- neu an Deck liegt jetzt ein konkretes Referenzprofil
-  `docs/exposed-research-profile-lab-vm-observer-01.md` mit festen
-  Entscheidungen zu Ingress, `/service/login`, Webhook-Egress, Monitoring und
-  Incident-Kurs
-- zusaetzlich liegt jetzt die deployment-spezifisch ausgefuellte Einsatzkarte
-  `docs/exposed-research-checklist-lab-vm-observer-01.md` vor; der Kurs ist
-  damit fachlich konkret und steht jetzt auf einem technischen
-  `GO-vorbehaltlich-Zielhost-Abgleich`
-- neu im Startpfad liegt jetzt ein echtes `exposed-research`-Gate:
-  benoetigt `EXPOSED_RESEARCH_ENABLED=1`, `PUBLIC_INGRESS_MAPPINGS`,
-  `APPROVED_EGRESS_RECIPIENTS`, `WATCH_OFFICER_NAME`,
-  `DUTY_ENGINEER_NAME`; Platzhalterziele fuer aktive Exporter werden in diesem
-  Modus abgewiesen
-- zusaetzlich gibt es jetzt den Zielhost-Sweep
-  `uv run python -m honeypot.main --verify-exposed-research`, der Start,
-  HMI, Modbus und den Alert-Pfad `BREAKER_OPEN` auf demselben Runtime-Pfad
-  prueft und einen Sweep-Eintrag nach `FINDINGS_LOG_PATH` schreibt
-- fuer Nicht-SCADA-Menschen liegen jetzt zusaetzlich eine Einsteigerkarte in
-  `docs/scada-primer-and-module-guide.md`, ein Bedienkurs in
-  `docs/test-attacker-guide.md` und ein operatives Zielhost-Runbook in
-  `docs/exposed-research-runbook.md` an Deck
-- das Repo ist lokal startbar, der Arbeitsbaum ist sauber und der
-  Gesamttestlauf steht aktuell bei `273 passed`
+Aktueller Kurs:
 
-Wichtiger Kurs:
+- lokaler V1-Release: `GO`
+- `pre-exposure`: `GO`
+- `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
+  freizugeben
+- Gesamtteststand: `273 passed`
 
-- `asset_domain`, `plant_sim`, `event_core` und der erste schreibbare
-  `protocol_modbus`-Slice fuer `Unit 1` stehen jetzt als gemeinsamer Fachkern
-- HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`,
-  `/alarms`, `/trends` sowie den ersten schreibenden Service-Pfad auf
-  derselben Snapshot-Wahrheit steht jetzt als App; keine zweite Wahrheit
-  neben Modbus bauen
-- Ziel bleibt die lueckenlose Eventspur fuer Schreib- und jetzt auch
-  Modbus- und HMI-Lesezugriffe
+Wichtige Grundregel:
+- HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
+- Keine zweite Wahrheit neben Snapshot, Eventstore und Alarmhistorie bauen.
 
-## Letzte Commits
+## Schnellstart
 
-- `6a6f97a` `docs: sync ingress approval gate`
-- `8ee4865` `feat: gate nonlocal ingress approvals`
-- `eca1a13` `test: cover nonlocal runtime startup`
-- `21229f8` `feat: gate nonlocal runtime binds`
-- `83c3327` `docs: add exposed research checklist`
-- `10a2d4d` `docs: record pre-exposure go decision`
-- `2801c7d` `docs: sync pre-exposure gate status`
-- `f87709b` `test: add pre-exposure release gate sweep`
-- `d66c41e` `feat: gate exporter egress targets`
-- `0c3a6cd` `feat: add local runtime reset path`
-- `47dab3c` `feat: add local runtime status heartbeat`
-- `d1ffc32` `test: gate client traffic during exporter recovery`
-- `ed51622` `test: soak background runner smtp recovery`
-- `fa2b966` `test: soak background runner mixed alert waves`
-- `341201b` `test: stress background runner wake cycles`
-- `d5a2811` `test: stress outbox staggered target retries`
-- `2acaaf0` `test: harden outbox target backoff cycles`
-- `6fa2e21` `docs: sync project status and handoff`
-- `600e4b8` `test: gate partial multi-target exporter failure`
-- `e900e78` `test: drain follow-up alert via all exporters`
-- `6c677c5` `test: gate low output telegram failure`
-- `1ca54fc` `test: gate grid path telegram failure`
-- `57e2dc1` `test: gate multi-block telegram failure`
-- `91c2ebd` `test: drain low output follow-up via telegram`
-- `24f274c` `test: drain grid path follow-up via telegram`
-- `7b24f4d` `test: gate low output smtp failure`
-- `f639bfc` `test: gate grid path smtp failure`
+### Lokaler Start
 
-## Aktueller Implementierungsstand
+```bash
+uv run python -m honeypot.main
+```
 
-### 1. Tooling und Einstiegspunkt
+### Lokaler Reset
 
-- `Python 3.12` und `uv` sind verdrahtet
-- zentrale Paketdefinition in `pyproject.toml`
-- lokaler Prozesseinstieg in `src/honeypot/main.py`
-- Startkommando funktioniert:
-  `uv run python -m honeypot.main`
-- Resetkommando funktioniert:
-  `uv run python -m honeypot.main --reset-runtime`
-- `build_local_runtime()` bootstrapt aktuell:
-  - `RuntimeConfig`
-  - `PlantSnapshot(normal_operation)`
-  - `SQLiteEventStore`
-  - `EventRecorder`
-  - `ReadOnlyRegisterMap`
-  - `ReadOnlyModbusTcpService`
-  - `LocalHmiHttpService`
-  - optional `BackgroundRuntimeStatusService` mit lokalem Datei-Heartbeat
-- `main()` startet jetzt lokalen Modbus-Listener und lokalen HMI-HTTP-Dienst
-  und bleibt bis `KeyboardInterrupt` aktiv
-- `cli()` bietet jetzt zusaetzlich den lokalen Reset-Pfad fuer Runtime-
-  Artefakte an
-- `main()` erzwingt jetzt bei aktiven Exportern eine explizite Egress-
-  Freigabe ueber `APPROVED_EGRESS_TARGETS`
-- `build_local_runtime()` blockiert externe Bindung fuer Modbus/HMI jetzt
-  weiter `deny-by-default`; fuer bewusste Exponierung ist explizit
-  `ALLOW_NONLOCAL_BIND=1` erforderlich
-- `build_local_runtime()` verlangt bei Non-Local-Bind jetzt zusaetzlich
-  konkrete Freigaben ueber `APPROVED_INGRESS_BINDINGS`
-- Sicherheitsregel im Startpfad:
-  - `MODBUS_BIND_HOST` und `HMI_BIND_HOST` bleiben ohne Freigabe lokal
-  - Non-Local-Bind braucht explizit `ALLOW_NONLOCAL_BIND=1`
-  - konkrete externe Bindings brauchen `APPROVED_INGRESS_BINDINGS`
-  - Design-Local-Default fuer `MODBUS_PORT` ist `1502`
-  - Design-Local-Default fuer `HMI_PORT` ist `8080`
+```bash
+uv run python -m honeypot.main --reset-runtime
+```
 
-### 2. Konfiguration
+### Exposure-Sweep
 
-Dateien:
+```bash
+uv run python -m honeypot.main --verify-exposed-research
+```
 
-- `src/honeypot/config_core/__init__.py`
-- `src/honeypot/config_core/settings.py`
+### Gesamttestlauf
 
-Vorhanden:
+```bash
+uv run pytest -q
+```
 
-- `RuntimeConfig`
-- `load_runtime_config()`
-- generische Defaults aus `.env.example`
-- Validierung fuer:
-  - Locale-Format `ll` oder `ll-RR`
-  - vorhandenes Fallback-Locale-Bundle
-  - Ports und numerische Schwellwerte
-  - exporter-bezogene Pflichtfelder nur bei aktivierten Exportern
-- neue lokale Monitoring-Keys:
-  - `RUNTIME_STATUS_ENABLED`
-  - `RUNTIME_STATUS_PATH`
-  - `RUNTIME_STATUS_INTERVAL_SECONDS`
-- neuer Egress-Key:
-  - `APPROVED_EGRESS_TARGETS`
-- neuer Exposure-Key:
-  - `ALLOW_NONLOCAL_BIND`
-- neue exposed-research-Keys:
-  - `EXPOSED_RESEARCH_ENABLED`
-  - `PUBLIC_INGRESS_MAPPINGS`
-  - `APPROVED_EGRESS_RECIPIENTS`
-  - `WATCH_OFFICER_NAME`
-  - `DUTY_ENGINEER_NAME`
-  - `FINDINGS_LOG_PATH`
-- neuer Ingress-Key:
-  - `APPROVED_INGRESS_BINDINGS`
+## Was an Deck steht
 
-Wichtige Regel:
+### Fachkern
 
-- `ATTACKER_UI_FALLBACK_LOCALE` muss auf ein mitgeliefertes Locale-Paket
-  zeigen
+- `config_core`
+  - `.env`-Laden, Defaults, Validierung, Locale- und Exposure-Gates
+- `asset_domain`
+  - typisiertes Modell fuer Site, PPC, Inverter, Wetter, Meter, Grid, Alarme
+- `plant_sim`
+  - Prozesswirkung fuer Curtailment, Breaker, Blockverluste, Reset, Alarmfluss
+- `event_core`
+  - Event-/Alert-/Outbox-Modelle und Recorder
+- `storage`
+  - `SQLite` im `WAL`-Modus plus optionales JSONL-Archiv
+- `rule_engine`
+  - Folge-Alerts, Dedupe, Suppression, `cleared`-Logik
 
-### 3. Fixture-System
+### Angreiferpfade
 
-Dateien:
-
-- `src/honeypot/asset_domain/fixtures.py`
-- `fixtures/normal_operation.json`
-
-Vorhanden:
-
-- `PlantFixture` und Teilmodelle fuer Site, Weather, Assets und Alarme
-- `load_plant_fixture()`
-- `available_fixture_names()`
-- klarer Fehlerpfad ueber `FixtureLoadError`
-- erstes kanonisches Start-Fixture `normal_operation`
-
-Wichtige Regel:
-
-- Fixtures werden fachlich validiert und nicht stillschweigend akzeptiert
-
-### 4. Zeitabstraktion
-
-Datei:
-
-- `src/honeypot/time_core.py`
-
-Vorhanden:
-
-- `SystemClock`
-- `FrozenClock`
-- UTC-Normalisierung ueber `ensure_utc_datetime()`
-- ISO-Zeitstempel-Parsing ueber `parse_utc_timestamp()`
-- `PlantFixture.build_clock()` fuer deterministische Teststarts
-
-Wichtige Regel:
-
-- Zeitwerte muessen timezone-aware und auf UTC normalisierbar sein
-
-### 5. Fachmodell-Start fuer Phase B
-
-Dateien:
-
-- `src/honeypot/asset_domain/models.py`
-- `src/honeypot/asset_domain/__init__.py`
-- `tests/unit/test_asset_domain_models.py`
-
-Vorhanden:
-
-- typisierte Modelle fuer:
-  - `SiteState`
-  - `PowerPlantController`
-  - `InverterBlock`
-  - `WeatherStation`
-  - `RevenueMeter`
-  - `GridInterconnect`
-  - `PlantSnapshot`
-- Fixture-zu-Domaenen-Mapping ueber `PlantSnapshot.from_fixture()`
-- Konsistenzchecks fuer:
-  - Breaker-Zustand Site gegen Grid
-  - Power-Limit Site gegen PPC
-  - Blindleistungs-Setpoint Site gegen PPC
-  - aktive Alarmanzahl gegen aktive Alarmcodes
-- erster Unit-Test fuer `normal_operation`
-
-### 6. Deterministische Simulationsszenarien
-
-Dateien:
-
-- `src/honeypot/plant_sim/core.py`
-- `src/honeypot/plant_sim/__init__.py`
-- `tests/unit/test_plant_sim.py`
-
-Vorhanden:
-
-- `PlantSimulator.from_snapshot()` leitet eine nominale Parkleistung aus dem Referenzzustand ab
-- `estimate_available_power_kw()` skaliert Leistung plausibel mit der Einstrahlung
-- deterministische Szenariofunktionen fuer:
-  - `simulate_normal_operation()`
-  - `apply_curtailment()`
-  - `open_breaker()`
-  - `lose_block_communications()`
-- Szenario-spezifische Alarme:
-  - `PLANT_CURTAILED`
-  - `BREAKER_OPEN`
-  - `COMM_LOSS_INVERTER_BLOCK`
-- Unit-Tests fuer Ursache/Wirkung von Curtailment, Breaker offen und Kommunikationsverlust
-
-### 7. Alarmlebenszyklus und Datenqualitaet
-
-Dateien:
-
-- `src/honeypot/asset_domain/models.py`
-- `src/honeypot/plant_sim/core.py`
-- `src/honeypot/plant_sim/__init__.py`
-- `tests/unit/test_plant_sim.py`
-
-Vorhanden:
-
-- `PlantAlarm` als typisiertes Alarmobjekt im Fachmodell
-- `PlantSnapshot.alarms`, `active_alarms`, `active_alarm_codes` und `alarm_by_code()`
-- deterministische Alarmzustaende fuer:
-  - `inactive`
-  - `active_unacknowledged`
-  - `active_acknowledged`
-  - `cleared`
-- `PlantSimulator.acknowledge_alarm()` fuer Quittierung ohne Loeschung
-- fachliche Qualitaetsableitung ueber `determine_data_quality()` fuer:
-  - `good`
-  - `estimated`
-  - `stale`
-  - `invalid`
-- Unit-Tests fuer `acknowledged != cleared` und fuer alle vier Qualitaetszustaende
-
-### 8. Event-Core, Storage und Outbox-Grundlage
-
-Dateien:
-
-- `src/honeypot/event_core/models.py`
-- `src/honeypot/event_core/recorder.py`
-- `src/honeypot/event_core/__init__.py`
-- `src/honeypot/rule_engine/engine.py`
-- `src/honeypot/rule_engine/__init__.py`
-- `src/honeypot/storage/sqlite_store.py`
-- `src/honeypot/storage/__init__.py`
-- `tests/unit/test_event_core.py`
-- `tests/unit/test_rule_engine.py`
-
-Vorhanden:
-
-- kanonische Pydantic-Modelle fuer:
-  - `EventRecord`
-  - `AlertRecord`
-  - `OutboxEntry`
-  - `RecordedArtifacts`
-- strikte Normalisierung fuer Pflichtfelder, UTC-Zeitstempel und optionale
-  Metadaten
-- `EventRecorder.build_event()` mit generierten `event_id`- und
-  `correlation_id`-Ketten
-- `EventRecorder.build_alert()` zur Ableitung lokaler Alerts aus Kern-Events
-- `EventRecorder.record()` fuer:
-  - `event_log`
-  - optionales `JSONL`-Archiv
-  - optionale Rule-basierte Alert-Ableitung
-  - `current_state`
-  - `alert_log`
-  - optionale Outbox-Auftraege fuer spaetere Exporter
-- `SQLiteEventStore` im `WAL`-Modus fuer:
-  - `current_state`
-  - `event_log`
-  - `alert_log`
-  - `outbox`
-- `JsonlEventArchive` als zeilenweiser Event-Sink an `JSONL_ARCHIVE_PATH`
-- `RuleEngine` mit:
-  - Registry fuer deterministische Regelreihenfolge
-  - Severity-Gate ueber `ALERT_MIN_SEVERITY`
-  - V1-Regeln fuer:
-    - wiederholte Login-Fehlschlaege ab Schwellwert
-    - erfolgreiche Setpoint-Aenderungen
-    - `BREAKER_OPEN`
-    - `COMM_LOSS_INVERTER_BLOCK`
-- `EventRecorder.record()` fuehrt explizite Prozess-Alerts und Rule-basierte
-  Alerts jetzt dedupliziert zusammen, ohne doppelte Eintraege im `alert_log`
-- identische aktive Rule-Alerts werden jetzt gegen die vorhandene
-  `alert_log`-Historie unterdrueckt, bis derselbe Alarm fuer dieselbe Signatur
-  als `cleared` gesehen wurde
-- best-effort Verhalten fuer Archivfehler: `SQLite` bleibt Primärwahrheit und
-  wird bei Archivproblemen nicht blockiert
-- Guardrails gegen leere `state_key`- und `target_type`-Werte
-- Unit-Tests fuer:
-  - kanonische Feldnormalisierung
-  - Korrelation ueber `correlation_id` plus `causation_id`
-  - Persistenz von Event, State, Alert und Outbox
-  - Rule-Registrierung und Severity-Gate
-  - Rule-Ableitung fuer erfolgreiche Setpoint-Aenderung
-  - JSONL-Schreibpfad
-  - best-effort Verhalten bei JSONL-Archivfehlern
-  - lokale Wahrheit ohne erzwungene Outbox-Ziele
-
-### 9. Plant-Sim-Eventspur auf dem lokalen Wahrheitskern
-
-Dateien:
-
-- `src/honeypot/plant_sim/core.py`
-- `src/honeypot/plant_sim/__init__.py`
-- `src/honeypot/storage/sqlite_store.py`
-- `tests/unit/test_plant_sim.py`
-
-Vorhanden:
-
-- optionaler `EventRecorder` an `PlantSimulator.from_snapshot()`
-- `SimulationEventContext` fuer uebergebene Metadaten wie `source_ip`,
-  `actor_type`, `correlation_id`, `protocol` und `service`
-- Eventspur fuer fachliche Schreibpfade:
-  - `apply_curtailment()`
-  - `open_breaker()`
-  - `close_breaker()`
-  - `lose_block_communications()`
-  - `acknowledge_alarm()`
-- lokale Persistenz der resultierenden Wahrheit in:
-  - `event_log`
-  - `current_state`
-  - `alert_log`
-- fokussierte Eventtypen fuer:
-  - Curtailment
-  - Breaker-Zustandswechsel
-  - Kommunikationsverlust eines Inverter-Blocks
-- kleine Store-Lesehilfen fuer Tests:
-  - `fetch_events()`
-  - `fetch_alerts()`
-  - `fetch_current_state()`
-- Unit-Tests fuer:
-  - uebergebene `correlation_id` und Quellmetadaten
-  - Eventspur und Alert fuer Curtailment
-  - Eventspur und Null-Export bei offenem Breaker
-  - Alarm-Clear und Wiederherstellung nach `close_breaker()`
-  - Eventspur und degradierte Blockdaten bei Kommunikationsverlust
-
-### 10. Modbus Vertical Slices fuer Unit 1, Unit 11-13, Unit 21, Unit 31 und Unit 41
-
-Dateien:
-
-- `src/honeypot/protocol_modbus/registers.py`
-- `src/honeypot/protocol_modbus/server.py`
-- `src/honeypot/protocol_modbus/__init__.py`
-- `tests/unit/test_protocol_modbus_registers.py`
-- `tests/contract/test_protocol_modbus_read_only.py`
-
-Vorhanden:
-
-- `ReadOnlyRegisterMap` fuer:
-  - Identitaetsblock `40001-40049`
-  - Unit-spezifische Status-, Setpoint- und Alarmbloecke
-- `Unit 1`-Sicht fuer `site / power_plant_controller`
-- `Unit 11-13`-Sicht fuer `inverter_block_*`
-- `Unit 21`-Sicht fuer `weather_station`
-- `Unit 31`-Sicht fuer `revenue_meter`
-- `Unit 41`-Sicht fuer `grid_interconnect`
-- `ReadOnlyModbusTcpService` mit:
-  - stabilem MBAP-Header
-  - `Transaction ID`-Echo
-  - `Protocol Identifier = 0`
-  - `FC03` fuer Holding Registers
-  - `FC06` fuer `40200 active_power_limit_pct_x10`
-  - `FC16` fuer den PPC-Setpoint-Block `40200-40202`
-- `Unit 41` bildet zusaetzlich ab:
-  - Identitaetsblock mit `device_class_code = 1401`
-  - Status `40100-40104`
-  - self-clearing Pulsregister `40200 breaker_open_request` und
-    `40201 breaker_close_request`
-  - Alarmdiagnose `40300-40303`
-- `Unit 31` bildet zusaetzlich ab:
-  - Identitaetsblock mit `device_class_code = 1301`
-  - Status `40100-40110`
-  - `export_power_kw` als `s32`
-  - `export_energy_kwh_total` als `u32`
-  - `export_path_available` als abgeleitete Breaker-Sicht
-  - Alarmdiagnose `40300-40303`
-- `Unit 21` bildet zusaetzlich ab:
-  - Identitaetsblock mit `device_class_code = 1201`
-  - Status `40100-40107`
-  - Fallback der Wetterwerte auf `fixture.weather`, wenn Asset-Messwerte fehlen
-  - `weather_confidence_pct_x10` als abgeleitete Qualitaetssicht
-  - Alarmdiagnose `40300-40302`
-- `Unit 11-13` bilden zusaetzlich ab:
-  - Identitaetsbloecke mit `device_class_code = 1101`
-  - Status `40100-40111`
-  - saubere Differenzierung ueber `unit_id_echo`, `asset_instance` und
-    `asset_tag_ascii`
-  - `block_power_kw` als `s32` und `availability_pct_x10`
-  - Setpoints `40200 block_enable_request`, `40201 block_power_limit_pct_x10`
-    und `40202 block_reset_request`
-  - lokale Alarmdiagnose `40300-40305`
-- dokumentiertes Fehlerverhalten im Slice:
-  - `FC04` -> `01 Illegal Function`
-  - Wert ausserhalb `0..1000` auf `40200` -> `03 Illegal Data Value`
-  - Wert ausserhalb `-1000..1000` auf `40201` -> `03 Illegal Data Value`
-  - Wert ausserhalb `0..2` auf `40202` -> `03 Illegal Data Value`
-  - Wert ausserhalb `0..1` auf `Unit 11-13 / 40200` oder `40202` -> `03 Illegal Data Value`
-  - Wert ausserhalb `0..1000` auf `Unit 11-13 / 40201` -> `03 Illegal Data Value`
-  - `Unit 11-13 / FC16` ausserhalb `40200-40202` -> `02 Illegal Data Address`
-  - jeder Write auf `Unit 21 / 40200-40249` -> `02 Illegal Data Address`
-  - jeder Write auf `Unit 31 / 40200-40249` -> `02 Illegal Data Address`
-  - Wert ausserhalb `0..1` auf `Unit 41 / 40200-40201` -> `03 Illegal Data Value`
-  - gleichzeitiges `breaker_open_request=1` und `breaker_close_request=1` in
-    derselben `FC16`-Anfrage -> `03 Illegal Data Value`
-  - Bereich ausserhalb aktiver Bloecke -> `02 Illegal Data Address`
-- Event-Logging fuer Modbus-Lesezugriffe, akzeptierte `FC06`-/`FC16`-Writes und
-  abgelehnte Requests in den bestehenden `SQLite`-Eventstore
-- gemeinsame `correlation_id` ueber Modbus-Write und nachgelagerte
-  `plant_sim`-Prozesswirkung
-- erste fachliche Registerabbildung fuer:
-  - `operating_mode`
-  - `communications_health`
-  - `plant_power_kw`
-  - `active_power_limit_pct_x10`
-  - `reactive_power_target_pct_x10`
-  - `plant_mode_request`
-  - `block_power_kw`
-  - `availability_pct_x10`
-  - `local_alarm_count`
-  - `irradiance_w_m2`
-  - `module_temperature_c_x10`
-  - `ambient_temperature_c_x10`
-  - `wind_speed_m_s_x10`
-  - `weather_confidence_pct_x10`
-  - `export_power_kw`
-  - `export_energy_kwh_total`
-  - `power_factor_x1000`
-  - `export_path_available`
-  - `breaker_state`
-  - `active_alarm_count`
-  - primaere Alarmdiagnose
-- `active_power_limit_pct` hat im Fachkern jetzt `x10`-Granularitaet bis auf
-  Zehntel-Prozent
-- `reactive_power_target` wird im Fachkern ueber `FC16` jetzt fachlich in
-  Site und PPC synchron gehalten
-- `plant_mode_request` ist im aktuellen Slice als latched Bedienwunsch
-  sichtbar, ohne dem eigentlichen `operating_mode` eine zweite Wahrheit
-  aufzuzwingen
-- `breaker_open_request` und `breaker_close_request` greifen direkt auf
-  `plant_sim.open_breaker()` und `plant_sim.close_breaker()` zu
-- `FC06`-Antworten spiegeln jetzt den angeforderten Pulswert korrekt, waehrend
-  die Register intern self-clearen
-- Contract-Tests auf echter Socket-Ebene fuer:
-  - MBAP
-  - `FC03`
-  - `FC06` mit sichtbarer Curtailment-Wirkung
-  - `FC16` mit Mehrregister-Header, reaktiver Setpoint-Wirkung und latched
-    `plant_mode_request`
-  - `Unit 11`- und `Unit 13`-Identity/Status-Lesezugriffe
-  - read-only Ablehnung fuer `Unit 12 / FC06`
-  - `Unit 12`-Kommunikationsverlust mit lokaler Alarmdiagnose
-  - `Unit 21`-Identity/Status-Lesezugriffe
-  - read-only Ablehnung fuer `Unit 21 / FC06`
-  - `Unit 31`-Identity/Status-Lesezugriffe
-  - read-only Ablehnung fuer `Unit 31 / FC06`
-  - konsistente `Unit 31`-Reaktion auf `Unit 41`-Breaker Open
-  - `Unit 41`-Identity/Status-Lesezugriffe
-  - `Unit 41`-Breaker Open/Close mit selbstloeschenden Pulsregistern
-  - Konfliktablehnung fuer `Unit 41 / FC16`
-  - `reserved -> 0x0000`
-  - `FC04 -> 01`
-  - Adressfehler -> `02`
-  - ungueltige `FC06`-/`FC16`-Werte -> `03`
-
-### 11. HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`, `/alarms`, `/trends` und den erweiterten Service-Control-Pfad
-
-Dateien:
-
-- `src/honeypot/hmi_web/app.py`
-- `src/honeypot/hmi_web/__init__.py`
-- `src/honeypot/hmi_web/server.py`
-- `src/honeypot/hmi_web/templates/overview.html`
-- `src/honeypot/hmi_web/templates/single_line.html`
-- `src/honeypot/hmi_web/templates/inverters.html`
-- `src/honeypot/hmi_web/templates/weather.html`
-- `src/honeypot/hmi_web/templates/meter.html`
-- `src/honeypot/hmi_web/templates/alarms.html`
-- `src/honeypot/hmi_web/templates/trends.html`
-- `src/honeypot/hmi_web/templates/error_page.html`
-- `src/honeypot/hmi_web/templates/service_login.html`
-- `src/honeypot/hmi_web/templates/service_panel.html`
-- `resources/locales/attacker-ui/en.json`
-- `src/honeypot/main.py`
-- `tests/integration/test_hmi_web_overview.py`
-- `tests/integration/test_runtime_main.py`
-- `tests/unit/test_runtime_bootstrap.py`
-
-Vorhanden:
-
-- `create_hmi_app()` erzeugt eine erste `FastAPI`-/`Jinja2`-App fuer:
-  - `/`
+- `protocol_modbus`
+  - aktive Units `1`, `11-13`, `21`, `31`, `41`
+  - `FC03`, `FC06`, `FC16`
+- `hmi_web`
   - `/overview`
   - `/single-line`
   - `/inverters`
@@ -567,470 +73,124 @@ Vorhanden:
   - `/meter`
   - `/alarms`
   - `/trends`
-- `LocalHmiHttpService` startet diese App als echten lokalen HTTP-Dienst auf
-  `HMI_BIND_HOST/HMI_PORT`
-- die HMI liest pro Request dieselbe Snapshot-Wahrheit wie Modbus ueber einen
-  `snapshot_provider`
-- `build_local_runtime()` verdrahtet die HMI intern bereits an
-  `register_map.snapshot`
-- `runtime.start()` bootstrapt jetzt Modbus und HMI gemeinsam; `runtime.stop()`
-  stoppt beide Pfade sauber
-- `overview` zeigt sichtbar:
-  - Parkleistung
-  - aktuelle Leistungsbegrenzung
-  - Blindleistungsziel
-  - Breaker-Zustand
-  - Anzahl aktiver Alarme
-  - Kommunikationszustand
-  - Kurzstatus der drei Inverter-Bloecke
-  - Wetter-Kurzwerte
-  - die bis zu drei wichtigsten aktiven Alarme
-- `single-line` zeigt sichtbar:
-  - PV-Park als Sammelsicht
-  - PPC
-  - die drei Inverter-Bloecke
-  - Revenue Meter
-  - Grid Interconnect / Breaker
-  - einfachen Leistungsfluss
-  - Breaker- und Exportpfad-Zustand
-- `inverters` zeigt sichtbar:
-  - die drei Inverter-Bloecke im Direktvergleich
-  - Status, Comms und Datenqualitaet je Block
-  - Blockleistung und Verfuegbarkeit
-  - optionale AC-/DC-nahe Werte und Temperatur
-  - lokale Alarmanzahl je Block
-- `weather` zeigt sichtbar:
-  - Einstrahlung
-  - Modul- und Umgebungstemperatur
-  - Windgeschwindigkeit
-  - Wetterqualitaet und Kommunikationszustand
-  - den Leistungskontext zur aktuellen Parkleistung
-- `meter` zeigt sichtbar:
-  - Exportleistung
-  - Exportpfad und Breaker-Zustand
-  - Datenqualitaet und Kommunikationszustand des Revenue Meters
-  - Exportenergie, Netzspannung, Netzfrequenz und Leistungsfaktor
-  - den Netz-/Exportkontext zur aktuellen Breaker-Lage
-- `alarms` zeigt sichtbar:
-  - Alarmcode und Alarmname
-  - Kategorie, Severity und Asset-Bezug
-  - Zustand und Ack-Status klar getrennt
-  - First-Seen- und Last-Changed-Zeit aus der lokalen Alert-Spur
-  - Filter fuer Severity, State und Sortierung
-- `trends` zeigt sichtbar:
-  - kurze Verlaufsspuren fuer Parkleistung, Leistungslimit, Einstrahlung und Exportleistung
-  - Blockleistungs-Traces fuer alle drei Inverter-Bloecke
-  - Baseline-gegen-Current-Sicht ohne zweite Wahrheit
-  - Trendkontext fuer Curtailment, Breaker-Offen und degradierte Kommunikation
-- eigene Fehlerseiten zeigen sichtbar:
-  - `404` ohne Framework-Defaultbild
-  - `500` ohne technische Fehltexte
-  - dieselbe Navigations- und HMI-Sprache wie die uebrigen Seiten
-- `service/login` und `service/panel` zeigen sichtbar:
-  - Login-Formular ohne Framework-Standardformular
-  - ruhige Fehlermeldung bei Login-Fehlschlag
-  - serverseitige Session mit `20` Minuten Idle-Timeout
-  - geschuetzten Service-Bereich mit `401` fuer unauthentifiziert und `403` bei deaktiviertem Login
-  - schreibende Bedienungen fuer `active_power_limit_pct`, `reactive_power_target`, `plant_mode_request`, `block_enable_request`, `block_power_limit_pct_x10`, `block_reset_request` sowie `breaker_open_request` / `breaker_close_request`
-  - ruhige Statusrueckmeldung nach akzeptierten oder abgelehnten Bedienungen
-- sichtbare HMI-Texte kommen aus dem ersten Locale-Paket
-  `resources/locales/attacker-ui/en.json`
-- `overview`, `single-line`, `inverters`, `weather`, `meter`, `alarms` und `trends` nutzen keine
-  UI-Schattenwerte:
-  - Curtailment aus Modbus ist direkt in der HMI sichtbar
-  - Breaker-Offen aus `Unit 41` ist direkt im Einlinienschema sichtbar
-  - Inverter-Comm-Loss aus `plant_sim` ist direkt in der HMI sichtbar
-  - Wetterwerte aus `Unit 21` sind direkt in der HMI sichtbar
-  - Revenue-Meter-Werte und Breaker-Wirkung aus `Unit 31`/`Unit 41` sind direkt in der HMI sichtbar
-  - Alarm-Historie und Ack-Zustand lesen dieselbe Alert-Spur wie `plant_sim` und Modbus-Schreibpfade
-  - Trenddaten leiten sich aus derselben Baseline-Fixture und dem aktuellen Snapshot ab
-- HMI-Aufrufe schreiben jetzt HTTP-Eventspur in den lokalen Store mit:
-  - `component = hmi-web`
-  - `service = web-hmi`
-  - `endpoint_or_register`
-  - `requested_value.http_method`
-  - `requested_value.http_path`
-  - `resulting_value.http_status`
-  - `session_id`
-- `404`- und `500`-Seiten schreiben jetzt zusaetzlich eigene Fehler-Events mit
-  kontrolliertem `error_code`
-- Service-Login schreibt jetzt:
-  - `hmi.auth.service_login_attempt`
-  - `hmi.page.service_login_viewed`
-  - `hmi.page.service_panel_viewed`
-  - `hmi.action.service_control_submitted`
-- Anti-Fingerprint-Minimum:
-  - `FastAPI`-Docs/OpenAPI sind deaktiviert
-  - `uvicorn`-`Server`- und `Date`-Header sind im lokalen HMI-Dienst
-    deaktiviert
-- lokaler Runtime-Smoke-Test prueft jetzt:
-  - echter `GET /overview` auf localhost
-  - echter `GET /single-line` ueber denselben Runtime-Pfad
-  - echter `GET /inverters` ueber denselben Snapshot-Pfad
-  - echter `GET /weather` ueber denselben Snapshot-Pfad
-  - echter `GET /meter` ueber denselben Snapshot-Pfad
-  - echter `GET /alarms` ueber denselben Snapshot-/Alert-Store-Pfad
-  - echter `GET /trends` ueber denselben Baseline-/Snapshot-Pfad
-  - echter `GET` auf unbekannte HMI-Routen mit eigener `404`-Seite
-  - interner Renderfehler mit eigener `500`-Seite
-  - echter `/service/login`-Pfad mit Erfolgs- und Fehlversuch
-  - Session-Ablauf nach `20` Minuten Idle-Zeit
-  - geschuetztes `/service/panel` mit `401/403`
-  - echte `POST /service/panel/power-limit`-Wirkung mit sichtbarem Curtailment
-  - echte `POST /service/panel/reactive-power`-Wirkung mit sichtbarem Blindleistungsziel
-  - echte `POST /service/panel/plant-mode`-Wirkung mit gelatchtem `plant_mode_request`
-  - echte `POST /service/panel/inverter-block`-Wirkung mit sichtbarem Disable/Limit je Block
-  - echte `POST /service/panel/inverter-block/reset`-Wirkung mit sichtbarer Comm-Loss-Wiederherstellung
-  - echte `POST /service/panel/breaker`-Wirkung mit sichtbarem Exportverlust und Wiederherstellung
-  - HTTP-Eventspur aus dem Runtime-Pfad
-  - sauber geschlossene Modbus- und HTTP-Ports nach `runtime.stop()`
+  - `/service/login`
+  - `/service/panel`
 
-Noch bewusst **nicht** enthalten:
+### Betrieb und Ausleitung
 
-- weitere schreibende HMI-Pfade jenseits des aktuellen PPC-/Inverter-/Breaker-Slices
+- `monitoring`
+  - Heartbeat nach `RUNTIME_STATUS_PATH`
+- `exporter_sdk`
+  - gemeinsamer Exporter-Vertrag
+- `exporter_runner`
+  - Background-Runner fuer Webhook, SMTP und Telegram
+- `runtime_reset`
+  - definierter Reset von Laufartefakten
+- `runtime_egress`
+  - Gate fuer aktive Exportziele
+- `runtime_ingress`
+  - Gate fuer externe Bindings
+- `runtime_exposure`
+  - Exposure-Gates, Findings-Log und Exposure-Sweep
+- `main`
+  - gemeinsamer Runtime-Einstieg
 
-### 12. Exporter-SDK-Grundlage
+## Sichtbare Wirkung in V1
 
-Dateien:
+Wichtige End-to-End-Pfade, die schon stehen:
 
-- `src/honeypot/exporter_sdk/contracts.py`
-- `src/honeypot/exporter_sdk/local_test_exporter.py`
-- `src/honeypot/exporter_sdk/__init__.py`
-- `tests/unit/test_exporter_sdk.py`
+- Curtailment ueber HMI und Modbus
+- Blindleistungsziel ueber HMI und Modbus
+- `plant_mode_request` als gelatchter Bedienwunsch
+- Breaker Open/Close mit sichtbarer Meter- und Alarmwirkung
+- Inverter-Block Enable/Disable, Limit und Reset
+- Folge-Alerts:
+  - `REPEATED_LOGIN_FAILURE`
+  - `GRID_PATH_UNAVAILABLE`
+  - `LOW_SITE_OUTPUT_UNEXPECTED`
+  - `MULTI_BLOCK_UNAVAILABLE`
+- Webhook-, SMTP- und Telegram-Ausleitung ueber die Outbox
 
-Vorhanden:
+## Wichtige Runtime-Gates
 
-- `HoneypotExporter` als minimaler Vertrag fuer:
-  - `capabilities()`
-  - `validate_config(config)`
-  - `health()`
-  - `deliver_event_batch(batch)`
-  - `deliver_alert_batch(batch)`
-- leichte Vertragsmodelle fuer:
-  - `ExporterCapabilities`
-  - `ExporterHealth`
-  - `ExportDelivery`
-- `LocalTestExporter` ohne Netzwerkpfad:
-  - nimmt Event- und Alert-Batches lokal im Speicher an
-  - kann kontrolliert `retry_later` fuer Runner- und Fehlerpfadtests erzwingen
-  - meldet Health/Capture-Zustand sauber fuer spaetere Runner
-- Unit-Tests fuer:
-  - Delivery-Vertrag und Retry-Semantik
-  - Capabilities-/Health-Meldung
-  - lokale Batch-Erfassung fuer Events und Alerts
-  - Konfigurationsvalidierung ohne echte Zielparameter
+### Ingress
 
-### 13. Outbox-Runner, Webhook- und Telegram-Exporter
+- `ALLOW_NONLOCAL_BIND=1`
+- `APPROVED_INGRESS_BINDINGS`
 
-Dateien:
+### Egress
 
-- `src/honeypot/exporter_runner/runner.py`
-- `src/honeypot/exporter_runner/webhook_exporter.py`
-- `src/honeypot/exporter_runner/smtp_exporter.py`
-- `src/honeypot/exporter_runner/telegram_exporter.py`
-- `src/honeypot/exporter_runner/__init__.py`
-- `src/honeypot/storage/sqlite_store.py`
-- `src/honeypot/main.py`
-- `tests/unit/test_exporter_runner.py`
-- `tests/unit/test_runtime_bootstrap.py`
+- `APPROVED_EGRESS_TARGETS`
 
-Vorhanden:
+### Exposed Research
 
-- `OutboxRunner.drain_once()` mit:
-  - Leasing faelliger Outbox-Eintraege
-  - Payload-Aufloesung fuer `alert` und `event`
-  - Zustandswechsel `pending -> leased -> delivered`
-  - Retry-Backoff fuer `retry_later`
-  - `failed` bei fehlendem Exporter oder fehlender Payload-Aufloesung
-- `WebhookExporter` als erster echter technischer Kanal:
-  - liefert Event- und Alert-Batches per `POST`
-  - meldet `retry_later` bei Transport- oder HTTP-Fehlern
-  - blockiert den Kernpfad nicht
-- `SmtpExporter` als dritter lokaler Zielkanal:
-  - liefert Alert-Batches als einfache SMTP-Nachricht
-  - nutzt `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` und `SMTP_TO`
-  - meldet `retry_later` bei Transportfehlern oder verweigerten Empfaengern
-  - blockiert den Kernpfad nicht
-- `TelegramExporter` als zweiter echter Zielkanal:
-  - liefert Alert-Batches per `sendMessage`
-  - nutzt `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` statt Host-/Systempfad
-  - meldet `retry_later` bei Transport- oder HTTP-Fehlern
-  - blockiert den Kernpfad nicht
-- `SQLiteEventStore` kann jetzt:
-  - einzelne Events/Alerts ueber Referenzen aufloesen
-  - Outbox-Eintraege leasen
-  - Outbox-Eintraege als `delivered`, `pending` mit Backoff oder `failed` markieren
-- `BackgroundOutboxRunnerService` fuehrt denselben Outbox-Drain jetzt lokal im
-  Thread aus und bleibt strikt im selben Prozess
-- `build_local_runtime()` verdrahtet jetzt optional Outbox-Runner **und**
-  Hintergrunddienst fuer `webhook` und `telegram`, sobald die jeweiligen
-  Exporter aktiviert sind
-- Unit-Tests fuer:
-  - Webhook-Batch-POST
-  - Telegram-Alert-POST
-  - Retry-Backoff bei HTTP-Fehlern
-  - `failed` bei fehlendem Exporter
-  - Hintergrund-Drain ohne manuellen `drain_once()`
-  - Runtime-Verdrahtung des Webhook-Runners
+- `EXPOSED_RESEARCH_ENABLED=1`
+- `PUBLIC_INGRESS_MAPPINGS`
+- `APPROVED_EGRESS_RECIPIENTS`
+- `WATCH_OFFICER_NAME`
+- `DUTY_ENGINEER_NAME`
+- `FINDINGS_LOG_PATH`
 
-### 14. Release-Gate- und Hardening-Suite
+Wichtige Regel:
+- Platzhalter- oder Doku-Ziele fuer aktive Exporter sind im
+  `exposed-research`-Modus verboten.
 
-Dateien:
+## Relevante Doku zuerst lesen
 
-- `tests/integration/test_release_gates.py`
+### Fuer Nicht-SCADA-Menschen
 
-Vorhanden:
+1. [docs/scada-primer-and-module-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/scada-primer-and-module-guide.md)
+2. [docs/test-attacker-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/test-attacker-guide.md)
 
-- Release-Gates fuer:
-  - ruhige `401`, `403` und `404`
-  - fehlende `Server`-/`Date`-Header im lokalen HMI-Dienst
-  - keine sichtbaren Framework-Signaturen in Fehlerseiten
-  - Follow-up-Alert-Suppression gegen `GRID_PATH_UNAVAILABLE`- und
-    `LOW_SITE_OUTPUT_UNEXPECTED`-Flooding
-  - Webhook- und SMTP-Ausfall ohne sichtbare Client-Seiteneffekte
-  - stabilen lokalen Modbus-/HMI-Betrieb trotz Outbox-Retry
-- Die Gates pruefen echte localhost-Pfade, nicht nur ASGI-Shortcuts
+### Fuer Architektur und Fachmodell
 
-## Teststand
+1. [docs/architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
+2. [docs/domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
+3. [docs/protocol-profile.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/protocol-profile.md)
+4. [docs/register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
+5. [docs/hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
+6. [docs/logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
 
-Aktuell gruen:
+### Fuer Betrieb und Freigabe
 
-- `uv run pytest`
+1. [docs/testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
+2. [docs/release-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/release-checklist.md)
+3. [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
+4. [docs/pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
+5. [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
+6. [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
 
-Letzter bekannter Lauf:
+## Letzte relevante Commits
 
-- `210 passed`
-
-Abgedeckt sind bisher:
-
-- Scaffold und Prozesseinstieg
-- Konfigurationsdefaults und Fehlkonfiguration
-- Fixture-Laden und Fehlerpfade
-- Zeitabstraktion und deterministische Uhr
-- typisiertes Asset-Domain-Snapshot aus `normal_operation`
-- deterministische Simulationsszenarien fuer Kernszenarien aus Phase B
-- Alarmlebenszyklus und Qualitaetslogik auf dem Simulationskern
-- Eventvertrag, lokale Persistenz und Outbox-Grundlage im `SQLite`-Store
-- `JSONL`-Archivpfad fuer Eventanalyse
-- minimale Rule-Engine mit lokaler Event-zu-Alert-Ableitung fuer wiederholte
-  Login-Fehlschlaege, erfolgreiche Setpoint-Aenderungen, `BREAKER_OPEN`, den
-  kritischen Grid-Folge-Alert `GRID_PATH_UNAVAILABLE`, den hohen Folge-Alert
-  `LOW_SITE_OUTPUT_UNEXPECTED` bei deutlicher Minderleistung ohne Breaker-
-  oder Curtailment-Erklaerung,
-  `COMM_LOSS_INVERTER_BLOCK` und den kritischen Folge-Alert
-  `MULTI_BLOCK_UNAVAILABLE` beim zweiten unterschiedlichen aktiven
-  Block-Comm-Loss
-- `alert_log` wird jetzt auch bei identischen Frozen-Timestamps in stabiler
-  Insert-Reihenfolge gelesen; Clear- und Re-raise-Regeln fuer Folge-Alerts
-  haengen damit nicht mehr an zufaelligen `alert_id`-Sortierungen
-- Eventspur fuer fachliche `plant_sim`-Schreibwirkungen im lokalen Store
-- Modbus-Slice mit `FC03`/`FC06`/`FC16`, Contract-Tests und korrelierter
-  Eventspur
-- `inverter_block`-Slices mit Status-/Alarmmatrix, Write-Pfaden fuer
-  `block_enable_request`, `block_power_limit_pct_x10`, `block_reset_request`,
-  korrekter Unit-Differenzierung und lokaler Comm-Loss-Sicht
-- `weather_station`-Slice mit Fallback auf `fixture.weather`, abgeleiteter
-  Confidence-Sicht und strikt read-only Verhalten
-- `revenue_meter`-Slice mit read-only Verhalten, Export-/Qualitaetssicht und
-  konsistenter Breaker-Ableitung
-- `grid_interconnect`-Slice mit sichtbarer Breaker-Wirkung, Exportverlust,
-  Wiederherstellung und Alarm-Clear
-- HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`,
-  `/alarms` und `/trends`, HTTP-Eventspur und Shared-Truth-Tests gegen
-  Modbus-Curtailment, Breaker-Offen, Inverter-Blockwerte, Unit-21-Wetterdaten,
-  Unit-31-Meterwerte, die lokale Alert-Spur und die synthetische
-  Trendableitung aus Baseline plus Snapshot
-- eigene HMI-Fehlerseiten fuer `404/500` mit Fehler-Events statt
-  Framework-Standardbildern
-- `/service/login` und `/service/panel` mit serverseitiger Session-Grundlogik,
-  `20` Minuten Idle-Timeout, ruhigem `401/403`-Verhalten, Auth-Events und
-  schreibenden Service-Bedienungen fuer Leistungsbegrenzung,
-  Blindleistungsziel, `plant_mode_request` und Breaker inklusive korrelierter
-  Eventspur zum Fachkern
-- kumulativer Mehrblock-Shared-Truth fuer `block_enable_request` und
-  `block_power_limit_pct`, damit mehrere gelatchte Inverter-Block-Controls
-  gleichzeitig sichtbar auf Parkleistung und Folge-Alerts wirken
-- erster browserbasierter `Playwright`-Smoke in
-  `tests/e2e/test_hmi_service_playwright.py` deckt jetzt
-  `/service/login -> /service/panel -> breaker open -> /alarms` gegen den
-  echten lokalen Runtime-Pfad ab und prueft dabei Auth-, Control-, Page- und
-  Alert-Spur im lokalen Store
-- derselbe Browser-Slice deckt jetzt auch `power_limit` auf `/service/panel`
-  mit sichtbarer Shared-Truth-Wirkung in `/overview` und `/trends` ab und
-  prueft dabei Curtailment-Event, `PLANT_CURTAILED` und die read-only
-  Rueckspiegelung im Browser
-- derselbe Browser-Slice deckt jetzt auch `breaker open -> breaker close` auf
-  `/service/panel` mit sichtbarer Wirkung in `/meter` und `/alarms` ab und
-  prueft dabei `BREAKER_OPEN` als aktiven Alarm, dessen spaeteren `cleared`-
-  Historieneintrag und die Exportpfad-Wiederherstellung im Browser
-- derselbe Browser-Slice deckt jetzt auch `block_enable_request` und
-  `block_power_limit_pct` auf `/service/panel` mit sichtbarer Wirkung in
-  `/inverters` ab und prueft dabei Statuswechsel nach `offline`, `0.0 kW`,
-  fehlende Comm-Loss-Alarme und die Prozessspur fuer den betroffenen Block
-- derselbe Browser-Slice deckt jetzt auch `block_reset_request` nach
-  simuliertem `COMM_LOSS_INVERTER_BLOCK` auf `/service/panel` mit sichtbarer
-  Wirkung in `/inverters` und `/alarms` ab und prueft dabei Comm-Loss-Clear,
-  Statuswiederherstellung und die zugehoerige Prozess- und Alert-Spur fuer
-  `invb-02`
-- derselbe Browser-Slice deckt jetzt auch fehlgeschlagenen Service-Login und
-  den unauthentifizierten `GET /service/panel` ab und prueft dabei ruhige
-  `401`-Fehlerbilder ohne Framework-Leckage, fehlende `service_session`-Cookie
-  bei Fehlversuch und die korrekte Auth-/Error-Spur
-- derselbe Browser-Slice deckt jetzt auch den Session-Ablauf nach `20`
-  Minuten Idle-Zeit ab und prueft dabei den ruhigen `401`-Rueckfall auf
-  `/service/panel` nach zuvor erfolgreichem Login
-- derselbe Browser-Slice deckt jetzt auch deaktiviertes Service-Login mit
-  ruhigem `403` auf `/service/login` und `/service/panel` ab und prueft dabei
-  die korrekte Forbidden-Eventspur
-- derselbe Browser-Slice deckt jetzt auch wiederholte fehlgeschlagene
-  Service-Logins ab und prueft dabei den sichtbaren Rule-Alert
-  `REPEATED_LOGIN_FAILURE` in `/alarms`, dessen Asset-Bezug `hmi-web` und die
-  korrekte Auth-/Alert-Spur ohne `service_session`-Cookie
-- derselbe Browser-Slice deckt jetzt auch weitere Fehlversuche nach bereits
-  aktivem `REPEATED_LOGIN_FAILURE` ab und prueft dabei Dedupe/Suppression ohne
-  zweiten aktiven Login-Fehler-Alert in `/alarms` oder `alert_log`
-- die lokale `RuleEngine` clear't jetzt einen aktiven
-  `REPEATED_LOGIN_FAILURE` wieder, sobald fuer dieselbe Quell-IP und denselben
-  Benutzername ein erfolgreicher Service-Login gesehen wird
-- derselbe Browser-Slice deckt jetzt auch erfolgreichen Service-Login nach
-  aktivem `REPEATED_LOGIN_FAILURE` ab und prueft dabei den sichtbaren
-  `cleared`-Historieneintrag in `/alarms` bei gleichzeitig wieder geoeffneter
-  Service-Session
-- derselbe Browser-Slice deckt jetzt auch `GRID_PATH_UNAVAILABLE` als zweiten
-  history-only Rule-Alert ab und prueft dabei die sichtbare Folge-Alarmspur
-  fuer `grid-01` in `/alarms`
-- ein weiterer Browser-Slice deckt jetzt zusaetzliche `breaker_open_request`
-  bei bereits aktivem `GRID_PATH_UNAVAILABLE` ab und prueft Dedupe/
-  Suppression ohne zweiten aktiven Folge-Alert in `/alarms` oder `alert_log`
-- ein weiterer Integrations- und Browser-Slice deckt jetzt
-  `LOW_SITE_OUTPUT_UNEXPECTED` nach mehrfachen Block-Ausfaellen ab und prueft
-  die sichtbare Folge-Alarmspur fuer das Aggregat `site` in `/alarms`
-- ein weiterer Integrations- und Browser-Slice deckt jetzt
-  `LOW_SITE_OUTPUT_UNEXPECTED` nach Block-Erholung ab und prueft den
-  sichtbaren `cleared`-Historieneintrag fuer das Aggregat `site` in `/alarms`
-- ein weiterer Integrations- und Browser-Slice deckt jetzt
-  `LOW_SITE_OUTPUT_UNEXPECTED` bei weiterem Block-Control waehrend aktiver
-  Folge-Lage ab und prueft Dedupe/Suppression ohne zweiten Alert in `/alarms`
-  oder `alert_log`
-- ein weiterer Browser-Slice deckt jetzt `reactive_power_target` auf
-  `/service/panel` ab und prueft dabei die sichtbare Rueckspiegelung in
-  `/overview`, die Prozessspur und denselben PPC-Shared-Truth wie Modbus
-- ein weiterer Browser-Slice deckt jetzt `plant_mode_request` auf
-  `/service/panel` ab und prueft dabei den gelatchten Bedienwunsch ohne
-  heimlichen Wechsel von `operating_mode` sowie denselben PPC-Shared-Truth wie
-  Modbus
-- die lokale `RuleEngine` clear't jetzt den kritischen Folge-Alert
-  `MULTI_BLOCK_UNAVAILABLE`, sobald nach einem `block_reset_request` nur noch
-  ein einzelner Inverter-Block als `communication_state=lost` im Snapshot
-  verbleibt
-- ein weiterer Integrations- und Browser-Slice deckt jetzt
-  `MULTI_BLOCK_UNAVAILABLE` nach doppeltem Inverter-Block-Comm-Loss ab und
-  prueft auf `/alarms` sowohl die sichtbare Aktivierung fuer das Aggregat
-  `site` als auch den sichtbaren `cleared`-Historieneintrag nach Reset eines
-  der betroffenen Bloecke bei weiter aktivem Einzel-Comm-Loss
-- ein weiterer Integrations- und Browser-Slice deckt jetzt einen dritten
-  Block-Comm-Loss bei bereits aktivem `MULTI_BLOCK_UNAVAILABLE` ab und prueft
-  Dedupe/Suppression ohne zweiten aktiven Folge-Alert in `/alarms` oder
-  `alert_log`
-- ein weiterer Browser-Slice deckt jetzt `breaker open` auf `/service/panel`
-  ab und prueft dabei die sichtbare Rueckspiegelung im read-only
-  `/single-line`-Schema auf derselben Shared Truth
-- ein weiterer Browser-Slice deckt jetzt `/weather` als read-only
-  Shared-Truth-Seite ab und prueft dabei dieselben Wetterwerte und
-  Qualitaetszustände wie `Unit 21`
-- `exporter_sdk` mit lokalem Test-Exporter als Vertragsschicht fuer kommende
-  Outbox-Runner und Ziel-Exporter
-- `exporter_runner` mit Webhook-, SMTP- und Telegram-Exporter, Outbox-Leasing
-  und Retry-Backoff auf dem lokalen SQLite-Store
-- lokaler Runner-Hintergrundbetrieb fuer Webhook-, SMTP- und Telegram-Pfad ohne
-  manuelles `drain_once()` im Runtime-Slice
-- weitere Runtime- und Release-Gate-Slices decken jetzt die rule-basierten
-  Folge-Alerts `GRID_PATH_UNAVAILABLE`, `LOW_SITE_OUTPUT_UNEXPECTED` und
-  `MULTI_BLOCK_UNAVAILABLE` bis in Webhook-, SMTP- und Telegram-Outbox/
-  Hintergrundrunner ab und pruefen dabei auch Dedupe/Suppression ohne zweiten
-  Outbox-Eintrag bei weiterem Folgeereignis
-- derselbe Nachweis gilt jetzt auch fuer stille Retry-Pfade bei Transport-/
-  Rate-Limit-Fehlern auf Webhook-, SMTP- und Telegram-Pfad; die Folge-Alerts
-  `MULTI_BLOCK_UNAVAILABLE`, `GRID_PATH_UNAVAILABLE` und
-  `LOW_SITE_OUTPUT_UNEXPECTED` bleiben dabei ohne sichtbaren Seiteneffekt in
-  `/alarms` oder Modbus
-- ein weiterer Gate-Slice prueft jetzt die parallele Mehrfachausleitung
-  desselben `LOW_SITE_OUTPUT_UNEXPECTED`-Folgealerts ueber Webhook, SMTP und
-  Telegram; ein Telegram-Rate-Limit blockiert dabei weder Webhook noch SMTP
-- Release-Gate- und Hardening-Suite fuer ruhige Fehlerbilder, Header-Armut,
-  Follow-up-Alert-Suppression und Exporter-Ausfall ohne sichtbare
-  Seiteneffekte
-- lokaler Runtime-Startpfad mit `build_local_runtime()`, echtem Modbus-Socket,
-  echtem HMI-HTTP-Socket und sauberem Stoppen beider Dienste
-
-## Sicherheitsplanken
-
-Weiter verbindlich:
-
-- keine reale OEM-Kopie
-- keine echten Orts-, Firmen- oder Zugangsdaten
-- keine Shell- oder Host-Zugriffspfade
-- keine echte Fernsteuerung externer Systeme
-- Logging bleibt Kernfunktion
-- nur die angreiferzugewandte HMI ist lokalisierbar
-- Admin-Sicht und Logs bleiben deutsch
-
-Bereits implizit abgesichert:
-
-- Konfiguration weist ungueltige Locale- und Exporter-Einstellungen frueh ab
-- Fixtures weisen fachlich schiefe Startdaten frueh ab
-- Zeitwerte sind fuer Tests kontrollierbar und UTC-konsistent
+- `c330cc7` `docs: simplify readme structure`
+- `db75ea2` `docs: add scada primer and attacker runbooks`
+- `44470a1` `feat: record exposed research sweep findings`
+- `90cdb90` `feat: gate exposed research deployments`
+- `8ee4865` `feat: gate nonlocal ingress approvals`
+- `d66c41e` `feat: gate exporter egress targets`
+- `0c3a6cd` `feat: add local runtime reset path`
+- `47dab3c` `feat: add local runtime status heartbeat`
 
 ## Offene Luecken
 
-Noch **nicht** vorhanden:
+Repo-seitig ist der Grundbau weitgehend geschlossen. Die groessten offenen
+Punkte liegen jetzt nicht mehr im Kern, sondern im echten Einsatz:
 
-- weiterer Rule-Engine-Feinschliff fuer mehrstufige Alarmfolgen und spaetere
-  Suppression-Strategien jenseits identischer aktiver Alerts
-- restliche Modbus-Write-Pfade fuer weitere Setpoints und weitere aktive Units
-- weitere HMI-Seiten jenseits von `/overview`, `/single-line`, `/inverters`,
-  `/weather`, `/meter`, `/alarms`, `/trends` und dem bestehenden
-  Service-Panel
-- weitere Ziel-Exporter jenseits von Webhook, SMTP und Telegram sowie
-  restliche Servicepfade
+1. deployment-spezifische `.env` fuer den Zielhost
+2. reale Firewall-/NAT-Validierung
+3. reale Egress-Empfaenger statt Doku-Ziele
+4. echter Zielhost-Lauf von `--verify-exposed-research`
 
-Operative Hinweise:
+## Naechster sinnvoller Schritt
 
-- Arbeitsbaum war beim letzten Handoff sauber
+Wenn lokal weitergearbeitet wird:
 
-## Naechster Schritt
+1. keine neue Grundmechanik vorziehen
+2. nur gezielte Härtung, Test- oder Doku-Schlaege
 
-### Phase D/E fortsetzen
+Wenn echte Exponierung vorbereitet wird:
 
-Direkter Kurs fuer den naechsten Agenten:
-
-1. die wichtigsten read-only HMI-Seiten sind browserseitig jetzt weitgehend
-   rund; der erste lokale V1-Release-Kandidat ist jetzt belastbar genug fuer
-   die Abnahme ueber die lokale Release-Checkliste. Weiterer Kurs nur bei
-   bewusstem Ausbau: `pre-exposure`-Gates, weitere HMI-/Modbus-Feinschnitte
-   oder zusaetzliche Rule-/Exporter-Ketten
-
-Empfohlener naechster atomarer Fix in Phase D/E:
-
-- naechster atomarer Fix nur bei weiterem Bedarf: weiterer read-only HMI-
-  Feinschnitt oder eine neue Rule-/Exporter-Kette auf derselben Wahrheit
-- keine weitere Exponierung oder zusaetzliche Aussenkante vorziehen, bevor
-  diese End-to-End-Pfade dauerhaft gruen bleiben
-
-Nicht als naechstes tun:
-
-- keine neue Aussenkante vorziehen
-- keine weiteren Aussenkanal- oder Service-Erweiterungen vorziehen, bevor die
-  ersten zehn browserbasierten Runtime-Nachweise dauerhaft gruen bleiben
-
-## Vor dem Weiterbauen lesen
-
-- `docs/v1-decisions.md`
-- `docs/implementation-roadmap.md`
-- `docs/domain-model.md`
-- `docs/protocol-profile.md`
-- `docs/register-matrix.md`
-- `docs/hmi-concept.md`
-- `docs/logging-and-events.md`
-- `docs/testing-strategy.md`
-- `docs/security-operations.md`
+1. Zielhost-`.env` setzen
+2. `uv run python -m honeypot.main --verify-exposed-research` auf dem Zielhost fahren
+3. Findings, Runtime-Status und Eventspur gegenlesen
+4. erst danach Ingress wirklich nach aussen oeffnen
