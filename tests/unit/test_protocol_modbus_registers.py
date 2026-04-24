@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
@@ -204,6 +206,21 @@ def test_fc16_rejects_invalid_plant_mode_request_values() -> None:
         register_map.write_multiple_registers(unit_id=1, start_offset=201, values=(3,))
 
     assert exc_info.value.exception_code == ILLEGAL_DATA_VALUE
+
+
+def test_replace_snapshot_updates_visible_runtime_state_atomically() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+    updated_snapshot = register_map.snapshot.model_copy(
+        update={
+            "observed_at": datetime(2026, 4, 1, 10, 5, tzinfo=UTC),
+            "site": register_map.snapshot.site.model_copy(update={"plant_power_mw": 4.2}),
+        }
+    )
+
+    register_map.replace_snapshot(updated_snapshot)
+
+    assert register_map.snapshot.observed_at == datetime(2026, 4, 1, 10, 5, tzinfo=UTC)
+    assert register_map.snapshot.site.plant_power_mw == pytest.approx(4.2)
 
 
 def test_unit_12_fc06_disable_and_reenable_updates_block_state() -> None:

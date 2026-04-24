@@ -187,6 +187,15 @@ Jedes Asset traegt mindestens:
 - `last_update_ts`
 - `quality`
 
+Der gemeinsame Snapshot traegt zusaetzlich:
+- `start_time`
+- `observed_at`
+
+Dabei bleibt `start_time` der Fixture-/Referenzstart, waehrend `observed_at`
+den zuletzt sichtbar gemachten Anlagenzustand markiert. HMI, Trends und
+spaetere Hintergrunddynamik muessen sich an `observed_at` orientieren, nicht an
+dem starren Fixture-Start.
+
 Empfohlene Auspraegungen fuer `status`:
 - `online`
 - `offline`

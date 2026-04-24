@@ -976,6 +976,7 @@ def _build_snapshot(
     return PlantSnapshot(
         fixture_name=snapshot.fixture_name,
         start_time=snapshot.start_time,
+        observed_at=snapshot.observed_at,
         site=final_site,
         power_plant_controller=power_plant_controller_model.model_copy(
             update={

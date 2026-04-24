@@ -2784,7 +2784,7 @@ def _inverter_local_alarm_count(block: Any) -> int:
 
 
 def _snapshot_time(snapshot: PlantSnapshot) -> str:
-    return snapshot.start_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    return snapshot.observed_at.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _format_power_mw(value: float) -> str:

@@ -167,6 +167,12 @@ class ReadOnlyRegisterMap:
         with self._lock:
             return self._snapshot
 
+    def replace_snapshot(self, snapshot: PlantSnapshot) -> None:
+        """Ersetzt den sichtbaren Snapshot atomar fuer HMI- und Modbus-Leser."""
+
+        with self._lock:
+            self._replace_snapshot_locked(snapshot)
+
     def set_active_power_limit_pct(
         self,
         *,
@@ -566,7 +572,7 @@ class ReadOnlyRegisterMap:
                     except PlantSimulationError as exc:
                         raise ModbusRegisterError(ILLEGAL_DATA_VALUE, str(exc)) from exc
 
-            self._snapshot = working_snapshot
+            self._replace_snapshot_locked(working_snapshot)
             self._plant_mode_request_override = working_mode_request_override
             self._block_enable_request_overrides = working_block_enable_request_overrides
             self._block_power_limit_request_overrides = working_block_power_limit_request_overrides
@@ -592,6 +598,9 @@ class ReadOnlyRegisterMap:
             asset_id=ASSET_ID[unit_id],
             resulting_state=resulting_state,
         )
+
+    def _replace_snapshot_locked(self, snapshot: PlantSnapshot) -> None:
+        self._snapshot = snapshot
 
     def _validate_write_sequence(
         self,

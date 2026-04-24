@@ -12,14 +12,20 @@ def test_plant_snapshot_maps_normal_operation_fixture() -> None:
 
     assert snapshot.fixture_name == "normal_operation"
     assert snapshot.start_time == datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+    assert snapshot.observed_at == snapshot.start_time
     assert snapshot.site.plant_power_mw == pytest.approx(5.8)
     assert snapshot.site.breaker_state == "closed"
     assert snapshot.power_plant_controller.active_power_limit_pct == 100
     assert snapshot.power_plant_controller.control_authority == "remote_scada"
+    assert snapshot.power_plant_controller.last_update_ts == snapshot.start_time
     assert tuple(block.asset_id for block in snapshot.inverter_blocks) == ("invb-01", "invb-02", "invb-03")
+    assert all(block.last_update_ts == snapshot.start_time for block in snapshot.inverter_blocks)
     assert snapshot.total_inverter_power_kw == pytest.approx(5800.0)
     assert snapshot.weather_station.module_temperature_c == pytest.approx(31.5)
     assert snapshot.weather_station.wind_speed_m_s == pytest.approx(4.2)
+    assert snapshot.weather_station.last_update_ts == snapshot.start_time
     assert snapshot.revenue_meter.export_power_kw == pytest.approx(5790.0)
+    assert snapshot.revenue_meter.last_update_ts == snapshot.start_time
     assert snapshot.grid_interconnect.export_path_available is True
+    assert snapshot.grid_interconnect.last_update_ts == snapshot.start_time
     assert snapshot.active_alarm_codes == ()

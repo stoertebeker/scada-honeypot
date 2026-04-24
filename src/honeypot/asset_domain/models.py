@@ -52,6 +52,7 @@ class AssetBase(BaseModel):
     status: AssetStatus
     communication_state: CommunicationState
     quality: DataQuality
+    last_update_ts: datetime
 
 
 class PowerPlantController(AssetBase):
@@ -123,6 +124,7 @@ class PlantSnapshot(BaseModel):
 
     fixture_name: str = Field(min_length=1)
     start_time: datetime
+    observed_at: datetime
     site: SiteState
     power_plant_controller: PowerPlantController
     inverter_blocks: tuple[InverterBlock, ...]
@@ -201,12 +203,14 @@ class PlantSnapshot(BaseModel):
             return cls(
                 fixture_name=fixture.fixture_name,
                 start_time=fixture.start_time,
+                observed_at=fixture.start_time,
                 site=SiteState.model_validate(fixture.site_state.model_dump()),
                 power_plant_controller=PowerPlantController(
                     asset_id=ppc_asset.asset_id,
                     status=ppc_asset.status,
                     communication_state=ppc_asset.communication_state,
                     quality=ppc_asset.quality,
+                    last_update_ts=fixture.start_time,
                     active_power_limit_pct=_measurement_int(ppc_asset, "active_power_limit_pct"),
                     reactive_power_target=_measurement_float(ppc_asset, "reactive_power_target"),
                     control_authority=_measurement_string(ppc_asset, "control_authority"),
@@ -217,6 +221,7 @@ class PlantSnapshot(BaseModel):
                         status=asset.status,
                         communication_state=asset.communication_state,
                         quality=asset.quality,
+                        last_update_ts=fixture.start_time,
                         block_power_kw=_measurement_float(asset, "block_power_kw"),
                         availability_pct=_measurement_int(asset, "availability_pct"),
                         block_dc_voltage_v=_optional_measurement_float(asset, "block_dc_voltage_v"),
@@ -232,6 +237,7 @@ class PlantSnapshot(BaseModel):
                     status=weather_asset.status,
                     communication_state=weather_asset.communication_state,
                     quality=weather_asset.quality,
+                    last_update_ts=fixture.start_time,
                     irradiance_w_m2=_measurement_int(
                         weather_asset,
                         "irradiance_w_m2",
@@ -258,6 +264,7 @@ class PlantSnapshot(BaseModel):
                     status=meter_asset.status,
                     communication_state=meter_asset.communication_state,
                     quality=meter_asset.quality,
+                    last_update_ts=fixture.start_time,
                     export_power_kw=_measurement_float(meter_asset, "export_power_kw"),
                     power_factor=_measurement_float(meter_asset, "power_factor"),
                     export_energy_mwh_total=_optional_measurement_float(meter_asset, "export_energy_mwh_total"),
@@ -269,6 +276,7 @@ class PlantSnapshot(BaseModel):
                     status=grid_asset.status,
                     communication_state=grid_asset.communication_state,
                     quality=grid_asset.quality,
+                    last_update_ts=fixture.start_time,
                     breaker_state=_measurement_string(grid_asset, "breaker_state"),
                     export_path_available=_measurement_bool(
                         grid_asset,

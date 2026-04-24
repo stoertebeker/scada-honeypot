@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -95,6 +95,23 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert overview_event.requested_value == {"http_method": "GET", "http_path": "/overview"}
     assert overview_event.resulting_value == {"http_status": 200}
     assert overview_event.session_id is not None
+
+
+@pytest.mark.asyncio
+async def test_overview_page_uses_observed_at_for_snapshot_time(tmp_path: Path) -> None:
+    snapshot = build_snapshot().model_copy(update={"observed_at": datetime(2026, 4, 1, 10, 7, tzinfo=UTC)})
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=None,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/overview")
+
+    assert response.status_code == 200
+    assert "2026-04-01 10:07:00 UTC" in response.text
 
 
 @pytest.mark.asyncio
