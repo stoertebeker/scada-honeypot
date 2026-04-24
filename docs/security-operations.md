@@ -62,7 +62,7 @@ Eigenschaften:
 - ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
   Reset und Fresh-Start ist jetzt im Testharness belegt
 - Stand 23. April 2026: formales `GO` fuer `pre-exposure`, siehe
-  [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
+  [pre-exposure-decision.md](pre-exposure-decision.md)
 
 ### 3.4 `exposed-research`
 
@@ -82,10 +82,10 @@ Eigenschaften:
   benannte Rollen, benannte Egress-Empfaenger und verbietet Platzhalterziele
   fuer aktive Exporter im `exposed-research`-Modus
 - fuer diese deployment-spezifische Freigabe ist
-  [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
+  [exposed-research-checklist.md](exposed-research-checklist.md)
   verbindlich zu fuehren
 - eine ausgefuellte Beispielbewertung des heutigen Stands liegt in
-  [exposed-research-checklist-example.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-example.md)
+  [exposed-research-checklist-example.md](exposed-research-checklist-example.md)
   und endet bewusst auf `NO-GO`
 
 ## 4. Harte Sicherheitsgrenzen
@@ -383,11 +383,11 @@ Nach Stop oder Incident:
 
 Dieses Dokument arbeitet zusammen mit:
 
-- [README.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/README.md)
-- [v1-decisions.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/v1-decisions.md)
-- [testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
-- [implementation-roadmap.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/implementation-roadmap.md)
-- [logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
+- [README.md](../README.md)
+- [v1-decisions.md](v1-decisions.md)
+- [testing-strategy.md](testing-strategy.md)
+- [implementation-roadmap.md](implementation-roadmap.md)
+- [logging-and-events.md](logging-and-events.md)
 
 ## 15. Kurzfazit
 

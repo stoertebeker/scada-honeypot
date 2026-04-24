@@ -7,7 +7,7 @@ Solarpark-Honeypots.
 
 Sie ist **keine** Freigabe fuer `pre-exposure` oder fuer eine echte
 Internet-Exponierung. Dafuer gelten zusaetzlich
-[security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
+[security-operations.md](security-operations.md)
 und die dort beschriebenen Sicherheitsgates.
 
 ## Scope des ersten V1-Releases
@@ -100,4 +100,4 @@ Betriebsmodus dokumentiert:
 
 Verbindliche Lagekarte:
 
-- [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
+- [pre-exposure-decision.md](pre-exposure-decision.md)

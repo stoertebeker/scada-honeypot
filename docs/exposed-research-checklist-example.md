@@ -155,6 +155,6 @@ Vor einem echten `GO` fuer `exposed-research` muessen mindestens folgen:
 
 Verwendete Hauptkarten:
 
-- [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
-- [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
-- [security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
+- [exposed-research-checklist.md](exposed-research-checklist.md)
+- [pre-exposure-decision.md](pre-exposure-decision.md)
+- [security-operations.md](security-operations.md)

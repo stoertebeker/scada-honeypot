@@ -386,8 +386,8 @@ def test_cli_reset_runtime_prints_report(capsys, monkeypatch, tmp_path: Path) ->
 
     class _Report:
         site_code = "site-99"
-        removed_paths = (Path("/tmp/a"), Path("/tmp/b"))
-        missing_paths = (Path("/tmp/c"),)
+        removed_paths = (Path("tmp/a"), Path("tmp/b"))
+        missing_paths = (Path("tmp/c"),)
 
     monkeypatch.setattr("honeypot.main.reset_local_runtime_artifacts", lambda env_file=".env": _Report())
 

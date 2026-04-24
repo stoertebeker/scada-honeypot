@@ -146,26 +146,26 @@ Wichtige Regel:
 
 ### Fuer Nicht-SCADA-Menschen
 
-1. [docs/scada-primer-and-module-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/scada-primer-and-module-guide.md)
-2. [docs/test-attacker-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/test-attacker-guide.md)
+1. [docs/scada-primer-and-module-guide.md](scada-primer-and-module-guide.md)
+2. [docs/test-attacker-guide.md](test-attacker-guide.md)
 
 ### Fuer Architektur und Fachmodell
 
-1. [docs/architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
-2. [docs/domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
-3. [docs/protocol-profile.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/protocol-profile.md)
-4. [docs/register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
-5. [docs/hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
-6. [docs/logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
+1. [docs/architecture.md](architecture.md)
+2. [docs/domain-model.md](domain-model.md)
+3. [docs/protocol-profile.md](protocol-profile.md)
+4. [docs/register-matrix.md](register-matrix.md)
+5. [docs/hmi-concept.md](hmi-concept.md)
+6. [docs/logging-and-events.md](logging-and-events.md)
 
 ### Fuer Betrieb und Freigabe
 
-1. [docs/testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
-2. [docs/release-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/release-checklist.md)
-3. [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
-4. [docs/pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
-5. [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
-6. [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
+1. [docs/testing-strategy.md](testing-strategy.md)
+2. [docs/release-checklist.md](release-checklist.md)
+3. [docs/security-operations.md](security-operations.md)
+4. [docs/pre-exposure-decision.md](pre-exposure-decision.md)
+5. [docs/exposed-research-checklist.md](exposed-research-checklist.md)
+6. [docs/exposed-research-runbook.md](exposed-research-runbook.md)
 
 ## Letzte relevante Commits
 

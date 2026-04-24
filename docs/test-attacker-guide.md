@@ -13,9 +13,9 @@ Wichtige Sicherheitsregel:
 - Das ist ein Bedienguide fuer Test- und Forschungszwecke im eigenen
   Laborkurs.
 - Vor echter Exponierung muessen die Gates aus
-  [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md),
-  [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
-  und [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
+  [docs/security-operations.md](security-operations.md),
+  [docs/exposed-research-checklist.md](exposed-research-checklist.md)
+  und [docs/exposed-research-runbook.md](exposed-research-runbook.md)
   erfuellt sein.
 
 ## 2. Schnellstart lokal
@@ -335,11 +335,11 @@ Wichtige Sicherheitsregel:
 
 ## 9. Weiterfuehrende Karten
 
-- [docs/scada-primer-and-module-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/scada-primer-and-module-guide.md)
+- [docs/scada-primer-and-module-guide.md](scada-primer-and-module-guide.md)
   - SCADA-Begriffe und Moduluebersicht
-- [docs/register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
+- [docs/register-matrix.md](register-matrix.md)
   - genaue Registermatrix
-- [docs/protocol-profile.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/protocol-profile.md)
+- [docs/protocol-profile.md](protocol-profile.md)
   - Protokollregeln und Fehlerverhalten
-- [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
+- [docs/exposed-research-runbook.md](exposed-research-runbook.md)
   - Zielhost-Kurs fuer spaetere echte Exponierung

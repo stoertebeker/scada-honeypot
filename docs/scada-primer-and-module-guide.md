@@ -246,11 +246,11 @@ Wenn du nur die grobe Bedienlogik mitnehmen willst, reicht diese Kurzfassung:
 
 ## 10. Weiterfuehrende Karten
 
-- [docs/test-attacker-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/test-attacker-guide.md)
+- [docs/test-attacker-guide.md](test-attacker-guide.md)
   - konkreter Bedienkurs fuer HMI, Service-Panel und Modbus
-- [docs/register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
+- [docs/register-matrix.md](register-matrix.md)
   - genaue Register und Zugriffstypen
-- [docs/hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
+- [docs/hmi-concept.md](hmi-concept.md)
   - fachliches Zielbild der Web-HMI
-- [docs/architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
+- [docs/architecture.md](architecture.md)
   - technische Gesamtstruktur des Projekts

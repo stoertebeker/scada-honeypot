@@ -82,7 +82,7 @@ uv sync --dev
 Deployment-spezifische Beispielkarte fuer den ersten kontrollierten
 `exposed-research`-Zielhost:
 
-- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
+- [deploy/lab-vm-observer-01.env.example](deploy/lab-vm-observer-01.env.example)
 
 ### Tests
 
@@ -159,29 +159,29 @@ uv run python -m playwright install chromium
 
 ### Einstieg fuer Nicht-SCADA-Menschen
 
-- [docs/scada-primer-and-module-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/scada-primer-and-module-guide.md)
+- [docs/scada-primer-and-module-guide.md](docs/scada-primer-and-module-guide.md)
   - erklaert Komponenten, SCADA-Begriffe und Repo-Module in Klartext
-- [docs/test-attacker-guide.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/test-attacker-guide.md)
+- [docs/test-attacker-guide.md](docs/test-attacker-guide.md)
   - zeigt, wie man HMI, Service-Panel und Modbus als Testangreifer bedient
 
 ### Architektur und Fachmodell
 
-- [docs/architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
-- [docs/domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
-- [docs/protocol-profile.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/protocol-profile.md)
-- [docs/register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
-- [docs/hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
-- [docs/logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/domain-model.md](docs/domain-model.md)
+- [docs/protocol-profile.md](docs/protocol-profile.md)
+- [docs/register-matrix.md](docs/register-matrix.md)
+- [docs/hmi-concept.md](docs/hmi-concept.md)
+- [docs/logging-and-events.md](docs/logging-and-events.md)
 
 ### Tests, Release und Betrieb
 
-- [docs/testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
-- [docs/release-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/release-checklist.md)
-- [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
-- [docs/pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
-- [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
-- [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
-- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
+- [docs/testing-strategy.md](docs/testing-strategy.md)
+- [docs/release-checklist.md](docs/release-checklist.md)
+- [docs/security-operations.md](docs/security-operations.md)
+- [docs/pre-exposure-decision.md](docs/pre-exposure-decision.md)
+- [docs/exposed-research-checklist.md](docs/exposed-research-checklist.md)
+- [docs/exposed-research-runbook.md](docs/exposed-research-runbook.md)
+- [deploy/lab-vm-observer-01.env.example](deploy/lab-vm-observer-01.env.example)
 
 ## Sicherheitsleitplanken
 

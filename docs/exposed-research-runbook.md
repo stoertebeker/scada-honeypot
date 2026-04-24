@@ -18,9 +18,9 @@ fuer die Deckscrew:
 
 Vor dem ersten Zielhost-Lauf muessen diese Karten sauber vorbereitet sein:
 
-- [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
-- [docs/exposed-research-profile-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-profile-lab-vm-observer-01.md)
-- [docs/exposed-research-checklist-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-lab-vm-observer-01.md)
+- [docs/exposed-research-checklist.md](exposed-research-checklist.md)
+- [docs/exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
+- [docs/exposed-research-checklist-lab-vm-observer-01.md](exposed-research-checklist-lab-vm-observer-01.md)
 
 Wichtige Mindestpunkte:
 
@@ -39,7 +39,7 @@ Wichtige Mindestpunkte:
 
 Empfohlener Startpunkt:
 - `.env.example`
-- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
+- [deploy/lab-vm-observer-01.env.example](../deploy/lab-vm-observer-01.env.example)
 - danach deployment-spezifisch ausfuellen
 
 Die Werte muessen **echt** sein:
@@ -186,6 +186,6 @@ Kein Internetkurs, wenn eines davon zutrifft:
 
 ## 9. Verweise
 
-- [docs/security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
-- [docs/release-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/release-checklist.md)
-- [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
+- [docs/security-operations.md](security-operations.md)
+- [docs/release-checklist.md](release-checklist.md)
+- [docs/exposed-research-checklist.md](exposed-research-checklist.md)

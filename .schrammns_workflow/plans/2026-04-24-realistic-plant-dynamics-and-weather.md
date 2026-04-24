@@ -199,7 +199,7 @@ In docs:
 
 ```bash
 # Plan validation
-python3 /Users/schrammn/.codex/skills/set-course/scripts/validate_plan.py \
+python3 "$CODEX_HOME/skills/set-course/scripts/validate_plan.py" \
   .schrammns_workflow/plans/2026-04-24-realistic-plant-dynamics-and-weather.md
 
 # Focused config/domain/weather checks

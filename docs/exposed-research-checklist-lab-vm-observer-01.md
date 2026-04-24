@@ -7,7 +7,7 @@ das erste kontrollierte `exposed-research`-Zielprofil
 `lab-vm-observer-01`.
 
 Sie uebernimmt die festen technischen Leitplanken aus
-[exposed-research-profile-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-profile-lab-vm-observer-01.md)
+[exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
 und macht daraus eine konkrete Freigabepruefung fuer den ersten echten
 Internet-Kurs.
 
@@ -25,7 +25,7 @@ Internet-Kurs.
 - geplante Dauer:
   - erster Pilotlauf `72h`, danach erneute Lagebewertung
 - Zielhost-`.env`-Vorlage:
-  - [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
+  - [deploy/lab-vm-observer-01.env.example](../deploy/lab-vm-observer-01.env.example)
 
 ## 2. Ingress-Entscheidung
 
@@ -177,8 +177,8 @@ Dieses `GO` gilt nur, wenn auf dem echten Zielhost zusaetzlich abgeglichen ist:
 
 ## 9. Bezug
 
-- [../deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
-- [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
-- [exposed-research-profile-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-profile-lab-vm-observer-01.md)
-- [security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
-- [pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
+- [../deploy/lab-vm-observer-01.env.example](../deploy/lab-vm-observer-01.env.example)
+- [exposed-research-checklist.md](exposed-research-checklist.md)
+- [exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
+- [security-operations.md](security-operations.md)
+- [pre-exposure-decision.md](pre-exposure-decision.md)

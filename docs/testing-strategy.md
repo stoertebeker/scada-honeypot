@@ -45,11 +45,11 @@ Ergaenzend gelten:
 
 Alle Testebenen pruefen letztlich dieselbe fachliche Grundlage:
 
-- [domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
-- [protocol-profile.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/protocol-profile.md)
-- [register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
-- [hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
-- [logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
+- [domain-model.md](domain-model.md)
+- [protocol-profile.md](protocol-profile.md)
+- [register-matrix.md](register-matrix.md)
+- [hmi-concept.md](hmi-concept.md)
+- [logging-and-events.md](logging-and-events.md)
 
 ### 4.2 Kleine Tests zuerst, Szenarien danach
 

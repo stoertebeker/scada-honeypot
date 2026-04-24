@@ -72,15 +72,15 @@ Eine Phase gilt erst als beendet, wenn:
 
 Diese Dokumente bilden die Grundlage der Umsetzung:
 
-- [v1-decisions.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/v1-decisions.md)
-- [solarpark-honeypot-scope.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/solarpark-honeypot-scope.md)
-- [architecture.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/architecture.md)
-- [domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md)
-- [logging-and-events.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/logging-and-events.md)
-- [protocol-profile.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/protocol-profile.md)
-- [register-matrix.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/register-matrix.md)
-- [hmi-concept.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/hmi-concept.md)
-- [testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
+- [v1-decisions.md](v1-decisions.md)
+- [solarpark-honeypot-scope.md](solarpark-honeypot-scope.md)
+- [architecture.md](architecture.md)
+- [domain-model.md](domain-model.md)
+- [logging-and-events.md](logging-and-events.md)
+- [protocol-profile.md](protocol-profile.md)
+- [register-matrix.md](register-matrix.md)
+- [hmi-concept.md](hmi-concept.md)
+- [testing-strategy.md](testing-strategy.md)
 
 ## 5. Empfohlene Projektstruktur
 
@@ -229,7 +229,7 @@ Ein interner Simulationskern, der ohne Modbus und HMI schon:
 
 ### 9.4 Exit-Kriterien
 
-- Kern-Szenarien aus [domain-model.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/domain-model.md) als Tests vorhanden
+- Kern-Szenarien aus [domain-model.md](domain-model.md) als Tests vorhanden
 - Parkleistung, Breaker und Kommunikationsverlust wirken unterschiedlich
 - keine externen Protokolle notwendig, um Simulation zu pruefen
 
@@ -520,7 +520,7 @@ Forschungseinsatz vorbereiten.
 
 - Anti-Fingerprint-Basissuite gruen
 - V1-Test-Gates aus
-  [testing-strategy.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/testing-strategy.md)
+  [testing-strategy.md](testing-strategy.md)
   erfuellt
 - keine kritischen offenen Sicherheitsluecken fuer den Laborbetrieb
 
