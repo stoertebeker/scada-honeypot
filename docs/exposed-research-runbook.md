@@ -86,6 +86,12 @@ Dann sauber stoppen.
 uv run python -m honeypot.main --env-file .env --verify-exposed-research
 ```
 
+Bevorzugt fuer den echten Zielhost:
+
+```bash
+uv run python -m honeypot.main --env-file .env --verify-exposed-research-target-host
+```
+
 Der Sweep prueft aktuell:
 
 1. Start der Runtime im freigegebenen Exposure-Modus
@@ -94,6 +100,13 @@ Der Sweep prueft aktuell:
 4. Alert-Lebenszyklus fuer `BREAKER_OPEN`
 5. sauberen Stop
 6. Eintrag nach `FINDINGS_LOG_PATH`
+
+Der Zielhost-Wrapper gibt danach zusaetzlich direkt aus:
+
+- `FINDINGS_LOG_PATH`
+- `RUNTIME_STATUS_PATH` oder `disabled`
+- `EVENT_STORE_PATH`
+- `JSONL_ARCHIVE_PATH` oder `disabled`
 
 ## 5. Was danach geprueft werden muss
 

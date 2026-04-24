@@ -264,6 +264,8 @@ Aktueller lokaler V1-Pfad:
 Vor echtem Internetbetrieb ausfuehren:
 
 - `uv run python -m honeypot.main --verify-exposed-research`
+- bevorzugt auf dem echten Zielhost:
+  `uv run python -m honeypot.main --env-file .env --verify-exposed-research-target-host`
 
 Der Sweep prueft auf demselben Runtime-Pfad:
 
@@ -273,6 +275,7 @@ Der Sweep prueft auf demselben Runtime-Pfad:
 - Alert-Lebenszyklus fuer `BREAKER_OPEN`
 - sauberen Stop
 - schreibt einen dokumentierten Sweep-Eintrag nach `FINDINGS_LOG_PATH`
+- der Zielhost-Wrapper gibt danach die relevanten Artefaktpfade kompakt aus
 
 ### 9.2 Reset-Ausloeser
 

@@ -35,6 +35,7 @@ uv run python -m honeypot.main --reset-runtime
 
 ```bash
 uv run python -m honeypot.main --verify-exposed-research
+uv run python -m honeypot.main --verify-exposed-research-target-host
 ```
 
 ### Gesamttestlauf
@@ -179,7 +180,7 @@ Punkte liegen jetzt nicht mehr im Kern, sondern im echten Einsatz:
 1. deployment-spezifische `.env` fuer den Zielhost
 2. reale Firewall-/NAT-Validierung
 3. reale Egress-Empfaenger statt Doku-Ziele
-4. echter Zielhost-Lauf von `--verify-exposed-research`
+4. echter Zielhost-Lauf von `--verify-exposed-research-target-host`
 
 ## Naechster sinnvoller Schritt
 
@@ -191,6 +192,6 @@ Wenn lokal weitergearbeitet wird:
 Wenn echte Exponierung vorbereitet wird:
 
 1. Zielhost-`.env` setzen
-2. `uv run python -m honeypot.main --verify-exposed-research` auf dem Zielhost fahren
+2. `uv run python -m honeypot.main --verify-exposed-research-target-host` auf dem Zielhost fahren
 3. Findings, Runtime-Status und Eventspur gegenlesen
 4. erst danach Ingress wirklich nach aussen oeffnen

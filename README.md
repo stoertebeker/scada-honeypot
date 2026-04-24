@@ -40,6 +40,7 @@ Runtime-Status und SQLite-`-wal`/`-shm`-Sidecars.
 
 ```bash
 uv run python -m honeypot.main --verify-exposed-research
+uv run python -m honeypot.main --verify-exposed-research-target-host
 ```
 
 Prueft auf demselben Runtime-Pfad:
@@ -50,6 +51,15 @@ Prueft auf demselben Runtime-Pfad:
 - Alert-Lebenszyklus fuer `BREAKER_OPEN`
 - sauberen Stop
 - Findings-Eintrag nach `FINDINGS_LOG_PATH`
+
+Fuer den echten Zielhost ist der bevorzugte Befehl:
+
+```bash
+uv run python -m honeypot.main --env-file .env --verify-exposed-research-target-host
+```
+
+Er fuehrt denselben Sweep aus und gibt danach die relevanten Artefaktpfade fuer
+Findings, Runtime-Status, Eventstore und JSONL kompakt aus.
 
 Wichtige Sicherheitsregel:
 - Dieser Sweep ist Pflicht vor echter Exponierung.

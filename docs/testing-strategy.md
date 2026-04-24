@@ -492,6 +492,10 @@ Pflichttests:
   Start mit freigegebenem Profil, Modbus-Read, HMI-Read auf `/overview`,
   Alert-Aktivierung und `cleared` fuer `BREAKER_OPEN`, danach sauberer Stop
   und ein protokollierter Sweep-Eintrag unter `FINDINGS_LOG_PATH`
+- ein zusaetzlicher Runtime-Integrationspfad prueft jetzt
+  `uv run python -m honeypot.main --verify-exposed-research-target-host`:
+  derselbe Sweep plus kompakte Artefakt-Ausgabe fuer Findings, Runtime-Status,
+  Eventstore und JSONL
 - ein weiterer Release-Gate-Sweep prueft jetzt den kombinierten
   `pre-exposure`-Pfad: Heartbeat aktiv, freigegebenes Webhook-Ziel, laufende
   Runtime mit erfolgreicher Ausleitung, anschliessender Reset und sauberer

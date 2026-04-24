@@ -340,6 +340,22 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
     return 0
 
 
+def verify_exposed_research_target_host(*, env_file: str | None = ".env") -> int:
+    """Fuehrt den Exposure-Sweep aus und gibt die relevanten Artefaktpfade fuer den Zielhost aus."""
+
+    config = load_runtime_config(env_file=env_file)
+    result = verify_exposed_research_runtime(env_file=env_file)
+    print(
+        "exposed-research target-host artifacts: "
+        f"env_file={env_file or '.env'} "
+        f"findings={config.findings_log_path} "
+        f"runtime_status={config.runtime_status_path if config.runtime_status_enabled else 'disabled'} "
+        f"event_store={config.event_store_path} "
+        f"jsonl_archive={config.jsonl_archive_path if config.jsonl_archive_enabled else 'disabled'}"
+    )
+    return result
+
+
 def _run_until_stopped(runtime: LocalRuntime) -> None:
     try:
         while True:
@@ -377,6 +393,11 @@ def cli(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fuehrt den lokalen Start-/Read-/Alert-/Stop-Sweep fuer exposed-research aus",
     )
+    parser.add_argument(
+        "--verify-exposed-research-target-host",
+        action="store_true",
+        help="fuehrt den exposed-research-Sweep aus und gibt die Zielhost-Artefakte danach kompakt aus",
+    )
     args = parser.parse_args(argv)
     env_file = None if args.env_file == "" else str(Path(args.env_file))
     if args.reset_runtime:
@@ -386,6 +407,8 @@ def cli(argv: list[str] | None = None) -> int:
             f"removed={len(report.removed_paths)} missing={len(report.missing_paths)}"
         )
         return 0
+    if args.verify_exposed_research_target_host:
+        return verify_exposed_research_target_host(env_file=env_file)
     if args.verify_exposed_research:
         return verify_exposed_research_runtime(env_file=env_file)
     return main(env_file=env_file)
