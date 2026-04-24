@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "scada_honeypot",
+  "project_id": "6017550b-c79a-4737-bfba-67f0202a0a88"
+}

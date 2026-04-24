@@ -19,3 +19,9 @@ tmp/
 *.log
 *.pcap
 *.pcapng
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+.beads/embeddeddolt/
+*.db
+.beads-credential-key

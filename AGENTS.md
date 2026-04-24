@@ -57,6 +57,18 @@ Arbeite in dieser Reihenfolge:
 - Integrations-Tests: `uv run pytest tests/integration`
 - HMI-End-to-End: `uv run playwright test`
 
+## Issue Tracking
+
+Dieses Repo nutzt **bd (beads)** fuer Plan- und Issue-Tracking direkt im
+Projekt.
+
+- vor groesseren neuen Arbeitswellen zuerst `bd ready` oder `bd status` pruefen
+- neue groessere Schlaege als Beads anlegen statt nur frei im Chat zu fuehren
+- abgeschlossene Schlaege in `bd` sauber schliessen
+- nach relevanten Aenderungen den Snapshot mit
+  `bd export --no-memories -o .beads/issues.jsonl` aktualisieren
+- Git-Stand und `bd`-Stand muessen dieselbe Wahrheit bilden
+
 ## Vor dem ersten Code lesen
 
 - `docs/v1-decisions.md`
