@@ -39,6 +39,7 @@ Wichtige Mindestpunkte:
 
 Empfohlener Startpunkt:
 - `.env.example`
+- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
 - danach deployment-spezifisch ausfuellen
 
 Die Werte muessen **echt** sein:
@@ -46,6 +47,11 @@ Die Werte muessen **echt** sein:
 - keine `.example`-, `.invalid`-, `.test`- oder Doku-IP-Ziele
 - keine Platzhalter fuer aktive Exporter
 - keine ungeklaerten Rollenfelder
+
+Wichtige Regel:
+- die Datei unter `deploy/` ist eine **versionierte Zielhost-Vorlage**
+- fuer den echten Einsatz wird sie auf dem Zielhost in eine **nicht
+  versionierte** `.env` ueberfuehrt
 
 ### 3.2 Pakete und Projektstand
 

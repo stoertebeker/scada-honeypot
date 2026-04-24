@@ -24,6 +24,8 @@ Internet-Kurs.
   - kontrollierte Beobachtung von Modbus-/HMI-Zugriffen im offenen Netz
 - geplante Dauer:
   - erster Pilotlauf `72h`, danach erneute Lagebewertung
+- Zielhost-`.env`-Vorlage:
+  - [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
 
 ## 2. Ingress-Entscheidung
 
@@ -175,6 +177,7 @@ Dieses `GO` gilt nur, wenn auf dem echten Zielhost zusaetzlich abgeglichen ist:
 
 ## 9. Bezug
 
+- [../deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
 - [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
 - [exposed-research-profile-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-profile-lab-vm-observer-01.md)
 - [security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)

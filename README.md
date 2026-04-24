@@ -69,6 +69,11 @@ Wichtige Sicherheitsregel:
 uv sync --dev
 ```
 
+Deployment-spezifische Beispielkarte fuer den ersten kontrollierten
+`exposed-research`-Zielhost:
+
+- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
+
 ### Tests
 
 ```bash
@@ -162,6 +167,7 @@ uv run python -m playwright install chromium
 - [docs/pre-exposure-decision.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/pre-exposure-decision.md)
 - [docs/exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
 - [docs/exposed-research-runbook.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-runbook.md)
+- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
 
 ## Sicherheitsleitplanken
 

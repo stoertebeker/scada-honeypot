@@ -18,6 +18,10 @@ kopiert, mit realen Zielwerten versehen und final abgezeichnet werden.
 
 ## 2. Verbindliche Laufzeitwerte
 
+Versionierte Zielhost-Vorlage im Repo:
+
+- [deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
+
 ```env
 MODBUS_BIND_HOST=0.0.0.0
 MODBUS_PORT=1502
@@ -177,6 +181,7 @@ Dieses Profil ist **freizugebend**, aber noch nicht automatisch live freigegeben
 
 ## 9. Bezug
 
+- [../deploy/lab-vm-observer-01.env.example](/Users/schrammn/Documents/VSCodium/scada-honeypot/deploy/lab-vm-observer-01.env.example)
 - [exposed-research-checklist.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist.md)
 - [exposed-research-checklist-lab-vm-observer-01.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/exposed-research-checklist-lab-vm-observer-01.md)
 - [security-operations.md](/Users/schrammn/Documents/VSCodium/scada-honeypot/docs/security-operations.md)
