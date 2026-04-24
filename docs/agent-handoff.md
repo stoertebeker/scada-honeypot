@@ -11,7 +11,9 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
   freizugeben
-- Gesamtteststand: `273 passed`
+- Gesamtteststand: `280 passed`
+- Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine kleine
+  Runtime-Historie und `observed_at`, nicht mehr nur ueber den Fixture-Start
 
 Wichtige Grundregel:
 - HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
@@ -81,6 +83,8 @@ uv run pytest -q
 
 - `monitoring`
   - Heartbeat nach `RUNTIME_STATUS_PATH`
+- `runtime_evolution`
+  - tickende Snapshot-Zeit plus kleine In-Memory-Trendhistorie fuer `/trends`
 - `exporter_sdk`
   - gemeinsamer Exporter-Vertrag
 - `exporter_runner`

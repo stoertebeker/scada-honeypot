@@ -15,6 +15,7 @@ from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME, SERVICE_SESSION_COOKIE_NAME
 from honeypot.main import LocalRuntime, bootstrap_runtime, build_local_runtime
 from honeypot.protocol_modbus import ReadOnlyModbusTcpService, ReadOnlyRegisterMap
+from honeypot.runtime_evolution import BackgroundPlantEvolutionService, TrendHistoryBuffer, trend_history_capacity
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
@@ -1140,8 +1141,18 @@ def _build_runtime_with_clock(*, env_file: Path, clock: FrozenClock) -> LocalRun
         ),
     )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
+    trend_history = TrendHistoryBuffer(
+        max_samples=trend_history_capacity(window_minutes=config.trend_window_minutes, interval_seconds=5.0)
+    )
+    evolution_service = BackgroundPlantEvolutionService(
+        register_map=register_map,
+        history=trend_history,
+        clock=clock,
+        interval_seconds=5.0,
+    )
     hmi_app = create_hmi_app(
         snapshot_provider=lambda: register_map.snapshot,
+        trend_history_provider=trend_history.snapshot,
         config=config,
         event_recorder=event_recorder,
         service_controls=register_map,
@@ -1165,13 +1176,16 @@ def _build_runtime_with_clock(*, env_file: Path, clock: FrozenClock) -> LocalRun
             port=0,
             event_recorder=event_recorder,
         ),
+        trend_history=trend_history,
+        evolution_service=evolution_service,
     )
 
 
 def _seed_runtime_comm_loss(runtime: LocalRuntime, *, asset_id: str) -> None:
     register_map = runtime.modbus_service.register_map
-    with register_map._lock:
-        register_map._snapshot = register_map._simulator.lose_block_communications(
-            register_map._snapshot,
+    register_map.replace_snapshot(
+        register_map._simulator.lose_block_communications(
+            register_map.snapshot,
             asset_id=asset_id,
         )
+    )

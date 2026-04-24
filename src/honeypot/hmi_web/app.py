@@ -19,6 +19,7 @@ from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
 from honeypot.plant_sim import SimulationEventContext
+from honeypot.runtime_evolution import TrendSample
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
 
 HMI_COMPONENT = "hmi-web"
@@ -410,6 +411,7 @@ class ServiceSessionStore:
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
+    trend_history_provider: Callable[[], tuple[TrendSample, ...]] | None = None,
     config: RuntimeConfig,
     event_recorder: EventRecorder | None = None,
     service_controls: ServiceControlPort | None = None,
@@ -724,7 +726,12 @@ def create_hmi_app(
     async def trends(request: Request) -> HTMLResponse:
         snapshot = snapshot_provider()
         session_id, set_cookie = _session_state(request)
-        view_model = build_trends_view_model(snapshot=snapshot, config=config, texts=texts)
+        view_model = build_trends_view_model(
+            snapshot=snapshot,
+            config=config,
+            texts=texts,
+            trend_history=() if trend_history_provider is None else trend_history_provider(),
+        )
         response = templates.TemplateResponse(
             request=request,
             name="trends.html",
@@ -2141,11 +2148,13 @@ def build_trends_view_model(
     snapshot: PlantSnapshot,
     config: RuntimeConfig,
     texts: dict[str, str],
+    trend_history: tuple[TrendSample, ...] = (),
 ) -> TrendsViewModel:
-    """Bereitet eine kleine glaubhafte Verlaufssicht aus Baseline und aktuellem Snapshot auf."""
+    """Bereitet eine kleine glaubhafte Verlaufssicht aus echter Mini-Historie auf."""
 
     baseline_snapshot = PlantSnapshot.from_fixture(load_plant_fixture(snapshot.fixture_name))
     context_label, context_tone = _trends_context(snapshot, baseline_snapshot, texts)
+    history = _trend_history_or_fallback(snapshot, trend_history)
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
         OverviewMetric(
@@ -2168,32 +2177,28 @@ def build_trends_view_model(
         _trend_series_view(
             asset_id="site",
             title=texts["trend.plant_power"],
-            baseline_value=baseline_snapshot.site.plant_power_mw,
-            current_value=snapshot.site.plant_power_mw,
+            values=tuple(sample.plant_power_mw for sample in history),
             value_formatter=_format_power_mw,
             tone=_tone_for_power(snapshot),
         ),
         _trend_series_view(
             asset_id=snapshot.power_plant_controller.asset_id,
             title=texts["trend.power_limit"],
-            baseline_value=baseline_snapshot.power_plant_controller.active_power_limit_pct,
-            current_value=snapshot.power_plant_controller.active_power_limit_pct,
+            values=tuple(sample.active_power_limit_pct for sample in history),
             value_formatter=lambda value: f"{value:.1f} %",
             tone=_tone_for_limit(snapshot),
         ),
         _trend_series_view(
             asset_id=snapshot.weather_station.asset_id,
             title=texts["trend.irradiance"],
-            baseline_value=float(baseline_snapshot.weather_station.irradiance_w_m2),
-            current_value=float(snapshot.weather_station.irradiance_w_m2),
+            values=tuple(sample.irradiance_w_m2 for sample in history),
             value_formatter=lambda value: f"{value:.0f} W/m2",
             tone="good" if snapshot.weather_station.irradiance_w_m2 >= 700 else "warn",
         ),
         _trend_series_view(
             asset_id=snapshot.revenue_meter.asset_id,
             title=texts["trend.export_power"],
-            baseline_value=baseline_snapshot.revenue_meter.export_power_kw / 1000,
-            current_value=snapshot.revenue_meter.export_power_kw / 1000,
+            values=tuple(sample.export_power_mw for sample in history),
             value_formatter=lambda value: f"{value:.2f} MW",
             tone="good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
         ),
@@ -2201,16 +2206,11 @@ def build_trends_view_model(
             _trend_series_view(
                 asset_id=current_block.asset_id,
                 title=f"{texts['trend.block_power']} {current_block.asset_id.upper()}",
-                baseline_value=baseline_block.block_power_kw,
-                current_value=current_block.block_power_kw,
+                values=_block_series(history, current_block.asset_id),
                 value_formatter=lambda value: f"{value:.1f} kW",
                 tone=_tone_for_block(current_block.status, current_block.communication_state),
             )
-            for baseline_block, current_block in zip(
-                baseline_snapshot.inverter_blocks,
-                snapshot.inverter_blocks,
-                strict=True,
-            )
+            for current_block in snapshot.inverter_blocks
         ),
     )
 
@@ -3065,12 +3065,14 @@ def _trend_series_view(
     *,
     asset_id: str,
     title: str,
-    baseline_value: float,
-    current_value: float,
+    values: tuple[float, ...],
     value_formatter: Callable[[float], str],
     tone: str,
 ) -> TrendSeriesView:
-    values = _interpolate_values(baseline_value, current_value, steps=6)
+    if not values:
+        raise ValueError("values muss mindestens einen Verlaufspunkt enthalten")
+    baseline_value = values[0]
+    current_value = values[-1]
     min_value = min(values)
     max_value = max(values)
     return TrendSeriesView(
@@ -3083,6 +3085,28 @@ def _trend_series_view(
         min_label=value_formatter(min_value),
         max_label=value_formatter(max_value),
     )
+
+
+def _trend_history_or_fallback(
+    snapshot: PlantSnapshot,
+    trend_history: tuple[TrendSample, ...],
+) -> tuple[TrendSample, ...]:
+    if trend_history:
+        return trend_history
+    return (
+        TrendSample(
+            observed_at=snapshot.observed_at,
+            plant_power_mw=snapshot.site.plant_power_mw,
+            active_power_limit_pct=snapshot.power_plant_controller.active_power_limit_pct,
+            irradiance_w_m2=float(snapshot.weather_station.irradiance_w_m2),
+            export_power_mw=snapshot.revenue_meter.export_power_kw / 1000,
+            block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
+        ),
+    )
+
+
+def _block_series(history: tuple[TrendSample, ...], asset_id: str) -> tuple[float, ...]:
+    return tuple(dict(sample.block_power_kw).get(asset_id, 0.0) for sample in history)
 
 
 def _interpolate_values(start_value: float, end_value: float, *, steps: int) -> tuple[float, ...]:

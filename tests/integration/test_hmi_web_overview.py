@@ -1540,13 +1540,16 @@ async def test_runtime_alarms_page_reads_repeated_login_failure_from_event_trail
 async def test_runtime_trends_page_reads_curtailment_from_shared_truth(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
+    clock = FrozenClock(build_snapshot().start_time)
     env_file.write_text(
         f"EVENT_STORE_PATH={event_store_path}\nJSONL_ARCHIVE_ENABLED=0\n",
         encoding="utf-8",
     )
 
-    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0, clock=clock)
     runtime.modbus_service.register_map.write_single_register(unit_id=1, start_offset=199, value=555)
+    clock.advance(timedelta(minutes=5))
+    runtime.evolution_service.evolve_once()
 
     transport = httpx.ASGITransport(app=runtime.hmi_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -1555,6 +1558,7 @@ async def test_runtime_trends_page_reads_curtailment_from_shared_truth(tmp_path:
     assert response.status_code == 200
     assert "Trend Overview" in response.text
     assert "The trace shows curtailed output against the nominal baseline." in response.text
+    assert "2026-04-01 10:05:00 UTC" in response.text
     assert "3.22 MW" in response.text
     assert "55.5 %" in response.text
     assert "1073.9 kW" in response.text

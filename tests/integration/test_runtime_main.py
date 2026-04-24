@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import socket
+from datetime import timedelta
 from pathlib import Path
 from struct import pack, unpack
 from time import monotonic, sleep
 
 import httpx
 
+from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter
 from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
 from honeypot.main import build_local_runtime, cli
@@ -16,6 +18,7 @@ from honeypot.rule_engine import (
     LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
 )
+from honeypot.time_core import FrozenClock
 
 
 def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_path: Path) -> None:
@@ -81,6 +84,42 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert hmi_address is not None
     assert_port_closed(modbus_address)
     assert_port_closed(hmi_address)
+
+
+def test_build_local_runtime_background_evolution_advances_snapshot_in_runtime(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    clock = FrozenClock(PlantSnapshot.from_fixture(load_plant_fixture("normal_operation")).start_time)
+    env_file.write_text(
+        "\n".join(
+            (
+                "SITE_CODE=runtime-evolution-01",
+                f"EVENT_STORE_PATH={event_store_path}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0, clock=clock)
+    try:
+        runtime.start()
+        initial_observed_at = runtime.modbus_service.register_map.snapshot.observed_at
+        clock.advance(timedelta(minutes=5))
+        runtime.evolution_service.wake()
+
+        deadline = monotonic() + 2.0
+        while monotonic() < deadline:
+            if runtime.modbus_service.register_map.snapshot.observed_at > initial_observed_at:
+                break
+            sleep(0.05)
+        else:
+            raise AssertionError("runtime evolution hat observed_at nicht fortgeschrieben")
+    finally:
+        runtime.stop()
+
+    assert runtime.modbus_service.register_map.snapshot.observed_at == clock.now()
+    assert len(runtime.trend_history.snapshot()) >= 2
 
 
 def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enabled(tmp_path: Path) -> None:

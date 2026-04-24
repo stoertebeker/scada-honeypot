@@ -134,6 +134,8 @@ uv run python -m playwright install chromium
 
 - `monitoring`
   - lokaler Heartbeat nach `RUNTIME_STATUS_PATH`
+- `runtime_evolution`
+  - tickende `observed_at`-Zeit und kleine In-Memory-Trendhistorie fuer `/trends`
 - `exporter_sdk`
   - gemeinsamer Vertrag fuer Exporter
 - `exporter_runner`
@@ -205,4 +207,4 @@ Wichtige Runtime-Gates:
 - `pre-exposure`: `GO`
 - `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
   freizugeben
-- Gesamtteststand aktuell: `273 passed`
+- Gesamtteststand aktuell: `280 passed`

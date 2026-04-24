@@ -28,9 +28,10 @@ from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS, ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.runtime_reset import reset_local_runtime_artifacts
+from honeypot.runtime_evolution import BackgroundPlantEvolutionService, TrendHistoryBuffer, trend_history_capacity
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
-from honeypot.time_core import SystemClock
+from honeypot.time_core import Clock, SystemClock
 
 MODULES: tuple[str, ...] = (
     "config_core",
@@ -41,10 +42,12 @@ MODULES: tuple[str, ...] = (
     "rule_engine",
     "protocol_modbus",
     "hmi_web",
+    "runtime_evolution",
     "monitoring",
     "exporter_sdk",
     "exporter_runner",
 )
+EVOLUTION_INTERVAL_SECONDS = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +69,8 @@ class LocalRuntime:
     hmi_app: FastAPI
     hmi_service: LocalHmiHttpService
     modbus_service: ReadOnlyModbusTcpService
+    trend_history: TrendHistoryBuffer
+    evolution_service: BackgroundPlantEvolutionService
     exporters: dict[str, HoneypotExporter] = field(default_factory=dict)
     outbox_runner: OutboxRunner | None = None
     outbox_runner_service: BackgroundOutboxRunnerService | None = None
@@ -91,9 +96,16 @@ class LocalRuntime:
             self.modbus_service.stop()
             raise
         try:
+            self.evolution_service.start_in_thread()
+        except Exception:
+            self.hmi_service.stop()
+            self.modbus_service.stop()
+            raise
+        try:
             if self.outbox_runner_service is not None:
                 self.outbox_runner_service.start_in_thread()
         except Exception:
+            self.evolution_service.stop()
             self.hmi_service.stop()
             self.modbus_service.stop()
             raise
@@ -103,6 +115,7 @@ class LocalRuntime:
         except Exception:
             if self.outbox_runner_service is not None:
                 self.outbox_runner_service.stop()
+            self.evolution_service.stop()
             self.hmi_service.stop()
             self.modbus_service.stop()
             raise
@@ -114,13 +127,16 @@ class LocalRuntime:
                 self.outbox_runner_service.stop()
         finally:
             try:
-                self.hmi_service.stop()
+                self.evolution_service.stop()
             finally:
                 try:
-                    self.modbus_service.stop()
+                    self.hmi_service.stop()
                 finally:
-                    if self.runtime_status_service is not None:
-                        self.runtime_status_service.stop()
+                    try:
+                        self.modbus_service.stop()
+                    finally:
+                        if self.runtime_status_service is not None:
+                            self.runtime_status_service.stop()
 
 
 def bootstrap_runtime() -> RuntimeManifest:
@@ -134,6 +150,7 @@ def build_local_runtime(
     env_file: str | None = ".env",
     modbus_port: int | None = None,
     hmi_port: int | None = None,
+    clock: Clock | None = None,
 ) -> LocalRuntime:
     """Verdrahtet den aktuellen lokalen Runtime-Slice mit Fixture, Store, Modbus und HMI."""
 
@@ -147,10 +164,11 @@ def build_local_runtime(
 
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
+    runtime_clock = SystemClock() if clock is None else clock
     event_store = SQLiteEventStore(config.event_store_path)
     event_recorder = EventRecorder(
         store=event_store,
-        clock=SystemClock(),
+        clock=runtime_clock,
         archive=(JsonlEventArchive(config.jsonl_archive_path) if config.jsonl_archive_enabled else None),
         rule_engine=RuleEngine.default_v1(
             min_severity=config.alert_min_severity,
@@ -159,8 +177,21 @@ def build_local_runtime(
         ),
     )
     register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
+    trend_history = TrendHistoryBuffer(
+        max_samples=trend_history_capacity(
+            window_minutes=config.trend_window_minutes,
+            interval_seconds=EVOLUTION_INTERVAL_SECONDS,
+        )
+    )
+    evolution_service = BackgroundPlantEvolutionService(
+        register_map=register_map,
+        history=trend_history,
+        clock=runtime_clock,
+        interval_seconds=EVOLUTION_INTERVAL_SECONDS,
+    )
     hmi_app = create_hmi_app(
         snapshot_provider=lambda: register_map.snapshot,
+        trend_history_provider=trend_history.snapshot,
         config=config,
         event_recorder=event_recorder,
         service_controls=register_map,
@@ -214,6 +245,8 @@ def build_local_runtime(
         hmi_app=hmi_app,
         hmi_service=hmi_service,
         modbus_service=modbus_service,
+        trend_history=trend_history,
+        evolution_service=evolution_service,
         exporters=exporters,
         outbox_runner=outbox_runner,
         outbox_runner_service=outbox_runner_service,

@@ -5,8 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.exporter_runner import WebhookExporter
 from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, cli, main, verify_exposed_research_runtime
+from honeypot.time_core import FrozenClock
 
 
 def test_bootstrap_runtime_exposes_documented_modules() -> None:
@@ -170,6 +172,24 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
     assert runtime.outbox_runner is None
     assert runtime.outbox_runner_service is None
     assert runtime.runtime_status_service is None
+
+
+def test_build_local_runtime_wires_background_evolution_service(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    clock = FrozenClock(PlantSnapshot.from_fixture(load_plant_fixture("normal_operation")).start_time)
+    env_file.write_text(
+        f"EVENT_STORE_PATH={event_store_path}\n",
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0, clock=clock)
+
+    assert "runtime_evolution" in runtime.manifest.components
+    assert runtime.event_recorder.clock is clock
+    assert runtime.evolution_service.clock is clock
+    assert runtime.evolution_service.history is runtime.trend_history
+    assert runtime.trend_history.max_samples > 2
 
 
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:

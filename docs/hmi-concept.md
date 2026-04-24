@@ -346,6 +346,9 @@ Anzuzeigende Standardtrends:
 Wichtige Regel:
 - die Trenddaten muessen nicht hochaufgeloest oder endlos sein
 - ein kleiner, glaubhafter Verlauf reicht fuer V1
+- die sichtbare Snapshot-Zeit muss aus dem gemeinsamen `observed_at` kommen
+- die Trendkarten sollen aus einer kleinen Runtime-Historie statt aus einer
+  reinen Fixture-Baseline gespeist werden
 
 ### 7.8 `/service/login`
 
