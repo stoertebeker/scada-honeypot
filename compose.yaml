@@ -17,12 +17,9 @@ x-honeypot-common: &honeypot-common
   env_file:
     - ${HONEYPOT_ENV_FILE:-.env}
   environment:
-    ALLOW_NONLOCAL_BIND: ${ALLOW_NONLOCAL_BIND:-1}
-    MODBUS_BIND_HOST: ${MODBUS_BIND_HOST:-0.0.0.0}
+    HONEYPOT_FORCE_CONTAINER_BINDS: "1"
     MODBUS_PORT: ${MODBUS_PORT:-1502}
-    HMI_BIND_HOST: ${HMI_BIND_HOST:-0.0.0.0}
     HMI_PORT: ${HMI_PORT:-8080}
-    APPROVED_INGRESS_BINDINGS: ${APPROVED_INGRESS_BINDINGS:-modbus:0.0.0.0:1502,hmi:0.0.0.0:8080}
     EVENT_STORE_PATH: ${EVENT_STORE_PATH:-./data/events.sqlite3}
     JSONL_ARCHIVE_PATH: ${JSONL_ARCHIVE_PATH:-./logs/events.jsonl}
     FINDINGS_LOG_PATH: ${FINDINGS_LOG_PATH:-./logs/findings.md}
@@ -43,7 +40,8 @@ services:
   honeypot:
     <<: *honeypot-common
     environment:
-      EXPOSED_RESEARCH_ENABLED: "0"
+      HONEYPOT_FORCE_CONTAINER_BINDS: "1"
+      HONEYPOT_RUNTIME_MODE: normal
     ports:
       - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
       - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
@@ -53,7 +51,8 @@ services:
     profiles:
       - exposed
     environment:
-      EXPOSED_RESEARCH_ENABLED: "1"
+      HONEYPOT_FORCE_CONTAINER_BINDS: "1"
+      HONEYPOT_RUNTIME_MODE: exposed
     ports:
       - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
       - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
@@ -64,7 +63,8 @@ services:
       - verify
     restart: "no"
     environment:
-      EXPOSED_RESEARCH_ENABLED: "1"
+      HONEYPOT_FORCE_CONTAINER_BINDS: "1"
+      HONEYPOT_RUNTIME_MODE: exposed
     command: ["python", "-m", "honeypot.main", "--verify-exposed-research-target-host"]
 
 volumes:

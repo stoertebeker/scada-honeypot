@@ -123,6 +123,9 @@ HONEYPOT_ENV_FILE=.env.example docker compose up --build -d honeypot
 Wichtige Regeln:
 - der Standarddienst `honeypot` erzwingt `EXPOSED_RESEARCH_ENABLED=0`, auch wenn
   deine `.env` aus einer Exposure-Vorlage kopiert wurde
+- der Compose-Kurs erzwingt fuer Containerbetrieb die bind-relevanten Werte
+  bewusst im Entry-Point, auch wenn die lokale `.env` fuer den Direktlauf
+  weiter auf `127.0.0.1` steht
 - fuer echten `exposed-research` gibt es einen getrennten Profil-Dienst:
 
 ```bash

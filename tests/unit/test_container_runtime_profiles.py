@@ -22,8 +22,14 @@ def test_example_env_files_load_with_inline_comments() -> None:
 
 def test_compose_profiles_split_normal_and_exposed_runtime() -> None:
     compose_yaml = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
 
     assert "honeypot-exposed:" in compose_yaml
-    assert 'EXPOSED_RESEARCH_ENABLED: "0"' in compose_yaml
-    assert 'EXPOSED_RESEARCH_ENABLED: "1"' in compose_yaml
+    assert 'HONEYPOT_FORCE_CONTAINER_BINDS: "1"' in compose_yaml
+    assert 'HONEYPOT_RUNTIME_MODE: normal' in compose_yaml
+    assert 'HONEYPOT_RUNTIME_MODE: exposed' in compose_yaml
     assert "profiles:\n      - exposed" in compose_yaml
+    assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
+    assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint
+    assert "export EXPOSED_RESEARCH_ENABLED=0" in entrypoint
+    assert "export EXPOSED_RESEARCH_ENABLED=1" in entrypoint

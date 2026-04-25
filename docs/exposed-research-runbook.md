@@ -71,6 +71,9 @@ Dabei gilt weiter:
 - benannte Docker-Volumes tragen Eventstore, Logs und PCAP
 - der normale Standarddienst `honeypot` bleibt bewusst ausserhalb des
   `exposed-research`-Modus
+- fuer Containerbetrieb zieht der Entry-Point die bind-relevanten Werte
+  bewusst auf den extern erreichbaren Runtime-Pfad, auch wenn eine lokale
+  `.env` fuer Direktlauf weiter `127.0.0.1` nutzt
 - der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem und
   echtem HMI-/Modbus-Healthcheck gehaertet
 - die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress
