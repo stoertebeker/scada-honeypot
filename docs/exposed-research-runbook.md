@@ -62,13 +62,15 @@ uv sync --dev
 Optionaler Containerkurs statt Direktlauf:
 
 ```bash
-HONEYPOT_ENV_FILE=.env docker compose up --build -d honeypot
+HONEYPOT_ENV_FILE=.env docker compose --profile exposed up --build -d honeypot-exposed
 HONEYPOT_ENV_FILE=.env docker compose --profile verify run --rm honeypot-sweep
 ```
 
 Dabei gilt weiter:
 - `.env` enthaelt die echten Zielwerte
 - benannte Docker-Volumes tragen Eventstore, Logs und PCAP
+- der normale Standarddienst `honeypot` bleibt bewusst ausserhalb des
+  `exposed-research`-Modus
 - der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem und
   echtem HMI-/Modbus-Healthcheck gehaertet
 - die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress

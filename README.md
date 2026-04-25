@@ -121,6 +121,14 @@ HONEYPOT_ENV_FILE=.env.example docker compose up --build -d honeypot
 ```
 
 Wichtige Regeln:
+- der Standarddienst `honeypot` erzwingt `EXPOSED_RESEARCH_ENABLED=0`, auch wenn
+  deine `.env` aus einer Exposure-Vorlage kopiert wurde
+- fuer echten `exposed-research` gibt es einen getrennten Profil-Dienst:
+
+```bash
+HONEYPOT_ENV_FILE=.env docker compose --profile exposed up --build -d honeypot-exposed
+```
+
 - `compose.yaml` setzt fuer Containerbetrieb sichere Non-Local-Bind-Defaults
   auf `0.0.0.0`, ohne die Repo-Defaults im Code zu aendern
 - Persistenz liegt in benannten Docker-Volumes statt in hostspezifischen

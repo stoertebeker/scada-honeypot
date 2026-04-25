@@ -42,6 +42,18 @@ x-honeypot-common: &honeypot-common
 services:
   honeypot:
     <<: *honeypot-common
+    environment:
+      EXPOSED_RESEARCH_ENABLED: "0"
+    ports:
+      - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
+      - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
+
+  honeypot-exposed:
+    <<: *honeypot-common
+    profiles:
+      - exposed
+    environment:
+      EXPOSED_RESEARCH_ENABLED: "1"
     ports:
       - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
       - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
@@ -51,6 +63,8 @@ services:
     profiles:
       - verify
     restart: "no"
+    environment:
+      EXPOSED_RESEARCH_ENABLED: "1"
     command: ["python", "-m", "honeypot.main", "--verify-exposed-research-target-host"]
 
 volumes:
