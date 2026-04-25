@@ -59,6 +59,18 @@ Wichtige Regel:
 uv sync --dev
 ```
 
+Optionaler Containerkurs statt Direktlauf:
+
+```bash
+HONEYPOT_ENV_FILE=.env docker compose up --build -d honeypot
+HONEYPOT_ENV_FILE=.env docker compose --profile verify run --rm honeypot-sweep
+```
+
+Dabei gilt weiter:
+- `.env` enthaelt die echten Zielwerte
+- benannte Docker-Volumes tragen Eventstore, Logs und PCAP
+- die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress
+
 ### 3.3 Noch keine oeffentliche Freigabe
 
 Vor dem Sweep:

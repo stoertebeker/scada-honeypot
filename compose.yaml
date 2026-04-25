@@ -1,0 +1,44 @@
+name: scada-honeypot
+
+x-honeypot-common: &honeypot-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: scada-honeypot:base
+  init: true
+  env_file:
+    - ${HONEYPOT_ENV_FILE:-.env}
+  environment:
+    ALLOW_NONLOCAL_BIND: ${ALLOW_NONLOCAL_BIND:-1}
+    MODBUS_BIND_HOST: ${MODBUS_BIND_HOST:-0.0.0.0}
+    MODBUS_PORT: ${MODBUS_PORT:-1502}
+    HMI_BIND_HOST: ${HMI_BIND_HOST:-0.0.0.0}
+    HMI_PORT: ${HMI_PORT:-8080}
+    APPROVED_INGRESS_BINDINGS: ${APPROVED_INGRESS_BINDINGS:-modbus:0.0.0.0:1502,hmi:0.0.0.0:8080}
+    EVENT_STORE_PATH: ${EVENT_STORE_PATH:-./data/events.sqlite3}
+    JSONL_ARCHIVE_PATH: ${JSONL_ARCHIVE_PATH:-./logs/events.jsonl}
+    FINDINGS_LOG_PATH: ${FINDINGS_LOG_PATH:-./logs/findings.md}
+    RUNTIME_STATUS_PATH: ${RUNTIME_STATUS_PATH:-./logs/runtime-status.json}
+    PCAP_CAPTURE_PATH: ${PCAP_CAPTURE_PATH:-./pcap/session.pcapng}
+  volumes:
+    - eventstore:/app/data
+    - runtime-logs:/app/logs
+    - runtime-pcap:/app/pcap
+
+services:
+  honeypot:
+    <<: *honeypot-common
+    ports:
+      - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
+      - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
+
+  honeypot-sweep:
+    <<: *honeypot-common
+    profiles:
+      - verify
+    command: ["python", "-m", "honeypot.main", "--verify-exposed-research-target-host"]
+
+volumes:
+  eventstore:
+  runtime-logs:
+  runtime-pcap:

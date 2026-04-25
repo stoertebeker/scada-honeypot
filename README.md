@@ -103,6 +103,37 @@ Hinweis:
 - `compose`, `healthcheck`, `read_only`-Dateisystem und weitere
   Laufzeithärtung folgen als eigene Schläge
 
+### Compose-Betrieb
+
+Der naechste Docker-Kurs laeuft ueber `compose.yaml` mit benannten Volumes fuer
+Eventstore, Logs und PCAP:
+
+```bash
+cp .env.example .env
+docker compose up --build -d honeypot
+docker compose logs -f honeypot
+```
+
+Alternativ mit anderer Env-Datei:
+
+```bash
+HONEYPOT_ENV_FILE=.env.example docker compose up --build -d honeypot
+```
+
+Wichtige Regeln:
+- `compose.yaml` setzt fuer Containerbetrieb sichere Non-Local-Bind-Defaults
+  auf `0.0.0.0`, ohne die Repo-Defaults im Code zu aendern
+- Persistenz liegt in benannten Docker-Volumes statt in hostspezifischen
+  Pfaden
+- fuer den Exposure-Sweep gibt es einen getrennten Profil-Dienst:
+
+```bash
+HONEYPOT_ENV_FILE=.env docker compose --profile verify run --rm honeypot-sweep
+```
+
+Dieser Dienst faehrt denselben
+`--verify-exposed-research-target-host`-Kurs wie der direkte CLI-Aufruf.
+
 Deployment-spezifische Beispielkarte fuer den ersten kontrollierten
 `exposed-research`-Zielhost:
 
