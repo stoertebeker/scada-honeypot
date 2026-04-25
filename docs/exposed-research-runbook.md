@@ -69,6 +69,8 @@ HONEYPOT_ENV_FILE=.env docker compose --profile verify run --rm honeypot-sweep
 Dabei gilt weiter:
 - `.env` enthaelt die echten Zielwerte
 - benannte Docker-Volumes tragen Eventstore, Logs und PCAP
+- der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem und
+  echtem HMI-/Modbus-Healthcheck gehaertet
 - die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress
 
 ### 3.3 Noch keine oeffentliche Freigabe

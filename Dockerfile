@@ -19,6 +19,7 @@ COPY src ./src
 COPY fixtures ./fixtures
 COPY resources ./resources
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/healthcheck.sh /healthcheck.sh
 
 RUN uv sync --frozen --no-dev
 
@@ -26,7 +27,7 @@ RUN groupadd --system honeypot \
     && useradd --system --gid honeypot --create-home --home-dir /home/honeypot honeypot \
     && mkdir -p /app/tmp /app/logs /app/pcap \
     && chown -R honeypot:honeypot /app /home/honeypot \
-    && chmod 755 /entrypoint.sh
+    && chmod 755 /entrypoint.sh /healthcheck.sh
 
 EXPOSE 1502 8080
 

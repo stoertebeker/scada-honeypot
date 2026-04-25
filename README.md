@@ -125,6 +125,10 @@ Wichtige Regeln:
   auf `0.0.0.0`, ohne die Repo-Defaults im Code zu aendern
 - Persistenz liegt in benannten Docker-Volumes statt in hostspezifischen
   Pfaden
+- der Hauptdienst laeuft mit `read_only`, `tmpfs` fuer `/tmp`,
+  `restart: unless-stopped` und `no-new-privileges`
+- der Healthcheck prueft den echten HMI-Read auf `/overview` plus einen
+  Modbus-Socket auf dem internen Runtime-Pfad
 - fuer den Exposure-Sweep gibt es einen getrennten Profil-Dienst:
 
 ```bash

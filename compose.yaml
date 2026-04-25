@@ -6,6 +6,14 @@ x-honeypot-common: &honeypot-common
     dockerfile: Dockerfile
   image: scada-honeypot:base
   init: true
+  restart: unless-stopped
+  stop_grace_period: 20s
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+    - /app/tmp:size=64m,mode=1777
   env_file:
     - ${HONEYPOT_ENV_FILE:-.env}
   environment:
@@ -24,6 +32,12 @@ x-honeypot-common: &honeypot-common
     - eventstore:/app/data
     - runtime-logs:/app/logs
     - runtime-pcap:/app/pcap
+  healthcheck:
+    test: ["CMD", "/healthcheck.sh"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 10s
 
 services:
   honeypot:
@@ -36,6 +50,7 @@ services:
     <<: *honeypot-common
     profiles:
       - verify
+    restart: "no"
     command: ["python", "-m", "honeypot.main", "--verify-exposed-research-target-host"]
 
 volumes:
