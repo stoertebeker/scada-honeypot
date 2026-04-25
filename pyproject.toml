@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.115,<1.0",
+  "httpx>=0.28,<1.0",
   "jinja2>=3.1,<4.0",
   "pydantic>=2.11,<3.0",
   "pydantic-settings>=2.8,<3.0",
@@ -23,7 +24,6 @@ honeypot = "honeypot.main:main"
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1.0",
   "playwright>=1.54,<2.0",
   "pytest>=8.4,<9.0",
   "pytest-asyncio>=1.1,<2.0",
@@ -36,4 +36,3 @@ packages = ["src/honeypot"]
 addopts = "-ra"
 asyncio_mode = "auto"
 testpaths = ["tests"]
-

@@ -79,6 +79,30 @@ Wichtige Sicherheitsregel:
 uv sync --dev
 ```
 
+### Basis-Container bauen
+
+Erster Docker-Schlag fuer den Runtime-Pfad:
+
+```bash
+docker build -t scada-honeypot:base .
+docker run --rm \
+  -p 8080:8080 \
+  -p 1502:1502 \
+  -e ALLOW_NONLOCAL_BIND=1 \
+  -e MODBUS_BIND_HOST=0.0.0.0 \
+  -e HMI_BIND_HOST=0.0.0.0 \
+  -e APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080 \
+  scada-honeypot:base
+```
+
+Hinweis:
+- dieser Basiscontainer ist bewusst noch **nicht** der volle
+  `production-ready`-Kurs
+- die expliziten Laufzeitvariablen oben oeffnen nur den Container-Bind-Pfad;
+  die sicheren Defaults im Repo bleiben unveraendert `deny-by-default`
+- `compose`, `healthcheck`, `read_only`-Dateisystem und weitere
+  Laufzeithärtung folgen als eigene Schläge
+
 Deployment-spezifische Beispielkarte fuer den ersten kontrollierten
 `exposed-research`-Zielhost:
 
