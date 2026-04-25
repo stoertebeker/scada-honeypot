@@ -487,6 +487,15 @@ Pflichttests:
   Non-Local-Startpfad: `ALLOW_NONLOCAL_BIND=1`, explizite
   `APPROVED_INGRESS_BINDINGS`, Binding auf `0.0.0.0`, funktionierende
   HMI-/Modbus-Antworten ueber kontrollierte Loopback-Zugriffe
+- ein weiterer Container-Guard prueft jetzt die Profiltrennung zwischen
+  `honeypot`, `honeypot-exposed` und `honeypot-sweep`, inklusive parsebarer
+  Beispiel-`.env`-Dateien mit Inline-Kommentaren fuer leere Felder
+- ein weiterer End-to-End-Nachweis hat einen realen Docker-Regressionspfad
+  aufgespiesst: lokale `.env` mit `HMI_BIND_HOST=127.0.0.1` plus
+  `docker compose up honeypot` darf den Host-Browserzugriff nicht wieder auf
+  Loopback zuruedschieben; der Compose-Kurs erzwingt die bind-relevanten
+  Containerwerte deshalb jetzt im Entry-Point und wurde danach erneut mit
+  Playwright gegen `http://127.0.0.1:8080/overview` belegt
 - weitere Unit-Tests pruefen jetzt das `exposed-research`-Gate:
   benoetigte Rollen, benannte Export-Empfaenger, `PUBLIC_INGRESS_MAPPINGS`
   sowie die Ablehnung von Dokumentations- und Platzhalterzielen fuer aktive

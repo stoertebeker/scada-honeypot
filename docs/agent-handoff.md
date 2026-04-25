@@ -11,9 +11,13 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
   freizugeben
-- Gesamtteststand: `285 passed`
+- Gesamtteststand: `295 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine kleine
   Runtime-Historie und `observed_at`, nicht mehr nur ueber den Fixture-Start
+- der Docker-/Compose-Kurs ist vorhanden, inklusive Healthcheck,
+  `read_only`-Rootfs, Profiltrennung zwischen normalem Dienst und
+  `exposed-research` und einem Entry-Point, der Container-Binds bewusst auf
+  den extern erreichbaren Runtime-Pfad zieht
 
 Wichtige Grundregel:
 - HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
@@ -44,6 +48,14 @@ uv run python -m honeypot.main --verify-exposed-research-target-host
 
 ```bash
 uv run pytest -q
+```
+
+### Containerbetrieb
+
+```bash
+docker compose up --build -d honeypot
+docker compose --profile exposed up --build -d honeypot-exposed
+docker compose --profile verify run --rm honeypot-sweep
 ```
 
 ## Was an Deck steht
@@ -141,6 +153,12 @@ Wichtige End-to-End-Pfade, die schon stehen:
 Wichtige Regel:
 - Platzhalter- oder Doku-Ziele fuer aktive Exporter sind im
   `exposed-research`-Modus verboten.
+- im Compose-Kurs bleibt der Standarddienst `honeypot` bewusst ausserhalb des
+  `exposed-research`-Modus; fuer echten Exposure-Betrieb ist das Profil
+  `honeypot-exposed` zu verwenden
+- bind-relevante Containerwerte werden im Entry-Point erzwungen, damit eine
+  lokale `.env` mit `127.0.0.1` den Host-Zugriff nicht wieder still auf
+  Loopback drueckt
 
 ## Relevante Doku zuerst lesen
 
