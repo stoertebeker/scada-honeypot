@@ -6,7 +6,7 @@ import json
 import secrets
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -157,7 +157,7 @@ def create_ops_app(*, event_store: SQLiteEventStore, config: RuntimeConfig) -> F
         events = event_store.fetch_events()
         alerts = event_store.fetch_alerts()
         return {
-            "summary": asdict(_build_summary(events=events, alerts=alerts)),
+            "summary": asdict(_build_summary(events=events, alerts=alerts, display_timestamps=False)),
             "sources": [asdict(source) for source in _source_rows(events)[:25]],
         }
 
@@ -239,14 +239,20 @@ def _template_context(
     return context
 
 
-def _build_summary(*, events: tuple[EventRecord, ...], alerts: tuple[AlertRecord, ...]) -> OpsSummary:
+def _build_summary(
+    *,
+    events: tuple[EventRecord, ...],
+    alerts: tuple[AlertRecord, ...],
+    display_timestamps: bool = True,
+) -> OpsSummary:
+    timestamp_formatter = _format_dt_display if display_timestamps else _format_dt_iso
     return OpsSummary(
         total_events=len(events),
         total_alerts=len(alerts),
         active_alerts=sum(1 for alert in alerts if alert.state.startswith("active")),
         unique_sources=len({event.source_ip for event in events}),
         rejected_events=sum(1 for event in events if event.result == "rejected"),
-        last_event_at=_format_dt(events[-1].timestamp) if events else "none",
+        last_event_at=timestamp_formatter(events[-1].timestamp) if events else "none",
     )
 
 
@@ -270,7 +276,7 @@ def _filter_events(
 def _event_rows(events: tuple[EventRecord, ...]) -> tuple[EventRow, ...]:
     return tuple(
         EventRow(
-            timestamp=_format_dt(event.timestamp),
+            timestamp=_format_dt_display(event.timestamp),
             event_type=event.event_type,
             source_ip=event.source_ip,
             action=event.action,
@@ -290,7 +296,7 @@ def _event_rows(events: tuple[EventRecord, ...]) -> tuple[EventRow, ...]:
 def _alert_rows(alerts: tuple[AlertRecord, ...]) -> tuple[AlertRow, ...]:
     return tuple(
         AlertRow(
-            created_at=_format_dt(alert.created_at),
+            created_at=_format_dt_display(alert.created_at),
             alarm_code=alert.alarm_code,
             severity=alert.severity,
             state=alert.state,
@@ -306,28 +312,37 @@ def _source_rows(events: tuple[EventRecord, ...]) -> tuple[SourceRow, ...]:
     for event in events:
         grouped[event.source_ip].append(event)
 
-    rows = []
+    rows: list[tuple[datetime, SourceRow]] = []
     for source_ip, source_events in grouped.items():
         event_type_counts = Counter(event.event_type for event in source_events)
         endpoint_counts = Counter(event.endpoint_or_register or "" for event in source_events)
         sessions = {event.session_id for event in source_events if event.session_id}
+        last_seen = source_events[-1].timestamp
         rows.append(
-            SourceRow(
-                source_ip=source_ip,
-                event_count=len(source_events),
-                rejected_count=sum(1 for event in source_events if event.result == "rejected"),
-                session_count=len(sessions),
-                first_seen=_format_dt(source_events[0].timestamp),
-                last_seen=_format_dt(source_events[-1].timestamp),
-                top_event_type=event_type_counts.most_common(1)[0][0] if event_type_counts else "",
-                top_endpoint=endpoint_counts.most_common(1)[0][0] if endpoint_counts else "",
+            (
+                last_seen,
+                SourceRow(
+                    source_ip=source_ip,
+                    event_count=len(source_events),
+                    rejected_count=sum(1 for event in source_events if event.result == "rejected"),
+                    session_count=len(sessions),
+                    first_seen=_format_dt_display(source_events[0].timestamp),
+                    last_seen=_format_dt_display(last_seen),
+                    top_event_type=event_type_counts.most_common(1)[0][0] if event_type_counts else "",
+                    top_endpoint=endpoint_counts.most_common(1)[0][0] if endpoint_counts else "",
+                ),
             )
         )
-    return tuple(sorted(rows, key=lambda row: row.last_seen, reverse=True))
+    return tuple(row for _, row in sorted(rows, key=lambda item: item[0], reverse=True))
 
 
-def _format_dt(value: datetime) -> str:
+def _format_dt_iso(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _format_dt_display(value: datetime) -> str:
+    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return normalized.astimezone(UTC).strftime("%d.%m.%Y %H:%M:%S UTC")
 
 
 def _compact_json(value: Any, *, max_length: int = 180) -> str:

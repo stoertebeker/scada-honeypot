@@ -15,12 +15,12 @@
     <tbody>
       {% for source in sources %}
       <tr>
-        <td class="mono">{{ source.source_ip }}</td>
+        <td class="mono cell-source">{{ source.source_ip }}</td>
         <td class="mono">{{ source.event_count }}</td>
         <td class="mono">{{ source.rejected_count }}</td>
         <td class="mono">{{ source.session_count }}</td>
-        <td class="mono">{{ source.first_seen }}</td>
-        <td class="mono">{{ source.last_seen }}</td>
+        <td class="mono cell-time">{{ source.first_seen }}</td>
+        <td class="mono cell-time">{{ source.last_seen }}</td>
         <td class="mono">{{ source.top_event_type }}</td>
         <td class="mono">{{ source.top_endpoint }}</td>
       </tr>

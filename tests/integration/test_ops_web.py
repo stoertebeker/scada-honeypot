@@ -76,10 +76,14 @@ async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -
     assert "Ops Dashboard" in dashboard.text
     assert "hmi.action.unauthenticated_control_attempt" in dashboard.text
     assert "203.0.113.44" in dashboard.text
+    assert 'class="mono cell-source">203.0.113.44' in dashboard.text
+    assert "26.04.2026 20:00:00 UTC" in dashboard.text
+    assert "2026-04-26T20:00:00" not in dashboard.text
     assert "REPEATED_LOGIN_FAILURE" in dashboard.text
     assert events.json()["events"][0]["event_type"] == "hmi.action.unauthenticated_control_attempt"
     assert summary.json()["summary"]["total_events"] == 1
     assert summary.json()["summary"]["active_alerts"] == 1
+    assert summary.json()["summary"]["last_event_at"] == "2026-04-26T20:00:00Z"
     assert summary.json()["sources"][0]["rejected_count"] == 1
 
 

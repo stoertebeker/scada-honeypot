@@ -13,7 +13,7 @@
     <tbody>
       {% for alert in alerts %}
       <tr>
-        <td class="mono">{{ alert.created_at }}</td>
+        <td class="mono cell-time">{{ alert.created_at }}</td>
         <td class="mono">{{ alert.alarm_code }}</td>
         <td class="severity-{{ alert.severity }}">{{ alert.severity }}</td>
         <td class="state-{{ alert.state }}">{{ alert.state }}</td>

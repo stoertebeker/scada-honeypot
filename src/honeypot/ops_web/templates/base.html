@@ -128,6 +128,11 @@
       font-size: 0.9rem;
     }
 
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+    }
+
     th,
     td {
       padding: 9px 8px;
@@ -148,6 +153,20 @@
       font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
       font-size: 0.82rem;
       overflow-wrap: anywhere;
+    }
+
+    .cell-source,
+    .cell-time {
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }
+
+    .cell-source {
+      min-width: 12ch;
+    }
+
+    .cell-time {
+      min-width: 21ch;
     }
 
     .result-rejected,
@@ -196,10 +215,6 @@
 
       nav {
         justify-content: flex-start;
-      }
-
-      .table-wrap {
-        overflow-x: auto;
       }
     }
   </style>
