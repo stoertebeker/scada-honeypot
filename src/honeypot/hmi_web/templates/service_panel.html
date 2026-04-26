@@ -289,6 +289,7 @@
         <h2>{{ t("section.service_control.power_limit") }}</h2>
         {% if page.controls_available %}
         <form method="post" action="/service/panel/power-limit">
+          <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
           <label>
             {{ t("label.power_limit") }}
             <input
@@ -313,6 +314,7 @@
         <h2>{{ t("section.service_control.reactive_power") }}</h2>
         {% if page.controls_available %}
         <form method="post" action="/service/panel/reactive-power">
+          <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
           <label>
             {{ t("label.reactive_power_percent") }}
             <input
@@ -337,6 +339,7 @@
         <h2>{{ t("section.service_control.plant_mode") }}</h2>
         {% if page.controls_available %}
         <form method="post" action="/service/panel/plant-mode">
+          <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
           <label>
             {{ t("label.operating_mode_request") }}
             <select name="plant_mode_request">
@@ -359,12 +362,14 @@
         {% if page.controls_available %}
         <div class="button-row">
           <form method="post" action="/service/panel/breaker">
+            <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
             <input type="hidden" name="breaker_action" value="open">
             <button type="submit" class="warn" {% if not page.breaker_open_enabled %}disabled{% endif %}>
               {{ t("action.breaker_open") }}
             </button>
           </form>
           <form method="post" action="/service/panel/breaker">
+            <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
             <input type="hidden" name="breaker_action" value="close">
             <button type="submit" {% if not page.breaker_close_enabled %}disabled{% endif %}>
               {{ t("action.breaker_close") }}
@@ -389,6 +394,7 @@
             </div>
             <p class="hint">{{ t("table.status") }}: {{ block.status_label }} / {{ t("table.communication") }}: {{ block.communication_label }} / {{ t("table.power") }}: {{ block.power_label }}</p>
             <form method="post" action="/service/panel/inverter-block">
+              <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
               <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
               <label>
                 {{ t("label.block_enable_request") }}
@@ -412,6 +418,7 @@
               <button type="submit">{{ t("action.apply_block_control") }}</button>
             </form>
             <form method="post" action="/service/panel/inverter-block/reset">
+              <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
               <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
               <button type="submit" class="warn">{{ t("action.reset_block") }}</button>
             </form>

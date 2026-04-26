@@ -10,7 +10,7 @@ import httpx
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter
-from honeypot.hmi_web.app import SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
+from honeypot.hmi_web.app import SERVICE_CSRF_FIELD_NAME, SERVICE_LOGIN_PASSWORD, SERVICE_LOGIN_USERNAME
 from honeypot.main import build_local_runtime, cli
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS
 from honeypot.rule_engine import (
@@ -19,6 +19,18 @@ from honeypot.rule_engine import (
     MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
 )
 from honeypot.time_core import FrozenClock
+
+
+def extract_service_csrf_token(response_text: str) -> str:
+    marker = f'name="{SERVICE_CSRF_FIELD_NAME}" value="'
+    token_start = response_text.find(marker)
+    assert token_start != -1
+    token_start += len(marker)
+    token_end = response_text.find('"', token_start)
+    assert token_end != -1
+    token = response_text[token_start:token_end]
+    assert token
+    return token
 
 
 def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_path: Path) -> None:
@@ -356,24 +368,36 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
                 "/service/login",
                 data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
             )
+            service_panel_response = client.get("/service/panel")
+            csrf_token = extract_service_csrf_token(service_panel_response.text)
             limit_response = client.post(
                 "/service/panel/power-limit",
-                data={"active_power_limit_pct": "55.5"},
+                data={
+                    SERVICE_CSRF_FIELD_NAME: csrf_token,
+                    "active_power_limit_pct": "55.5",
+                },
             )
             limit_panel_response = client.get(limit_response.headers["location"])
             reactive_response = client.post(
                 "/service/panel/reactive-power",
-                data={"reactive_power_target_pct": "25.0"},
+                data={
+                    SERVICE_CSRF_FIELD_NAME: csrf_token,
+                    "reactive_power_target_pct": "25.0",
+                },
             )
             reactive_panel_response = client.get(reactive_response.headers["location"])
             plant_mode_response = client.post(
                 "/service/panel/plant-mode",
-                data={"plant_mode_request": "2"},
+                data={
+                    SERVICE_CSRF_FIELD_NAME: csrf_token,
+                    "plant_mode_request": "2",
+                },
             )
             plant_mode_panel_response = client.get(plant_mode_response.headers["location"])
             block_response = client.post(
                 "/service/panel/inverter-block",
                 data={
+                    SERVICE_CSRF_FIELD_NAME: csrf_token,
                     "asset_id": "invb-02",
                     "block_enable_request": "0",
                     "block_power_limit_pct": "65.5",
@@ -382,7 +406,10 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
             block_panel_response = client.get(block_response.headers["location"])
             breaker_response = client.post(
                 "/service/panel/breaker",
-                data={"breaker_action": "open"},
+                data={
+                    SERVICE_CSRF_FIELD_NAME: csrf_token,
+                    "breaker_action": "open",
+                },
             )
             breaker_panel_response = client.get(breaker_response.headers["location"])
         events = runtime.event_store.fetch_events()
@@ -405,6 +432,7 @@ def test_build_local_runtime_serves_service_control_writes_on_local_hmi(tmp_path
     ]
 
     assert login_response.status_code == 303
+    assert service_panel_response.status_code == 200
     assert limit_response.status_code == 303
     assert limit_panel_response.status_code == 200
     assert "Active power limit updated successfully." in limit_panel_response.text

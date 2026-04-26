@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -34,6 +35,8 @@ SERVICE_LOGIN_FAILURE_LIMIT = 5
 SERVICE_LOGIN_FAILURE_WINDOW = timedelta(minutes=5)
 SERVICE_LOGIN_BACKOFF = timedelta(minutes=5)
 SERVICE_LOGIN_THROTTLE_MAX_SOURCES = 256
+SERVICE_CSRF_FIELD_NAME = "service_csrf_token"
+SERVICE_CSRF_TOKEN_BYTES = 32
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LOCALE_DIR = _REPO_ROOT / "resources" / "locales" / "attacker-ui"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -304,6 +307,7 @@ class ServicePanelViewModel:
     status_label: str | None
     status_tone: str
     controls_available: bool
+    csrf_token: str
     power_limit_value: str
     reactive_power_target_pct_value: str
     plant_mode_request_value: str
@@ -320,6 +324,7 @@ class ServiceSession:
     handle: str
     username: str
     expires_at: Any
+    csrf_token: str
 
 
 class ServiceControlPort(Protocol):
@@ -391,6 +396,7 @@ class ServiceSessionStore:
             handle=f"svc_{uuid4().hex}",
             username=username,
             expires_at=ensure_utc_datetime(now + self.idle_timeout),
+            csrf_token=secrets.token_urlsafe(SERVICE_CSRF_TOKEN_BYTES),
         )
         self._sessions[session.handle] = session
         return session
@@ -409,6 +415,7 @@ class ServiceSessionStore:
             handle=session.handle,
             username=session.username,
             expires_at=ensure_utc_datetime(now + self.idle_timeout),
+            csrf_token=session.csrf_token,
         )
         self._sessions[handle] = refreshed
         return refreshed
@@ -1041,6 +1048,7 @@ def create_hmi_app(
         try:
             form = await _read_urlencoded_form(request)
             raw_limit = (form.get("active_power_limit_pct", [""])[0]).strip()
+            _validate_service_csrf_token(form, service_session)
             active_power_limit_pct = float(raw_limit)
         except (HmiFormRequestError, ValueError):
             _record_service_control_event(
@@ -1162,6 +1170,7 @@ def create_hmi_app(
         try:
             form = await _read_urlencoded_form(request)
             raw_target = (form.get("reactive_power_target_pct", [""])[0]).strip()
+            _validate_service_csrf_token(form, service_session)
             reactive_power_target_pct = float(raw_target)
         except (HmiFormRequestError, ValueError):
             _record_service_control_event(
@@ -1292,6 +1301,7 @@ def create_hmi_app(
         try:
             form = await _read_urlencoded_form(request)
             raw_mode_request = (form.get("plant_mode_request", [""])[0]).strip()
+            _validate_service_csrf_token(form, service_session)
             plant_mode_request = int(raw_mode_request)
         except (HmiFormRequestError, ValueError):
             _record_service_control_event(
@@ -1415,6 +1425,7 @@ def create_hmi_app(
 
         try:
             form = await _read_urlencoded_form(request)
+            _validate_service_csrf_token(form, service_session)
         except HmiFormRequestError:
             _record_service_control_event(
                 request=request,
@@ -1634,6 +1645,7 @@ def create_hmi_app(
 
         try:
             form = await _read_urlencoded_form(request)
+            _validate_service_csrf_token(form, service_session)
         except HmiFormRequestError:
             _record_service_control_event(
                 request=request,
@@ -1790,6 +1802,7 @@ def create_hmi_app(
 
         try:
             form = await _read_urlencoded_form(request)
+            _validate_service_csrf_token(form, service_session)
         except HmiFormRequestError:
             form = {}
         breaker_action = (form.get("breaker_action", [""])[0]).strip().lower()
@@ -2431,6 +2444,7 @@ def build_service_panel_view_model(
         status_label=status_label,
         status_tone=status_tone,
         controls_available=controls_available,
+        csrf_token=service_session.csrf_token,
         power_limit_value=f"{snapshot.power_plant_controller.active_power_limit_pct:.1f}",
         reactive_power_target_pct_value=f"{snapshot.power_plant_controller.reactive_power_target * 100:.1f}",
         plant_mode_request_value=str(plant_mode_request_value),
@@ -2568,6 +2582,12 @@ async def _read_urlencoded_form(request: Request) -> dict[str, list[str]]:
 
 def _request_source_ip(request: Request) -> str:
     return request.client.host if request.client is not None else "127.0.0.1"
+
+
+def _validate_service_csrf_token(form: dict[str, list[str]], service_session: ServiceSession) -> None:
+    submitted_token = form.get(SERVICE_CSRF_FIELD_NAME, [""])[0]
+    if not submitted_token or not secrets.compare_digest(submitted_token, service_session.csrf_token):
+        raise HmiFormRequestError("invalid service csrf token")
 
 
 def _service_login_failure_response(

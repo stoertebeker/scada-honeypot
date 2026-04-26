@@ -12,6 +12,7 @@ from honeypot.event_core import EventRecorder
 from honeypot.hmi_web import create_hmi_app
 from honeypot.hmi_web.app import (
     MAX_FORM_BODY_BYTES,
+    SERVICE_CSRF_FIELD_NAME,
     SERVICE_LOGIN_FAILURE_LIMIT,
     SERVICE_LOGIN_PASSWORD,
     SERVICE_LOGIN_USERNAME,
@@ -71,6 +72,31 @@ def build_service_app(
         service_controls=register_map,
     )
     return app, register_map
+
+
+def extract_service_csrf_token(response_text: str) -> str:
+    marker = f'name="{SERVICE_CSRF_FIELD_NAME}" value="'
+    token_start = response_text.find(marker)
+    assert token_start != -1
+    token_start += len(marker)
+    token_end = response_text.find('"', token_start)
+    assert token_end != -1
+    token = response_text[token_start:token_end]
+    assert token
+    return token
+
+
+async def login_service_client(client: httpx.AsyncClient) -> str:
+    login_response = await client.post(
+        "/service/login",
+        data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+        follow_redirects=False,
+    )
+    panel_response = await client.get("/service/panel")
+
+    assert login_response.status_code == 303
+    assert panel_response.status_code == 200
+    return extract_service_csrf_token(panel_response.text)
 
 
 @pytest.mark.asyncio
@@ -705,14 +731,13 @@ async def test_service_panel_power_limit_updates_shared_truth_and_logs_control_e
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/power-limit",
-            data={"active_power_limit_pct": "55.5"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "active_power_limit_pct": "55.5",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -737,6 +762,37 @@ async def test_service_panel_power_limit_updates_shared_truth_and_logs_control_e
     assert control_event.requested_value["active_power_limit_pct"] == 55.5
     assert control_event.resulting_state["active_power_limit_pct"] == 55.5
     assert control_event.correlation_id == process_event.correlation_id
+
+
+@pytest.mark.asyncio
+async def test_service_panel_rejects_missing_csrf_token_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-csrf-reject.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await login_service_client(client)
+        control_response = await client.post(
+            "/service/panel/power-limit",
+            data={"active_power_limit_pct": "55.5"},
+            follow_redirects=False,
+        )
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_active_power_limit"
+    )
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=control_invalid"
+    assert register_map.snapshot.power_plant_controller.active_power_limit_pct == 100.0
+    assert not any(event.event_type == "process.setpoint.curtailment_changed" for event in events)
+    assert control_event.result == "rejected"
+    assert control_event.error_code == "service_control_invalid"
 
 
 @pytest.mark.asyncio
@@ -784,14 +840,13 @@ async def test_service_panel_reactive_power_updates_shared_truth_and_logs_contro
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/reactive-power",
-            data={"reactive_power_target_pct": "25.0"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "reactive_power_target_pct": "25.0",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -827,14 +882,13 @@ async def test_service_panel_plant_mode_request_latches_and_logs_control_event(t
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/plant-mode",
-            data={"plant_mode_request": "2"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "plant_mode_request": "2",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -871,20 +925,22 @@ async def test_service_panel_breaker_controls_shared_truth_and_log_events(tmp_pa
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         open_response = await client.post(
             "/service/panel/breaker",
-            data={"breaker_action": "open"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "breaker_action": "open",
+            },
             follow_redirects=False,
         )
         open_panel_response = await client.get(open_response.headers["location"])
         close_response = await client.post(
             "/service/panel/breaker",
-            data={"breaker_action": "close"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "breaker_action": "close",
+            },
             follow_redirects=False,
         )
         close_panel_response = await client.get(close_response.headers["location"])
@@ -919,14 +975,11 @@ async def test_service_panel_inverter_block_controls_shared_truth_and_log_events
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/inverter-block",
             data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
                 "asset_id": "invb-02",
                 "block_enable_request": "0",
                 "block_power_limit_pct": "65.5",
@@ -976,14 +1029,13 @@ async def test_service_panel_inverter_block_reset_recovers_comm_loss_and_logs_co
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/inverter-block/reset",
-            data={"asset_id": "invb-02"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "asset_id": "invb-02",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -1018,14 +1070,13 @@ async def test_service_panel_rejects_invalid_power_limit_without_state_change(tm
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/power-limit",
-            data={"active_power_limit_pct": "150.1"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "active_power_limit_pct": "150.1",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -1055,14 +1106,13 @@ async def test_service_panel_rejects_invalid_reactive_power_without_state_change
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/reactive-power",
-            data={"reactive_power_target_pct": "150.0"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "reactive_power_target_pct": "150.0",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -1092,14 +1142,13 @@ async def test_service_panel_rejects_invalid_plant_mode_without_state_change(tmp
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/plant-mode",
-            data={"plant_mode_request": "3"},
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "plant_mode_request": "3",
+            },
             follow_redirects=False,
         )
         panel_response = await client.get(control_response.headers["location"])
@@ -1129,14 +1178,11 @@ async def test_service_panel_rejects_invalid_inverter_block_control_without_stat
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        await client.post(
-            "/service/login",
-            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
-            follow_redirects=False,
-        )
+        csrf_token = await login_service_client(client)
         control_response = await client.post(
             "/service/panel/inverter-block",
             data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
                 "asset_id": "invb-02",
                 "block_enable_request": "1",
                 "block_power_limit_pct": "120.0",
