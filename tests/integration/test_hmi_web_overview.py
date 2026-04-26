@@ -199,6 +199,9 @@ async def test_single_line_page_renders_breaker_path_and_logs_hmi_events(tmp_pat
     assert 'data-sld-symbol="breaker"' in response.text
     assert 'href="/single-line/breaker-attempt"' in response.text
     assert 'data-sld-action="breaker-click"' in response.text
+    assert 'markerUnits="userSpaceOnUse"' in response.text
+    assert "breaker-frame" in response.text
+    assert "breaker-terminal" in response.text
     assert "collection-bus" in response.text
     assert 'data-sld-symbol="dc-strings"' in response.text
     assert 'data-sld-symbol="ac-feeder"' in response.text
