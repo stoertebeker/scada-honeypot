@@ -134,7 +134,7 @@
     .layout {
       display: grid;
       gap: 18px;
-      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+      grid-template-columns: 1fr;
     }
 
     .panel {
@@ -155,49 +155,65 @@
 
     .energy-map {
       position: relative;
-      min-height: 560px;
+      min-height: 590px;
       border: 1px solid rgba(180, 191, 181, 0.8);
       background:
         linear-gradient(90deg, rgba(52, 88, 103, 0.08) 1px, transparent 1px),
         linear-gradient(180deg, rgba(52, 88, 103, 0.08) 1px, transparent 1px),
         linear-gradient(135deg, rgba(251, 252, 249, 0.98), rgba(217, 229, 234, 0.52));
       background-size: 44px 44px, 44px 44px, auto;
-      overflow: hidden;
+      overflow: auto;
     }
 
     .energy-canvas {
-      position: absolute;
-      inset: 0;
+      display: block;
       width: 100%;
-      height: 100%;
-      pointer-events: none;
+      min-width: 900px;
+      min-height: 570px;
     }
 
-    .flow-line {
+    .sld-wire {
       fill: none;
       stroke: var(--accent);
-      stroke-width: 8;
+      stroke-width: 7;
       stroke-linecap: round;
+      stroke-linejoin: round;
       stroke-dasharray: 18 18;
       marker-end: url("#flow-arrow");
       opacity: 0.74;
       animation: flow-pulse 1.6s linear infinite;
     }
 
-    .flow-line.good { stroke: var(--good); }
-    .flow-line.warn { stroke: var(--warn); }
-    .flow-line.alarm {
+    .sld-wire.good { stroke: var(--good); }
+    .sld-wire.warn { stroke: var(--warn); }
+    .sld-wire.alarm {
       stroke: var(--alarm);
       animation: none;
       stroke-dasharray: 8 14;
     }
 
-    .flow-line.export-halted {
+    .sld-wire.export-halted {
       opacity: 0.28;
       animation: none;
+      marker-end: none;
     }
 
-    .flow-barrier {
+    .sld-bus {
+      stroke-width: 12;
+      stroke-linecap: square;
+      marker-end: none;
+    }
+
+    .control-link {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2.5;
+      stroke-dasharray: 8 8;
+      opacity: 0.58;
+    }
+
+    .flow-barrier,
+    .breaker-gap {
       fill: rgba(155, 46, 38, 0.14);
       stroke: var(--alarm);
       stroke-width: 3;
@@ -208,60 +224,125 @@
       opacity: 1;
     }
 
-    .map-node {
-      position: absolute;
-      z-index: 1;
-      width: min(210px, 28%);
-      min-height: 112px;
-      padding: 14px 16px;
-      border: 1px solid var(--line);
-      border-top: 4px solid var(--accent);
-      background: rgba(251, 252, 249, 0.94);
-      box-shadow: 0 12px 28px var(--shadow);
+    .energy-map.is-isolated .breaker-gap {
+      opacity: 1;
+    }
+
+    .sld-panel,
+    .sld-device,
+    .sld-symbol {
+      fill: rgba(251, 252, 249, 0.95);
+      stroke: var(--line);
+      stroke-width: 2;
+    }
+
+    .sld-panel {
+      fill: rgba(251, 252, 249, 0.72);
+    }
+
+    .sld-symbol {
+      fill: rgba(217, 229, 234, 0.78);
+      stroke: var(--accent);
+    }
+
+    path.sld-symbol {
+      fill: none;
+    }
+
+    .sld-symbol.good,
+    .sld-device.good { stroke: var(--good); }
+    .sld-symbol.warn,
+    .sld-device.warn { stroke: var(--warn); }
+    .sld-symbol.alarm,
+    .sld-device.alarm { stroke: var(--alarm); }
+
+    .breaker-contact,
+    .breaker-blade {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 6;
+      stroke-linecap: round;
+    }
+
+    .breaker-blade.closed { stroke: var(--good); }
+    .breaker-blade.open { stroke: var(--alarm); }
+
+    .sld-node {
       outline: none;
-      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      cursor: default;
     }
 
-    .map-node.good { border-top-color: var(--good); }
-    .map-node.warn { border-top-color: var(--warn); }
-    .map-node.alarm { border-top-color: var(--alarm); }
-
-    .map-node:hover,
-    .map-node:focus-visible {
-      transform: translateY(-3px);
-      box-shadow: 0 18px 36px rgba(20, 34, 38, 0.16);
-      border-color: var(--accent);
+    .sld-node .sld-device,
+    .sld-node .sld-symbol {
+      transition: stroke-width 160ms ease, stroke 160ms ease, filter 160ms ease;
     }
 
-    .map-node.park { left: 5%; top: 7%; }
-    .map-node.ppc { left: 38%; top: 19%; }
-    .map-node.meter { right: 5%; top: 18%; }
-    .map-node.grid { right: 5%; bottom: 8%; }
-    .map-node.invb-01 { left: 6%; bottom: 8%; }
-    .map-node.invb-02 { left: 32%; bottom: 8%; }
-    .map-node.invb-03 { left: 58%; bottom: 8%; }
+    .sld-node:hover .sld-device,
+    .sld-node:hover .sld-symbol,
+    .sld-node:focus .sld-device,
+    .sld-node:focus .sld-symbol {
+      stroke: var(--accent);
+      stroke-width: 3;
+      filter: drop-shadow(0 8px 8px rgba(20, 34, 38, 0.16));
+    }
 
-    .energy-map:has(.park:hover) .flow-line.solar,
-    .energy-map:has(.park:focus-visible) .flow-line.solar,
-    .energy-map:has(.ppc:hover) .flow-line.ppc-link,
-    .energy-map:has(.ppc:focus-visible) .flow-line.ppc-link,
-    .energy-map:has(.meter:hover) .flow-line.meter-link,
-    .energy-map:has(.meter:focus-visible) .flow-line.meter-link,
-    .energy-map:has(.grid:hover) .flow-line.grid-link,
-    .energy-map:has(.grid:focus-visible) .flow-line.grid-link {
+    .energy-map:has([data-flow-node="park"]:hover) .flow-line.solar,
+    .energy-map:has([data-flow-node="park"]:focus) .flow-line.solar,
+    .energy-map:has([data-flow-node="ppc"]:hover) .flow-line.ppc-link,
+    .energy-map:has([data-flow-node="ppc"]:focus) .flow-line.ppc-link,
+    .energy-map:has([data-flow-node="meter"]:hover) .flow-line.meter-link,
+    .energy-map:has([data-flow-node="meter"]:focus) .flow-line.meter-link,
+    .energy-map:has([data-flow-node="grid"]:hover) .flow-line.grid-link,
+    .energy-map:has([data-flow-node="grid"]:focus) .flow-line.grid-link {
       stroke-width: 12;
       opacity: 1;
     }
 
-    .energy-map:has(.invb-01:hover) .flow-line.invb-01,
-    .energy-map:has(.invb-01:focus-visible) .flow-line.invb-01,
-    .energy-map:has(.invb-02:hover) .flow-line.invb-02,
-    .energy-map:has(.invb-02:focus-visible) .flow-line.invb-02,
-    .energy-map:has(.invb-03:hover) .flow-line.invb-03,
-    .energy-map:has(.invb-03:focus-visible) .flow-line.invb-03 {
+    .energy-map:has([data-flow-node="invb-01"]:hover) .flow-line.invb-01,
+    .energy-map:has([data-flow-node="invb-01"]:focus) .flow-line.invb-01,
+    .energy-map:has([data-flow-node="invb-02"]:hover) .flow-line.invb-02,
+    .energy-map:has([data-flow-node="invb-02"]:focus) .flow-line.invb-02,
+    .energy-map:has([data-flow-node="invb-03"]:hover) .flow-line.invb-03,
+    .energy-map:has([data-flow-node="invb-03"]:focus) .flow-line.invb-03 {
       stroke-width: 12;
       opacity: 1;
     }
+
+    .sld-label,
+    .sld-title,
+    .sld-value,
+    .sld-code {
+      font-family: "IBM Plex Sans", "Aptos", sans-serif;
+      letter-spacing: 0;
+      fill: var(--ink);
+    }
+
+    .sld-label {
+      fill: var(--muted);
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .sld-title {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .sld-value {
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .sld-code {
+      fill: var(--muted);
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+      font-size: 12px;
+    }
+
+    .sld-status-good { fill: var(--good); }
+    .sld-status-warn { fill: var(--warn); }
+    .sld-status-alarm { fill: var(--alarm); }
 
     @keyframes flow-pulse {
       from { stroke-dashoffset: 36; }
@@ -328,20 +409,11 @@
       }
 
       .energy-map {
-        display: grid;
-        gap: 12px;
         min-height: auto;
-        padding: 14px;
       }
 
       .energy-canvas {
-        display: none;
-      }
-
-      .map-node {
-        position: static;
-        width: 100%;
-        min-height: auto;
+        min-width: 860px;
       }
     }
   </style>
@@ -394,45 +466,82 @@
               <desc id="energy-flow-desc">{{ page.flow_label }} / {{ t("label.export_power") }} {{ page.facts[1].value }}</desc>
               <defs>
                 <marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"></path>
                 </marker>
               </defs>
-              <path class="flow-line solar {{ page.facts[0].tone }}" d="M 205 104 C 290 90, 340 122, 412 170"></path>
-              <path class="flow-line ppc-link {{ page.flow_tone }}" d="M 515 206 C 604 186, 682 178, 788 186"></path>
-              <path class="flow-line meter-link {{ page.export_path_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 868 246 C 866 304, 864 356, 864 408"></path>
-              <path class="flow-line grid-link {{ page.breaker_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 520 468 C 624 478, 728 470, 830 450"></path>
-              <path class="flow-line invb-01 {% if page.inverter_nodes|length > 0 %}{{ page.inverter_nodes[0].tone }}{% else %}neutral{% endif %}" d="M 180 438 C 232 356, 310 288, 420 238"></path>
-              <path class="flow-line invb-02 {% if page.inverter_nodes|length > 1 %}{{ page.inverter_nodes[1].tone }}{% else %}neutral{% endif %}" d="M 395 438 C 414 360, 438 296, 468 250"></path>
-              <path class="flow-line invb-03 {% if page.inverter_nodes|length > 2 %}{{ page.inverter_nodes[2].tone }}{% else %}neutral{% endif %}" d="M 610 438 C 582 360, 548 296, 504 250"></path>
-              <rect class="flow-barrier" x="828" y="304" width="74" height="28" rx="2" transform="rotate(90 865 318)"></rect>
+
+              <rect class="sld-panel" x="24" y="28" width="952" height="504" rx="2"></rect>
+              <text class="sld-label" x="46" y="58">{{ t("section.line_path.title") }}</text>
+              <text class="sld-code" x="46" y="82">{{ page.flow_label }}</text>
+
+              <path class="sld-wire flow-line solar {{ page.facts[0].tone }}" d="M 165 173 L 165 320"></path>
+              <path class="sld-wire flow-line invb-01 {% if page.inverter_nodes|length > 0 %}{{ page.inverter_nodes[0].tone }}{% else %}neutral{% endif %}" d="M 165 404 L 165 362"></path>
+              <path class="sld-wire flow-line invb-02 {% if page.inverter_nodes|length > 1 %}{{ page.inverter_nodes[1].tone }}{% else %}neutral{% endif %}" d="M 330 404 L 330 362"></path>
+              <path class="sld-wire flow-line invb-03 {% if page.inverter_nodes|length > 2 %}{{ page.inverter_nodes[2].tone }}{% else %}neutral{% endif %}" d="M 495 404 L 495 362"></path>
+              <path class="sld-wire flow-line sld-bus collection-bus {{ page.flow_tone }}" data-sld-symbol="collection-bus" d="M 120 352 H 585"></path>
+              <path class="sld-wire flow-line ppc-link {{ page.flow_tone }}" d="M 585 352 C 638 352, 660 312, 660 270"></path>
+              <path class="sld-wire flow-line meter-link {{ page.export_path_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 695 250 H 760"></path>
+              <path class="sld-wire flow-line grid-link {{ page.breaker_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 840 250 H 918"></path>
+              <path class="control-link" d="M 444 128 C 560 126, 700 156, 796 216"></path>
+              <rect class="flow-barrier" x="760" y="236" width="84" height="28" rx="2"></rect>
+
+              <g class="sld-node park" tabindex="0" data-flow-node="park" data-sld-symbol="pv-array">
+                <rect class="sld-device {{ page.facts[0].tone }}" x="82" y="92" width="166" height="82" rx="2"></rect>
+                <path class="sld-symbol {{ page.facts[0].tone }}" d="M 106 112 H 224 M 106 133 H 224 M 106 154 H 224 M 132 104 L 118 164 M 170 104 L 156 164 M 208 104 L 194 164"></path>
+                <text class="sld-title" x="82" y="206">{{ t("asset.park") }}</text>
+                <text class="sld-value sld-status-{{ page.facts[0].tone }}" x="82" y="228">{{ page.facts[0].value }}</text>
+              </g>
+
+              <g class="sld-node ppc" tabindex="0" data-flow-node="ppc" data-sld-symbol="controller">
+                <rect class="sld-device {{ page.facts[2].tone }}" x="352" y="82" width="128" height="88" rx="2"></rect>
+                <text class="sld-title" x="374" y="118">{{ t("asset.ppc") }}</text>
+                <text class="sld-value sld-status-{{ page.facts[2].tone }}" x="374" y="142">{{ page.facts[2].value }}</text>
+                <text class="sld-code" x="374" y="162">{{ t("label.power_limit") }}</text>
+              </g>
+
+              <g class="sld-node meter" tabindex="0" data-flow-node="meter" data-sld-symbol="meter">
+                <circle class="sld-symbol {{ page.export_path_tone }}" cx="660" cy="250" r="38"></circle>
+                <text class="sld-title" x="636" y="245">MTR</text>
+                <text class="sld-value sld-status-{{ page.export_path_tone }}" x="624" y="270">{{ page.facts[1].value }}</text>
+                <text class="sld-label" x="603" y="315">{{ t("asset.revenue_meter") }}</text>
+              </g>
+
+              <g class="sld-node grid" tabindex="0" data-flow-node="grid">
+                <g data-sld-symbol="breaker">
+                  <line class="breaker-contact" x1="760" y1="250" x2="784" y2="250"></line>
+                  <line class="breaker-contact" x1="816" y1="250" x2="840" y2="250"></line>
+                  {% if page.breaker_tone == "alarm" %}
+                  <line class="breaker-blade open" x1="784" y1="250" x2="814" y2="222"></line>
+                  {% else %}
+                  <line class="breaker-blade closed" x1="784" y1="250" x2="816" y2="250"></line>
+                  {% endif %}
+                  <rect class="breaker-gap" x="776" y="232" width="48" height="36" rx="2"></rect>
+                </g>
+                <rect class="sld-device {{ page.grid_tone }}" x="872" y="176" width="86" height="106" rx="2"></rect>
+                <path class="sld-symbol {{ page.grid_tone }}" d="M 892 260 L 915 208 L 940 260 M 902 238 H 930 M 912 218 H 922"></path>
+                <text class="sld-title" x="748" y="318">{{ t("asset.breaker") }}</text>
+                <text class="sld-value sld-status-{{ page.breaker_tone }}" x="748" y="340">{{ page.breaker_label }}</text>
+                <text class="sld-title" x="828" y="318">{{ t("asset.grid_interconnect") }}</text>
+                <text class="sld-value sld-status-{{ page.grid_tone }}" x="828" y="340">{{ page.grid_label }}</text>
+                <text class="sld-code" x="748" y="362">52-GRID / POI</text>
+              </g>
+
+              <text class="sld-label" x="118" y="384">{{ t("label.collection_bus") }}</text>
+              <text class="sld-code" x="588" y="384">{{ t("label.export_path") }} / {{ page.export_path_label }}</text>
+
+              {% for node in page.inverter_nodes %}
+              {% if loop.index <= 3 %}
+              {% set node_x = 105 + loop.index0 * 165 %}
+              <g class="sld-node {{ node.asset_id }}" tabindex="0" data-flow-node="{{ node.asset_id }}" data-sld-symbol="inverter" transform="translate({{ node_x }}, 402)">
+                <rect class="sld-device {{ node.tone }}" x="0" y="0" width="142" height="122" rx="2"></rect>
+                <path class="sld-symbol {{ node.tone }}" d="M 22 24 H 116 M 22 48 H 116 M 48 16 L 84 58"></path>
+                <text class="sld-title" x="14" y="76">{{ node.asset_id }}</text>
+                <text class="sld-value sld-status-{{ node.tone }}" x="14" y="96">{{ node.status_label }}</text>
+                <text class="sld-code" x="14" y="116">{{ node.detail_label }}</text>
+              </g>
+              {% endif %}
+              {% endfor %}
             </svg>
-
-            <article class="map-node park {{ page.facts[0].tone }}" tabindex="0" data-flow-node="park">
-              <p class="node-label">{{ t("asset.park") }}</p>
-              <p class="node-value">{{ page.facts[0].value }}</p>
-            </article>
-            <article class="map-node ppc {{ page.facts[2].tone }}" tabindex="0" data-flow-node="ppc">
-              <p class="node-label">{{ t("asset.ppc") }}</p>
-              <p class="node-value">{{ page.facts[2].value }}</p>
-            </article>
-            <article class="map-node meter {{ page.export_path_tone }}" tabindex="0" data-flow-node="meter">
-              <p class="node-label">{{ t("asset.revenue_meter") }}</p>
-              <p class="node-value">{{ page.facts[1].value }}</p>
-            </article>
-            <article class="map-node grid {{ page.breaker_tone }}" tabindex="0" data-flow-node="grid">
-              <p class="node-label">{{ t("asset.breaker") }}</p>
-              <p class="node-value">{{ page.breaker_label }}</p>
-              <p class="node-value tone-{{ page.grid_tone }}">{{ page.grid_label }}</p>
-            </article>
-
-            {% for node in page.inverter_nodes %}
-            <article class="map-node {{ node.asset_id }} {{ node.tone }}" tabindex="0" data-flow-node="{{ node.asset_id }}">
-              <p class="node-label">{{ node.title }}</p>
-              <p class="node-value">{{ node.status_label }}</p>
-              <p class="node-value tone-{{ node.tone }}">{{ node.detail_label }}</p>
-              <p class="node-value">{{ node.asset_id }}</p>
-            </article>
-            {% endfor %}
           </div>
         </div>
       </section>

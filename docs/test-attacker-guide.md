@@ -65,6 +65,7 @@ Hier pruefst du:
 - welche Blocke wirken online oder degradet?
 - geht Leistung Richtung Grid?
 - welche Flusslinie wird beim Hover/Fokus eines Knotens hervorgehoben?
+- steht der Breaker im Single-Line-Schema plausibel zu Export und Meterwert?
 
 Die Seite ist die schnellste Gegenprobe nach Breaker-Aktionen.
 

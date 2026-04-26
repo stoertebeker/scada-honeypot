@@ -232,16 +232,17 @@ Bedienung:
 
 Zweck:
 - einfache technische Anlagenansicht
-- interaktive, read-only Energiekarte als schnelle Sicht auf Leistungsfluss und
-  Exportpfad
+- interaktive, read-only Energiekarte im Stil eines vereinfachten
+  SCADA-Single-Line-Diagramms
 
 Anzuzeigende Inhalte:
 
 - PV-Park als Sammelsymbol
 - PPC
 - drei Inverter-Bloecke
+- AC-Sammelschiene fuer die Blockgruppe
 - Revenue Meter
-- Grid Interconnect / Breaker
+- Grid Interconnect / Breaker mit sichtbarer Open/Closed-Stellung
 
 Zustaende:
 
@@ -250,6 +251,8 @@ Zustaende:
 - Kommunikationsverlust
 - Leistungsfluss in einfacher Form
 - Hover/Fokus auf Knoten hebt die zugehoerige Flusslinie hervor
+- automatische Linienfaerbung markiert gespeiste, degradierte oder getrennte
+  Pfade
 
 Wichtige Regel:
 - das Einlinienschema ist bewusst simpel
