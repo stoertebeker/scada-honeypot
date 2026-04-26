@@ -17,6 +17,7 @@ from honeypot.hmi_web.app import (
     SERVICE_LOGIN_PASSWORD,
     SERVICE_LOGIN_USERNAME,
     SERVICE_SESSION_COOKIE_NAME,
+    SESSION_COOKIE_NAME,
 )
 from honeypot.main import build_local_runtime
 from honeypot.plant_sim import PlantSimulator
@@ -97,6 +98,13 @@ async def login_service_client(client: httpx.AsyncClient) -> str:
     assert login_response.status_code == 303
     assert panel_response.status_code == 200
     return extract_service_csrf_token(panel_response.text)
+
+
+def set_cookie_header(response: httpx.Response, cookie_name: str) -> str:
+    for header in response.headers.get_list("set-cookie"):
+        if header.startswith(f"{cookie_name}="):
+            return header
+    raise AssertionError(f"missing Set-Cookie header for {cookie_name}")
 
 
 @pytest.mark.asyncio
@@ -660,6 +668,36 @@ async def test_service_login_success_sets_session_and_opens_service_panel(tmp_pa
     assert auth_event.result == "success"
     assert panel_event.event_type == "hmi.page.service_panel_viewed"
     assert panel_event.session_id is not None
+
+
+@pytest.mark.asyncio
+async def test_service_login_marks_cookies_secure_when_tls_proxy_mode_is_enabled(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    config = build_config(tmp_path).model_copy(
+        update={
+            "hmi_cookie_secure": True,
+            "service_cookie_secure": True,
+        }
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+
+    hmi_cookie = set_cookie_header(response, SESSION_COOKIE_NAME).lower()
+    service_cookie = set_cookie_header(response, SERVICE_SESSION_COOKIE_NAME).lower()
+
+    assert response.status_code == 303
+    assert "secure" in hmi_cookie
+    assert "secure" in service_cookie
 
 
 @pytest.mark.asyncio

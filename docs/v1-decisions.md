@@ -63,6 +63,9 @@ Fuer V1 gilt:
 - Sessions laufen serverseitig mit signiertem Cookie-Handle
 - Idle-Timeout fuer Sessions: `20` Minuten
 - ein Prozessneustart invalidiert bestehende Sessions
+- `HMI_COOKIE_SECURE=0` und `SERVICE_COOKIE_SECURE=0` bleiben lokale
+  HTTP-Defaults; fuer browserseitiges HTTPS hinter TLS-Proxy werden beide
+  bewusst auf `1` gesetzt
 
 ## 6. Kanonischer Event-Vertrag
 

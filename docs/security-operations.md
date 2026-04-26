@@ -154,6 +154,13 @@ Vor Exponierung definieren:
 - fuer echten `exposed-research`-Betrieb muessen oeffentliche Port-Abbildungen
   zusaetzlich ueber `PUBLIC_INGRESS_MAPPINGS` im Format
   `service:public_port:internal_port` dokumentiert sein
+- wenn die HMI browserseitig ueber HTTPS hinter einem TLS-Proxy wie Caddy
+  erreichbar ist, muessen `HMI_COOKIE_SECURE=1` und
+  `SERVICE_COOKIE_SECURE=1` gesetzt werden; bei direktem HTTP-Labbetrieb
+  bleiben beide Werte `0`, sonst senden Browser die Cookies nicht zurueck
+- der interne HTTP-Port der App darf bei TLS-Proxy-Betrieb nicht parallel
+  oeffentlich erreichbar sein, weil Proxy-Header sonst keine Sicherheitsgrenze
+  bilden
 
 ## 6. Systemhygiene
 

@@ -577,7 +577,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -614,7 +614,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -651,7 +651,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -688,7 +688,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -725,7 +725,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -776,7 +776,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -818,7 +818,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -863,9 +863,9 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
         if service_session is not None:
-            _set_service_session_cookie(response, service_session)
+            _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -945,8 +945,8 @@ def create_hmi_app(
         service_session = service_sessions.create(username=username)
         response = RedirectResponse(url="/service/panel", status_code=303)
         if set_cookie:
-            _set_session_cookie(response, session_id)
-        _set_service_session_cookie(response, service_session)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+        _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
         return response
 
     @app.get("/service/panel", response_class=HTMLResponse, include_in_schema=False)
@@ -990,8 +990,8 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id)
-        _set_service_session_cookie(response, service_session)
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+        _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
         _record_page_view(
             request=request,
             snapshot=snapshot,
@@ -1041,6 +1041,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_unavailable",
             )
 
@@ -1070,6 +1071,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1106,6 +1108,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_rejected",
             )
 
@@ -1129,6 +1132,7 @@ def create_hmi_app(
             session_id=session_id,
             set_cookie=set_cookie,
             service_session=service_session,
+            config=config,
             status_code="power_limit_updated",
         )
 
@@ -1163,6 +1167,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_unavailable",
             )
 
@@ -1194,6 +1199,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1232,6 +1238,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_rejected",
             )
 
@@ -1255,6 +1262,7 @@ def create_hmi_app(
             session_id=session_id,
             set_cookie=set_cookie,
             service_session=service_session,
+            config=config,
             status_code="reactive_power_updated",
         )
 
@@ -1294,6 +1302,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_unavailable",
             )
 
@@ -1323,6 +1332,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1359,6 +1369,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_rejected",
             )
 
@@ -1382,6 +1393,7 @@ def create_hmi_app(
             session_id=session_id,
             set_cookie=set_cookie,
             service_session=service_session,
+            config=config,
             status_code="plant_mode_updated",
         )
 
@@ -1420,6 +1432,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_unavailable",
             )
 
@@ -1449,6 +1462,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
         asset_id = (form.get("asset_id", [""])[0]).strip()
@@ -1480,6 +1494,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1522,6 +1537,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1573,6 +1589,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_rejected",
             )
 
@@ -1606,6 +1623,7 @@ def create_hmi_app(
             session_id=session_id,
             set_cookie=set_cookie,
             service_session=service_session,
+            config=config,
             status_code="block_control_updated",
         )
 
@@ -1640,6 +1658,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_unavailable",
             )
 
@@ -1665,6 +1684,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
         asset_id = (form.get("asset_id", [""])[0]).strip()
@@ -1692,6 +1712,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1738,6 +1759,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_rejected",
             )
 
@@ -1764,6 +1786,7 @@ def create_hmi_app(
             session_id=session_id,
             set_cookie=set_cookie,
             service_session=service_session,
+            config=config,
             status_code="block_reset_requested",
         )
 
@@ -1797,6 +1820,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_unavailable",
             )
 
@@ -1826,6 +1850,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_invalid",
             )
 
@@ -1863,6 +1888,7 @@ def create_hmi_app(
                 session_id=session_id,
                 set_cookie=set_cookie,
                 service_session=service_session,
+                config=config,
                 status_code="control_rejected",
             )
 
@@ -1886,6 +1912,7 @@ def create_hmi_app(
             session_id=session_id,
             set_cookie=set_cookie,
             service_session=service_session,
+            config=config,
             status_code=("breaker_open_requested" if breaker_action == "open" else "breaker_close_requested"),
         )
 
@@ -2617,7 +2644,7 @@ def _service_login_failure_response(
         ),
     )
     if set_cookie:
-        _set_session_cookie(response, session_id)
+        _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
     return response
 
 
@@ -2628,16 +2655,17 @@ def _session_state(request: Request) -> tuple[str, bool]:
     return f"hmi_{uuid4().hex}", True
 
 
-def _set_session_cookie(response: HTMLResponse, session_id: str) -> None:
+def _set_session_cookie(response: HTMLResponse, session_id: str, *, secure: bool) -> None:
     response.set_cookie(
         SESSION_COOKIE_NAME,
         session_id,
         httponly=True,
         samesite="lax",
+        secure=secure,
     )
 
 
-def _set_service_session_cookie(response: HTMLResponse, service_session: ServiceSession) -> None:
+def _set_service_session_cookie(response: HTMLResponse, service_session: ServiceSession, *, secure: bool) -> None:
     max_age = int(SERVICE_SESSION_IDLE_TIMEOUT.total_seconds())
     response.set_cookie(
         SERVICE_SESSION_COOKIE_NAME,
@@ -2645,6 +2673,7 @@ def _set_service_session_cookie(response: HTMLResponse, service_session: Service
         httponly=True,
         samesite="lax",
         max_age=max_age,
+        secure=secure,
     )
 
 
@@ -2691,6 +2720,7 @@ def _service_panel_redirect_response(
     session_id: str,
     set_cookie: bool,
     service_session: ServiceSession,
+    config: RuntimeConfig,
     status_code: str,
 ) -> RedirectResponse:
     response = RedirectResponse(
@@ -2698,8 +2728,8 @@ def _service_panel_redirect_response(
         status_code=303,
     )
     if set_cookie:
-        _set_session_cookie(response, session_id)
-    _set_service_session_cookie(response, service_session)
+        _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+    _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
     return response
 
 

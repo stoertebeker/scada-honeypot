@@ -30,6 +30,8 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.approved_egress_targets == ()
     assert config.approved_ingress_bindings == ()
     assert config.exposed_research_enabled is False
+    assert config.hmi_cookie_secure is False
+    assert config.service_cookie_secure is False
     assert config.approved_egress_recipients == ()
     assert config.public_ingress_mappings == ()
     assert config.watch_officer_name is None
@@ -195,6 +197,21 @@ def test_runtime_config_reads_nonlocal_bind_gate(monkeypatch, tmp_path: Path) ->
     config = RuntimeConfig(_env_file=None, allow_nonlocal_bind=True)
 
     assert config.allow_nonlocal_bind is True
+
+
+def test_runtime_config_reads_cookie_secure_flags(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "HMI_COOKIE_SECURE=1\nSERVICE_COOKIE_SECURE=1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    config = load_runtime_config(env_file=env_file)
+
+    assert config.hmi_cookie_secure is True
+    assert config.service_cookie_secure is True
 
 
 def test_weather_coordinates_require_valid_ranges(monkeypatch, tmp_path: Path) -> None:

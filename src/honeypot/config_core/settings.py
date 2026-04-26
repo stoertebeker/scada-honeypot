@@ -93,6 +93,8 @@ class RuntimeConfig(BaseSettings):
     allow_nonlocal_bind: bool = False
     exposed_research_enabled: bool = False
     enable_service_login: bool = True
+    hmi_cookie_secure: bool = False
+    service_cookie_secure: bool = False
 
     event_store_backend: Literal["sqlite"] = "sqlite"
     event_store_path: Path = Path("./tmp/honeypot-events.db")

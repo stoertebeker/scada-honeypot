@@ -430,6 +430,10 @@ Sessions sollen:
 - zeitlich begrenzt sein
 - sauber auslaufen
 - keine inkonsistenten Zwischenzustaende erzeugen
+- `HttpOnly` und `SameSite=Lax` tragen
+- bei browserseitigem HTTPS-Betrieb hinter TLS-Proxy zusaetzlich per
+  `HMI_COOKIE_SECURE=1` und `SERVICE_COOKIE_SECURE=1` als `Secure` markiert
+  werden
 
 V1-Startwerte:
 - `20` Minuten Idle-Timeout
@@ -638,6 +642,8 @@ Spaeter ueber `.env` oder aequivalente Konfiguration sinnvoll:
 - `ATTACKER_UI_LOCALE`
 - `ATTACKER_UI_FALLBACK_LOCALE`
 - `ENABLE_SERVICE_LOGIN`
+- `HMI_COOKIE_SECURE`
+- `SERVICE_COOKIE_SECURE`
 - `ENABLE_TRACKER`
 - `TREND_WINDOW_MINUTES`
 - `ALARM_PAGE_SIZE`
