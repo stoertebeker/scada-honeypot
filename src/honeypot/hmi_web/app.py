@@ -28,6 +28,12 @@ HMI_PROTOCOL = "http"
 SESSION_COOKIE_NAME = "hmi_session"
 SERVICE_SESSION_COOKIE_NAME = "service_session"
 SERVICE_SESSION_IDLE_TIMEOUT = timedelta(minutes=20)
+MAX_FORM_BODY_BYTES = 8 * 1024
+MAX_FORM_FIELD_COUNT = 32
+SERVICE_LOGIN_FAILURE_LIMIT = 5
+SERVICE_LOGIN_FAILURE_WINDOW = timedelta(minutes=5)
+SERVICE_LOGIN_BACKOFF = timedelta(minutes=5)
+SERVICE_LOGIN_THROTTLE_MAX_SOURCES = 256
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LOCALE_DIR = _REPO_ROOT / "resources" / "locales" / "attacker-ui"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -408,6 +414,66 @@ class ServiceSessionStore:
         return refreshed
 
 
+class HmiFormRequestError(ValueError):
+    """Signalisiert ungueltige oder zu grosse HMI-Formular-Requests."""
+
+
+@dataclass(slots=True)
+class ServiceLoginThrottle:
+    clock: Clock
+    failure_limit: int = SERVICE_LOGIN_FAILURE_LIMIT
+    failure_window: timedelta = SERVICE_LOGIN_FAILURE_WINDOW
+    backoff: timedelta = SERVICE_LOGIN_BACKOFF
+    max_sources: int = SERVICE_LOGIN_THROTTLE_MAX_SOURCES
+    _failures_by_source: dict[str, tuple[Any, ...]] = field(default_factory=dict, init=False, repr=False)
+    _blocked_until_by_source: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+
+    def is_limited(self, source_ip: str) -> bool:
+        now = ensure_utc_datetime(self.clock.now())
+        self._prune(now)
+        blocked_until = self._blocked_until_by_source.get(source_ip)
+        return blocked_until is not None and now < ensure_utc_datetime(blocked_until)
+
+    def register_failure(self, source_ip: str) -> None:
+        now = ensure_utc_datetime(self.clock.now())
+        self._prune(now)
+        cutoff = now - self.failure_window
+        failures = tuple(
+            failure_at
+            for failure_at in self._failures_by_source.get(source_ip, ())
+            if ensure_utc_datetime(failure_at) >= cutoff
+        ) + (now,)
+        self._failures_by_source[source_ip] = failures
+        if len(failures) >= self.failure_limit:
+            self._blocked_until_by_source[source_ip] = now + self.backoff
+        self._trim_sources()
+
+    def register_success(self, source_ip: str) -> None:
+        self._failures_by_source.pop(source_ip, None)
+        self._blocked_until_by_source.pop(source_ip, None)
+
+    def _prune(self, now: Any) -> None:
+        normalized_now = ensure_utc_datetime(now)
+        cutoff = normalized_now - self.failure_window
+        for source_ip, failures in list(self._failures_by_source.items()):
+            retained = tuple(
+                failure_at for failure_at in failures if ensure_utc_datetime(failure_at) >= cutoff
+            )
+            if retained:
+                self._failures_by_source[source_ip] = retained
+            else:
+                self._failures_by_source.pop(source_ip, None)
+        for source_ip, blocked_until in list(self._blocked_until_by_source.items()):
+            if normalized_now >= ensure_utc_datetime(blocked_until):
+                self._blocked_until_by_source.pop(source_ip, None)
+
+    def _trim_sources(self) -> None:
+        while len(self._failures_by_source) > self.max_sources:
+            oldest_source = next(iter(self._failures_by_source))
+            self._failures_by_source.pop(oldest_source, None)
+            self._blocked_until_by_source.pop(oldest_source, None)
+
+
 def create_hmi_app(
     *,
     snapshot_provider: Callable[[], PlantSnapshot],
@@ -420,7 +486,9 @@ def create_hmi_app(
 
     texts = _load_locale_texts(config)
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
-    service_sessions = ServiceSessionStore(clock=_hmi_clock(event_recorder))
+    hmi_clock = _hmi_clock(event_recorder)
+    service_sessions = ServiceSessionStore(clock=hmi_clock)
+    service_login_throttle = ServiceLoginThrottle(clock=hmi_clock)
     app = FastAPI(
         title=config.hmi_title,
         docs_url=None,
@@ -811,8 +879,37 @@ def create_hmi_app(
         if not config.enable_service_login:
             raise StarletteHTTPException(status_code=403)
         session_id, set_cookie = _session_state(request)
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
+        source_ip = _request_source_ip(request)
+        if service_login_throttle.is_limited(source_ip):
+            return _service_login_failure_response(
+                request=request,
+                templates=templates,
+                config=config,
+                texts=texts,
+                session_id=session_id,
+                set_cookie=set_cookie,
+            )
+        try:
+            form = await _read_urlencoded_form(request)
+        except HmiFormRequestError:
+            service_login_throttle.register_failure(source_ip)
+            auth_event = _build_service_auth_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=session_id,
+                username="unknown",
+                result="failure",
+            )
+            if auth_event is not None:
+                event_recorder.record(auth_event)
+            return _service_login_failure_response(
+                request=request,
+                templates=templates,
+                config=config,
+                texts=texts,
+                session_id=session_id,
+                set_cookie=set_cookie,
+            )
         username = (form.get("username", [""])[0]).strip()
         password = form.get("password", [""])[0]
         login_success = username == SERVICE_LOGIN_USERNAME and password == SERVICE_LOGIN_PASSWORD
@@ -827,27 +924,17 @@ def create_hmi_app(
             event_recorder.record(auth_event)
 
         if not login_success:
-            view_model = build_service_login_view_model(
+            service_login_throttle.register_failure(source_ip)
+            return _service_login_failure_response(
+                request=request,
+                templates=templates,
                 config=config,
                 texts=texts,
-                status_label=texts["service.login_failed"],
-                status_tone="alarm",
-                session_active=False,
+                session_id=session_id,
+                set_cookie=set_cookie,
             )
-            response = templates.TemplateResponse(
-                request=request,
-                name="service_login.html",
-                context=_template_context(
-                    config=config,
-                    texts=texts,
-                    current_path=request.url.path,
-                    page=view_model,
-                ),
-            )
-            if set_cookie:
-                _set_session_cookie(response, session_id)
-            return response
 
+        service_login_throttle.register_success(source_ip)
         service_session = service_sessions.create(username=username)
         response = RedirectResponse(url="/service/panel", status_code=303)
         if set_cookie:
@@ -950,12 +1037,12 @@ def create_hmi_app(
                 status_code="control_unavailable",
             )
 
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
-        raw_limit = (form.get("active_power_limit_pct", [""])[0]).strip()
+        raw_limit = ""
         try:
+            form = await _read_urlencoded_form(request)
+            raw_limit = (form.get("active_power_limit_pct", [""])[0]).strip()
             active_power_limit_pct = float(raw_limit)
-        except ValueError:
+        except (HmiFormRequestError, ValueError):
             _record_service_control_event(
                 request=request,
                 event_recorder=event_recorder,
@@ -1071,12 +1158,12 @@ def create_hmi_app(
                 status_code="control_unavailable",
             )
 
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
-        raw_target = (form.get("reactive_power_target_pct", [""])[0]).strip()
+        raw_target = ""
         try:
+            form = await _read_urlencoded_form(request)
+            raw_target = (form.get("reactive_power_target_pct", [""])[0]).strip()
             reactive_power_target_pct = float(raw_target)
-        except ValueError:
+        except (HmiFormRequestError, ValueError):
             _record_service_control_event(
                 request=request,
                 event_recorder=event_recorder,
@@ -1201,12 +1288,12 @@ def create_hmi_app(
                 status_code="control_unavailable",
             )
 
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
-        raw_mode_request = (form.get("plant_mode_request", [""])[0]).strip()
+        raw_mode_request = ""
         try:
+            form = await _read_urlencoded_form(request)
+            raw_mode_request = (form.get("plant_mode_request", [""])[0]).strip()
             plant_mode_request = int(raw_mode_request)
-        except ValueError:
+        except (HmiFormRequestError, ValueError):
             _record_service_control_event(
                 request=request,
                 event_recorder=event_recorder,
@@ -1326,8 +1413,33 @@ def create_hmi_app(
                 status_code="control_unavailable",
             )
 
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
+        try:
+            form = await _read_urlencoded_form(request)
+        except HmiFormRequestError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id="inverter-block",
+                action="set_block_control_state",
+                result="rejected",
+                requested_value={
+                    "asset_id": "",
+                    "block_enable_request": "",
+                    "block_power_limit_pct": "",
+                },
+                resulting_state={"asset_id": ""},
+                message="Service inverter block control used an invalid form body",
+                tags=("service", "control", "inverter-block", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
         asset_id = (form.get("asset_id", [""])[0]).strip()
 
         try:
@@ -1520,8 +1632,29 @@ def create_hmi_app(
                 status_code="control_unavailable",
             )
 
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
+        try:
+            form = await _read_urlencoded_form(request)
+        except HmiFormRequestError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id="inverter-block",
+                action="block_reset_request",
+                result="rejected",
+                requested_value={"asset_id": "", "block_reset_request": 1},
+                resulting_state={"asset_id": ""},
+                message="Service inverter block reset used an invalid form body",
+                tags=("service", "control", "inverter-block", "reset", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                status_code="control_invalid",
+            )
         asset_id = (form.get("asset_id", [""])[0]).strip()
 
         try:
@@ -1655,8 +1788,10 @@ def create_hmi_app(
                 status_code="control_unavailable",
             )
 
-        raw_body = (await request.body()).decode("utf-8")
-        form = parse_qs(raw_body, keep_blank_values=True)
+        try:
+            form = await _read_urlencoded_form(request)
+        except HmiFormRequestError:
+            form = {}
         breaker_action = (form.get("breaker_action", [""])[0]).strip().lower()
         if breaker_action not in {"open", "close"}:
             _record_service_control_event(
@@ -2396,6 +2531,74 @@ def _load_locale_texts(config: RuntimeConfig) -> dict[str, str]:
             raise RuntimeError(f"Locale-Paket {locale_file} muss ein JSON-Objekt liefern")
         return {str(key): str(value) for key, value in loaded.items()}
     raise RuntimeError("Kein passendes Locale-Paket fuer die HMI gefunden")
+
+
+async def _read_urlencoded_form(request: Request) -> dict[str, list[str]]:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/x-www-form-urlencoded":
+        raise HmiFormRequestError("unsupported form content type")
+
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_size = int(content_length)
+        except ValueError as exc:
+            raise HmiFormRequestError("invalid content length") from exc
+        if declared_size > MAX_FORM_BODY_BYTES:
+            raise HmiFormRequestError("form body too large")
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_FORM_BODY_BYTES:
+            raise HmiFormRequestError("form body too large")
+
+    try:
+        raw_body = bytes(body).decode("utf-8")
+        return parse_qs(
+            raw_body,
+            keep_blank_values=True,
+            encoding="utf-8",
+            errors="strict",
+            max_num_fields=MAX_FORM_FIELD_COUNT,
+        )
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HmiFormRequestError("invalid form body") from exc
+
+
+def _request_source_ip(request: Request) -> str:
+    return request.client.host if request.client is not None else "127.0.0.1"
+
+
+def _service_login_failure_response(
+    *,
+    request: Request,
+    templates: Jinja2Templates,
+    config: RuntimeConfig,
+    texts: dict[str, str],
+    session_id: str,
+    set_cookie: bool,
+) -> HTMLResponse:
+    view_model = build_service_login_view_model(
+        config=config,
+        texts=texts,
+        status_label=texts["service.login_failed"],
+        status_tone="alarm",
+        session_active=False,
+    )
+    response = templates.TemplateResponse(
+        request=request,
+        name="service_login.html",
+        context=_template_context(
+            config=config,
+            texts=texts,
+            current_path=request.url.path,
+            page=view_model,
+        ),
+    )
+    if set_cookie:
+        _set_session_cookie(response, session_id)
+    return response
 
 
 def _session_state(request: Request) -> tuple[str, bool]:

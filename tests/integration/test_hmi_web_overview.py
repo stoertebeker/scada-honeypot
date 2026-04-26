@@ -11,6 +11,8 @@ from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import EventRecorder
 from honeypot.hmi_web import create_hmi_app
 from honeypot.hmi_web.app import (
+    MAX_FORM_BODY_BYTES,
+    SERVICE_LOGIN_FAILURE_LIMIT,
     SERVICE_LOGIN_PASSWORD,
     SERVICE_LOGIN_USERNAME,
     SERVICE_SESSION_COOKIE_NAME,
@@ -532,6 +534,73 @@ async def test_service_login_failure_stays_quiet_and_logs_auth_event(tmp_path: P
 
 
 @pytest.mark.asyncio
+async def test_service_login_rejects_oversized_form_body_without_session(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-oversized.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+    oversized_body = b"username=" + (b"a" * (MAX_FORM_BODY_BYTES + 1))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/service/login",
+            content=oversized_body,
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+
+    events = store.fetch_events()
+    auth_events = [event for event in events if event.event_type == "hmi.auth.service_login_attempt"]
+
+    assert response.status_code == 200
+    assert "Authentication failed. Check credentials and retry." in response.text
+    assert SERVICE_SESSION_COOKIE_NAME not in response.cookies
+    assert len(auth_events) == 1
+    assert auth_events[0].result == "failure"
+
+
+@pytest.mark.asyncio
+async def test_service_login_rate_limits_repeated_failures_before_reading_next_body(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-rate-limit.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for _ in range(SERVICE_LOGIN_FAILURE_LIMIT):
+            response = await client.post(
+                "/service/login",
+                data={"username": SERVICE_LOGIN_USERNAME, "password": "wrong"},
+            )
+            assert response.status_code == 200
+
+        blocked_response = await client.post(
+            "/service/login",
+            content=b"username=" + (b"a" * (MAX_FORM_BODY_BYTES + 1)),
+            headers={"content-type": "application/x-www-form-urlencoded"},
+        )
+
+    auth_events = [
+        event for event in store.fetch_events() if event.event_type == "hmi.auth.service_login_attempt"
+    ]
+
+    assert blocked_response.status_code == 200
+    assert "Authentication failed. Check credentials and retry." in blocked_response.text
+    assert SERVICE_SESSION_COOKIE_NAME not in blocked_response.cookies
+    assert len(auth_events) == SERVICE_LOGIN_FAILURE_LIMIT
+    assert all(event.result == "failure" for event in auth_events)
+
+
+@pytest.mark.asyncio
 async def test_service_login_success_sets_session_and_opens_service_panel(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-success.db")
@@ -668,6 +737,42 @@ async def test_service_panel_power_limit_updates_shared_truth_and_logs_control_e
     assert control_event.requested_value["active_power_limit_pct"] == 55.5
     assert control_event.resulting_state["active_power_limit_pct"] == 55.5
     assert control_event.correlation_id == process_event.correlation_id
+
+
+@pytest.mark.asyncio
+async def test_service_panel_rejects_oversized_control_form_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-control-oversized.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+    oversized_body = b"active_power_limit_pct=" + (b"5" * (MAX_FORM_BODY_BYTES + 1))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        control_response = await client.post(
+            "/service/panel/power-limit",
+            content=oversized_body,
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted" and event.action == "set_active_power_limit"
+    )
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=control_invalid"
+    assert register_map.snapshot.power_plant_controller.active_power_limit_pct == 100.0
+    assert control_event.result == "rejected"
+    assert control_event.error_code == "service_control_invalid"
 
 
 @pytest.mark.asyncio
