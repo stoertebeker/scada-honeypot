@@ -674,6 +674,7 @@ def test_playwright_single_line_reflects_breaker_open_shared_truth(
     expect(page.locator(".energy-map")).to_be_visible()
     expect(page.locator(".energy-map [data-flow-node='grid']")).to_contain_text("Open")
     expect(page.locator(".energy-map [data-sld-symbol='breaker']")).to_be_visible()
+    expect(page.locator(".energy-map [data-sld-symbol='dc-strings']").first).to_be_visible()
     expect(page.locator(".flow-line.grid-link")).to_have_class(re.compile("export-halted"))
     expect(page.locator("body")).to_contain_text("Flow isolated by open breaker")
     expect(page.locator("body")).to_contain_text("Open")

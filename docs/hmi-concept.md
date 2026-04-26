@@ -240,7 +240,8 @@ Anzuzeigende Inhalte:
 - PV-Park als Sammelsymbol
 - PPC
 - drei Inverter-Bloecke
-- AC-Sammelschiene fuer die Blockgruppe
+- getrennte DC-String-Zweige vor den Inverter-Bloecken
+- AC-Sammelschiene erst nach der Inverter-Wandlung
 - Revenue Meter
 - Grid Interconnect / Breaker mit sichtbarer Open/Closed-Stellung
 
@@ -257,6 +258,7 @@ Zustaende:
 Wichtige Regel:
 - das Einlinienschema ist bewusst simpel
 - keine echte Schutz- oder Netzdetailtreue
+- DC- und AC-Seite duerfen optisch nicht als dieselbe Leitung erscheinen
 - keine Schreibaktionen oder versteckten Steuerpfade in der Grafik
 
 ### 7.3 `/inverters`

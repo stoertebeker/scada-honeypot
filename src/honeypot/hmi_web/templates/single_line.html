@@ -14,6 +14,7 @@
       --good: #1f6a4b;
       --warn: #9c6a1f;
       --alarm: #9b2e26;
+      --dc: #6f5f1d;
       --accent: #345867;
       --accent-soft: #d9e5ea;
       --shadow: rgba(20, 34, 38, 0.08);
@@ -196,6 +197,28 @@
       opacity: 0.28;
       animation: none;
       marker-end: none;
+    }
+
+    .dc-wire {
+      fill: none;
+      stroke: var(--dc);
+      stroke-width: 5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 10 9;
+      marker-end: url("#flow-arrow");
+      opacity: 0.78;
+      animation: flow-pulse 1.8s linear infinite;
+    }
+
+    .dc-wire.warn { stroke: var(--warn); }
+    .dc-wire.alarm {
+      stroke: var(--alarm);
+      animation: none;
+    }
+
+    .ac-feeder {
+      stroke-width: 6;
     }
 
     .sld-bus {
@@ -474,65 +497,44 @@
               <text class="sld-label" x="46" y="58">{{ t("section.line_path.title") }}</text>
               <text class="sld-code" x="46" y="82">{{ page.flow_label }}</text>
 
-              <path class="sld-wire flow-line solar {{ page.facts[0].tone }}" d="M 165 173 L 165 320"></path>
-              <path class="sld-wire flow-line invb-01 {% if page.inverter_nodes|length > 0 %}{{ page.inverter_nodes[0].tone }}{% else %}neutral{% endif %}" d="M 165 404 L 165 362"></path>
-              <path class="sld-wire flow-line invb-02 {% if page.inverter_nodes|length > 1 %}{{ page.inverter_nodes[1].tone }}{% else %}neutral{% endif %}" d="M 330 404 L 330 362"></path>
-              <path class="sld-wire flow-line invb-03 {% if page.inverter_nodes|length > 2 %}{{ page.inverter_nodes[2].tone }}{% else %}neutral{% endif %}" d="M 495 404 L 495 362"></path>
-              <path class="sld-wire flow-line sld-bus collection-bus {{ page.flow_tone }}" data-sld-symbol="collection-bus" d="M 120 352 H 585"></path>
-              <path class="sld-wire flow-line ppc-link {{ page.flow_tone }}" d="M 585 352 C 638 352, 660 312, 660 270"></path>
-              <path class="sld-wire flow-line meter-link {{ page.export_path_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 695 250 H 760"></path>
-              <path class="sld-wire flow-line grid-link {{ page.breaker_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 840 250 H 918"></path>
-              <path class="control-link" d="M 444 128 C 560 126, 700 156, 796 216"></path>
-              <rect class="flow-barrier" x="760" y="236" width="84" height="28" rx="2"></rect>
+              {% for node in page.inverter_nodes %}
+              {% if loop.index <= 3 %}
+              {% set node_x = 95 + loop.index0 * 180 %}
+              {% set node_center = 166 + loop.index0 * 180 %}
+              <path class="dc-wire flow-line solar {{ node.asset_id }} {{ node.tone }}" data-sld-symbol="dc-feeder" d="M {{ node_center }} 180 V 252"></path>
+              <path class="sld-wire flow-line ac-feeder {{ node.asset_id }} {{ node.tone }}" data-sld-symbol="ac-feeder" d="M {{ node_center }} 382 V 430"></path>
+              {% endif %}
+              {% endfor %}
 
-              <g class="sld-node park" tabindex="0" data-flow-node="park" data-sld-symbol="pv-array">
-                <rect class="sld-device {{ page.facts[0].tone }}" x="82" y="92" width="166" height="82" rx="2"></rect>
-                <path class="sld-symbol {{ page.facts[0].tone }}" d="M 106 112 H 224 M 106 133 H 224 M 106 154 H 224 M 132 104 L 118 164 M 170 104 L 156 164 M 208 104 L 194 164"></path>
-                <text class="sld-title" x="82" y="206">{{ t("asset.park") }}</text>
-                <text class="sld-value sld-status-{{ page.facts[0].tone }}" x="82" y="228">{{ page.facts[0].value }}</text>
-              </g>
-
-              <g class="sld-node ppc" tabindex="0" data-flow-node="ppc" data-sld-symbol="controller">
-                <rect class="sld-device {{ page.facts[2].tone }}" x="352" y="82" width="128" height="88" rx="2"></rect>
-                <text class="sld-title" x="374" y="118">{{ t("asset.ppc") }}</text>
-                <text class="sld-value sld-status-{{ page.facts[2].tone }}" x="374" y="142">{{ page.facts[2].value }}</text>
-                <text class="sld-code" x="374" y="162">{{ t("label.power_limit") }}</text>
-              </g>
-
-              <g class="sld-node meter" tabindex="0" data-flow-node="meter" data-sld-symbol="meter">
-                <circle class="sld-symbol {{ page.export_path_tone }}" cx="660" cy="250" r="38"></circle>
-                <text class="sld-title" x="636" y="245">MTR</text>
-                <text class="sld-value sld-status-{{ page.export_path_tone }}" x="624" y="270">{{ page.facts[1].value }}</text>
-                <text class="sld-label" x="603" y="315">{{ t("asset.revenue_meter") }}</text>
-              </g>
-
-              <g class="sld-node grid" tabindex="0" data-flow-node="grid">
-                <g data-sld-symbol="breaker">
-                  <line class="breaker-contact" x1="760" y1="250" x2="784" y2="250"></line>
-                  <line class="breaker-contact" x1="816" y1="250" x2="840" y2="250"></line>
-                  {% if page.breaker_tone == "alarm" %}
-                  <line class="breaker-blade open" x1="784" y1="250" x2="814" y2="222"></line>
-                  {% else %}
-                  <line class="breaker-blade closed" x1="784" y1="250" x2="816" y2="250"></line>
-                  {% endif %}
-                  <rect class="breaker-gap" x="776" y="232" width="48" height="36" rx="2"></rect>
-                </g>
-                <rect class="sld-device {{ page.grid_tone }}" x="872" y="176" width="86" height="106" rx="2"></rect>
-                <path class="sld-symbol {{ page.grid_tone }}" d="M 892 260 L 915 208 L 940 260 M 902 238 H 930 M 912 218 H 922"></path>
-                <text class="sld-title" x="748" y="318">{{ t("asset.breaker") }}</text>
-                <text class="sld-value sld-status-{{ page.breaker_tone }}" x="748" y="340">{{ page.breaker_label }}</text>
-                <text class="sld-title" x="828" y="318">{{ t("asset.grid_interconnect") }}</text>
-                <text class="sld-value sld-status-{{ page.grid_tone }}" x="828" y="340">{{ page.grid_label }}</text>
-                <text class="sld-code" x="748" y="362">52-GRID / POI</text>
-              </g>
-
-              <text class="sld-label" x="118" y="384">{{ t("label.collection_bus") }}</text>
-              <text class="sld-code" x="588" y="384">{{ t("label.export_path") }} / {{ page.export_path_label }}</text>
+              <path class="sld-wire flow-line sld-bus collection-bus {{ page.flow_tone }}" data-sld-symbol="collection-bus" d="M 125 430 H 665"></path>
+              <path class="sld-wire flow-line meter-link {{ page.export_path_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 745 430 H 775"></path>
+              <path class="sld-wire flow-line grid-link {{ page.breaker_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 845 430 H 925"></path>
+              <path class="control-link" d="M 704 142 C 632 178, 554 210, 470 250"></path>
+              <path class="control-link" d="M 752 178 C 792 250, 800 336, 810 398"></path>
+              <rect class="flow-barrier" x="775" y="416" width="70" height="28" rx="2"></rect>
 
               {% for node in page.inverter_nodes %}
               {% if loop.index <= 3 %}
-              {% set node_x = 105 + loop.index0 * 165 %}
-              <g class="sld-node {{ node.asset_id }}" tabindex="0" data-flow-node="{{ node.asset_id }}" data-sld-symbol="inverter" transform="translate({{ node_x }}, 402)">
+              {% set node_x = 95 + loop.index0 * 180 %}
+              <g class="sld-node park" tabindex="0" data-flow-node="park" data-sld-symbol="dc-strings" transform="translate({{ node_x }}, 104)">
+                <rect class="sld-device {{ node.tone }}" x="0" y="0" width="142" height="76" rx="2"></rect>
+                <path class="sld-symbol {{ node.tone }}" d="M 20 18 H 120 M 20 38 H 120 M 20 58 H 120 M 42 10 L 30 66 M 74 10 L 62 66 M 106 10 L 94 66"></path>
+                <text class="sld-code" x="12" y="98">{{ t("label.dc_strings") }} {{ loop.index }}</text>
+              </g>
+              {% endif %}
+              {% endfor %}
+
+              <g class="sld-node ppc" tabindex="0" data-flow-node="ppc" data-sld-symbol="controller">
+                <rect class="sld-device {{ page.facts[2].tone }}" x="650" y="94" width="142" height="88" rx="2"></rect>
+                <text class="sld-title" x="672" y="130">{{ t("asset.ppc") }}</text>
+                <text class="sld-value sld-status-{{ page.facts[2].tone }}" x="672" y="154">{{ page.facts[2].value }}</text>
+                <text class="sld-code" x="672" y="174">{{ t("label.power_limit") }}</text>
+              </g>
+
+              {% for node in page.inverter_nodes %}
+              {% if loop.index <= 3 %}
+              {% set node_x = 95 + loop.index0 * 180 %}
+              <g class="sld-node {{ node.asset_id }}" tabindex="0" data-flow-node="{{ node.asset_id }}" data-sld-symbol="inverter" transform="translate({{ node_x }}, 260)">
                 <rect class="sld-device {{ node.tone }}" x="0" y="0" width="142" height="122" rx="2"></rect>
                 <path class="sld-symbol {{ node.tone }}" d="M 22 24 H 116 M 22 48 H 116 M 48 16 L 84 58"></path>
                 <text class="sld-title" x="14" y="76">{{ node.asset_id }}</text>
@@ -541,6 +543,38 @@
               </g>
               {% endif %}
               {% endfor %}
+
+              <g class="sld-node meter" tabindex="0" data-flow-node="meter" data-sld-symbol="meter">
+                <circle class="sld-symbol {{ page.export_path_tone }}" cx="705" cy="430" r="38"></circle>
+                <text class="sld-title" x="681" y="425">MTR</text>
+                <text class="sld-value sld-status-{{ page.export_path_tone }}" x="669" y="450">{{ page.facts[1].value }}</text>
+                <text class="sld-label" x="650" y="492">{{ t("asset.revenue_meter") }}</text>
+              </g>
+
+              <g class="sld-node grid" tabindex="0" data-flow-node="grid">
+                <g data-sld-symbol="breaker">
+                  <line class="breaker-contact" x1="775" y1="430" x2="799" y2="430"></line>
+                  <line class="breaker-contact" x1="821" y1="430" x2="845" y2="430"></line>
+                  {% if page.breaker_tone == "alarm" %}
+                  <line class="breaker-blade open" x1="799" y1="430" x2="829" y2="402"></line>
+                  {% else %}
+                  <line class="breaker-blade closed" x1="799" y1="430" x2="821" y2="430"></line>
+                  {% endif %}
+                  <rect class="breaker-gap" x="791" y="412" width="46" height="36" rx="2"></rect>
+                </g>
+                <rect class="sld-device {{ page.grid_tone }}" x="878" y="320" width="86" height="106" rx="2"></rect>
+                <path class="sld-symbol {{ page.grid_tone }}" d="M 898 404 L 921 352 L 946 404 M 908 382 H 936 M 918 362 H 928"></path>
+                <text class="sld-title" x="764" y="482">{{ t("asset.breaker") }}</text>
+                <text class="sld-value sld-status-{{ page.breaker_tone }}" x="764" y="504">{{ page.breaker_label }}</text>
+                <text class="sld-title" x="850" y="482">{{ t("asset.grid_interconnect") }}</text>
+                <text class="sld-value sld-status-{{ page.grid_tone }}" x="850" y="504">{{ page.grid_label }}</text>
+                <text class="sld-code" x="764" y="526">52-GRID / POI</text>
+              </g>
+
+              <text class="sld-label" x="124" y="462">{{ t("label.collection_bus") }}</text>
+              <text class="sld-code" x="552" y="462">{{ t("label.export_path") }} / {{ page.export_path_label }}</text>
+              <text class="sld-label" x="82" y="228">{{ t("asset.park") }}</text>
+              <text class="sld-value sld-status-{{ page.facts[0].tone }}" x="82" y="250">{{ page.facts[0].value }}</text>
             </svg>
           </div>
         </div>

@@ -63,6 +63,7 @@ Wenn diese Seite schon unplausibel wirkt, lohnt sich der Rest kaum.
 Hier pruefst du:
 - ist der Netzpfad offen oder geschlossen?
 - welche Blocke wirken online oder degradet?
+- laufen die PV-/DC-Zweige zuerst in die Inverter und erst danach auf den AC-Bus?
 - geht Leistung Richtung Grid?
 - welche Flusslinie wird beim Hover/Fokus eines Knotens hervorgehoben?
 - steht der Breaker im Single-Line-Schema plausibel zu Export und Meterwert?

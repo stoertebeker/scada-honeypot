@@ -198,6 +198,8 @@ async def test_single_line_page_renders_breaker_path_and_logs_hmi_events(tmp_pat
     assert 'data-flow-node="grid"' in response.text
     assert 'data-sld-symbol="breaker"' in response.text
     assert "collection-bus" in response.text
+    assert 'data-sld-symbol="dc-strings"' in response.text
+    assert 'data-sld-symbol="ac-feeder"' in response.text
     assert "export-halted" in response.text
     assert "invb-02" in response.text
     assert single_line_event.event_type == "hmi.page.single_line_viewed"
