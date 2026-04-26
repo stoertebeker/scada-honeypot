@@ -695,6 +695,33 @@ def test_playwright_single_line_reflects_breaker_open_shared_truth(
     assert runtime.modbus_service.register_map.snapshot.revenue_meter.export_power_kw == 0.0
 
 
+def test_playwright_single_line_breaker_click_logs_rejected_attempt(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.goto(f"{base_url}/single-line", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/single-line$"))
+    expect(page.locator(".energy-map [data-sld-action='breaker-click']")).to_be_visible()
+
+    page.locator(".energy-map [data-sld-action='breaker-click']").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/login$"))
+    expect(page.get_by_role("heading", name="Service Login")).to_be_visible()
+
+    events = runtime.event_store.fetch_events()
+
+    assert any(
+        event.event_type == "hmi.action.unauthenticated_control_attempt"
+        and event.action == "single_line_breaker_click"
+        and event.result == "rejected"
+        and event.error_code == "service_auth_required"
+        for event in events
+    )
+    assert not any(event.event_type == "process.breaker.state_changed" for event in events)
+    assert runtime.modbus_service.register_map.snapshot.grid_interconnect.breaker_state == "closed"
+
+
 def test_playwright_weather_page_reflects_unit_21_shared_truth(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"

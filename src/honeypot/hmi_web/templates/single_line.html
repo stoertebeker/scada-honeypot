@@ -282,6 +282,25 @@
     .breaker-blade.closed { stroke: var(--good); }
     .breaker-blade.open { stroke: var(--alarm); }
 
+    .sld-switch-link {
+      cursor: pointer;
+      outline: none;
+    }
+
+    .sld-switch-hit {
+      fill: rgba(255, 255, 255, 0);
+      stroke: transparent;
+      pointer-events: all;
+    }
+
+    .sld-switch-link:hover .breaker-contact,
+    .sld-switch-link:hover .breaker-blade,
+    .sld-switch-link:focus .breaker-contact,
+    .sld-switch-link:focus .breaker-blade {
+      stroke-width: 8;
+      filter: drop-shadow(0 8px 8px rgba(20, 34, 38, 0.16));
+    }
+
     .sld-node {
       outline: none;
       cursor: default;
@@ -542,16 +561,19 @@
               </g>
 
               <g class="sld-node grid" tabindex="0" data-flow-node="grid">
-                <g data-sld-symbol="breaker">
-                  <line class="breaker-contact" x1="775" y1="430" x2="799" y2="430"></line>
-                  <line class="breaker-contact" x1="821" y1="430" x2="845" y2="430"></line>
-                  {% if page.breaker_tone == "alarm" %}
-                  <line class="breaker-blade open" x1="799" y1="430" x2="829" y2="402"></line>
-                  {% else %}
-                  <line class="breaker-blade closed" x1="799" y1="430" x2="821" y2="430"></line>
-                  {% endif %}
-                  <rect class="breaker-gap" x="791" y="412" width="46" height="36" rx="2"></rect>
-                </g>
+                <a class="sld-switch-link" href="/single-line/breaker-attempt" data-sld-action="breaker-click" aria-label="{{ t('asset.breaker') }} {{ page.breaker_label }}">
+                  <g data-sld-symbol="breaker">
+                    <rect class="sld-switch-hit" x="760" y="390" width="96" height="78" rx="4"></rect>
+                    <line class="breaker-contact" x1="775" y1="430" x2="799" y2="430"></line>
+                    <line class="breaker-contact" x1="821" y1="430" x2="845" y2="430"></line>
+                    {% if page.breaker_tone == "alarm" %}
+                    <line class="breaker-blade open" x1="799" y1="430" x2="829" y2="402"></line>
+                    {% else %}
+                    <line class="breaker-blade closed" x1="799" y1="430" x2="821" y2="430"></line>
+                    {% endif %}
+                    <rect class="breaker-gap" x="791" y="412" width="46" height="36" rx="2"></rect>
+                  </g>
+                </a>
                 <g data-sld-symbol="grid-source">
                   <circle class="sld-symbol {{ page.grid_tone }}" cx="918" cy="430" r="42"></circle>
                   <path class="sld-symbol {{ page.grid_tone }}" d="M 888 430 C 898 406, 908 406, 918 430 C 928 454, 938 454, 948 430"></path>

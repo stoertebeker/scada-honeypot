@@ -416,9 +416,12 @@ Pflichttests:
   aktivem Einzel-Comm-Loss
 - zwanzigster Browser-Slice prueft `breaker open` auf `/service/panel` mit
   sichtbarer Rueckspiegelung im read-only `/single-line`-Schema
-- einundzwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
+- einundzwanzigster Browser-Slice prueft den klickbaren Breaker im
+  `/single-line`-Schema als abgewiesenen, protokollierten Versuch ohne
+  Prozesszustandsaenderung
+- zweiundzwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
   gegen die Werte aus `Unit 21`
-- zweiundzwanzigster Browser-Slice prueft einen weiteren
+- dreiundzwanzigster Browser-Slice prueft einen weiteren
   `simulate_comm_loss` bei bereits aktivem `MULTI_BLOCK_UNAVAILABLE` ohne
   duplizierten Folge-Alert auf `/alarms`
 

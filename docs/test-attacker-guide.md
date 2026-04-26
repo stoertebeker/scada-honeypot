@@ -68,7 +68,10 @@ Hier pruefst du:
 - welche Flusslinie wird beim Hover/Fokus eines Knotens hervorgehoben?
 - steht der Breaker im Single-Line-Schema plausibel zu Export und Meterwert?
 
-Die Seite ist die schnellste Gegenprobe nach Breaker-Aktionen.
+Die Seite ist die schnellste Gegenprobe nach Breaker-Aktionen. Der Breaker im
+Schema ist klickbar, aber vor Login kein echter Schaltpfad: ein Klick fuehrt
+nach `/service/login`, laesst den Anlagenzustand unveraendert und schreibt
+`hmi.action.unauthenticated_control_attempt` in das Eventlog.
 
 ### 3.3 `/inverters`
 

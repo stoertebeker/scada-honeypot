@@ -635,6 +635,32 @@ def create_hmi_app(
         )
         return response
 
+    @app.get("/single-line/breaker-attempt", include_in_schema=False)
+    async def single_line_breaker_attempt(request: Request) -> RedirectResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        response = RedirectResponse(url="/service/login", status_code=303)
+        if set_cookie:
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+
+        _record_unauthenticated_control_attempt(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=session_id,
+            asset_id=snapshot.grid_interconnect.asset_id,
+            action="single_line_breaker_click",
+            requested_value={"control": "breaker", "source_view": "/single-line"},
+            previous_value=snapshot.grid_interconnect.breaker_state,
+            resulting_state={
+                "breaker_state": snapshot.grid_interconnect.breaker_state,
+                "export_power_kw": snapshot.revenue_meter.export_power_kw,
+                "export_path_available": snapshot.grid_interconnect.export_path_available,
+            },
+            message="Single-line breaker click rejected before service authentication",
+            tags=("single-line", "breaker", "control-attempt", "unauthenticated", "web"),
+        )
+        return response
+
     @app.get("/inverters", response_class=HTMLResponse, include_in_schema=False)
     async def inverters(request: Request) -> HTMLResponse:
         snapshot = snapshot_provider()
@@ -2928,6 +2954,51 @@ def _record_service_control_event(
         resulting_value={"http_status": 303, "value": resulting_value},
         resulting_state=resulting_state,
         error_code=error_code,
+        message=message,
+        tags=tags,
+    )
+    event_recorder.record(event)
+
+
+def _record_unauthenticated_control_attempt(
+    *,
+    request: Request,
+    event_recorder: EventRecorder | None,
+    session_id: str,
+    asset_id: str,
+    action: str,
+    requested_value: dict[str, Any],
+    previous_value: Any | None,
+    resulting_state: dict[str, Any],
+    message: str,
+    tags: tuple[str, ...],
+) -> None:
+    if event_recorder is None:
+        return
+
+    event = event_recorder.build_event(
+        event_type="hmi.action.unauthenticated_control_attempt",
+        category="hmi",
+        severity="medium",
+        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        actor_type="remote_client",
+        component=HMI_COMPONENT,
+        asset_id=asset_id,
+        action=action,
+        result="rejected",
+        session_id=session_id,
+        protocol=HMI_PROTOCOL,
+        service=HMI_SERVICE,
+        endpoint_or_register=request.url.path,
+        requested_value={
+            "http_method": request.method,
+            "http_path": request.url.path,
+            **requested_value,
+        },
+        previous_value=previous_value,
+        resulting_value={"http_status": 303, "redirect_to": "/service/login"},
+        resulting_state=resulting_state,
+        error_code="service_auth_required",
         message=message,
         tags=tags,
     )

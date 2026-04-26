@@ -258,6 +258,9 @@ Zustaende:
 Wichtige Regel:
 - das Einlinienschema ist bewusst simpel
 - keine echte Schutz- oder Netzdetailtreue
+- ein Klick auf den Breaker ist ein sichtbarer Koederpfad: er schreibt keinen
+  Prozesszustand, protokolliert `hmi.action.unauthenticated_control_attempt`
+  und fuehrt zur Service-Anmeldung
 - DC- und AC-Seite duerfen optisch nicht als dieselbe Leitung erscheinen
 - PPC wird als Controller gezeigt, nicht als Energiepfad
 - keine Schreibaktionen oder versteckten Steuerpfade in der Grafik

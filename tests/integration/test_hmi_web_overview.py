@@ -197,6 +197,8 @@ async def test_single_line_page_renders_breaker_path_and_logs_hmi_events(tmp_pat
     assert "energy-map" in response.text
     assert 'data-flow-node="grid"' in response.text
     assert 'data-sld-symbol="breaker"' in response.text
+    assert 'href="/single-line/breaker-attempt"' in response.text
+    assert 'data-sld-action="breaker-click"' in response.text
     assert "collection-bus" in response.text
     assert 'data-sld-symbol="dc-strings"' in response.text
     assert 'data-sld-symbol="ac-feeder"' in response.text
@@ -212,6 +214,51 @@ async def test_single_line_page_renders_breaker_path_and_logs_hmi_events(tmp_pat
     assert single_line_event.resulting_value == {"http_status": 200}
     assert single_line_event.resulting_state["breaker_state"] == "open"
     assert single_line_event.resulting_state["export_power_kw"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_single_line_breaker_click_logs_rejected_attempt_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-single-line-breaker-attempt.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/single-line/breaker-attempt", follow_redirects=False)
+
+    events = store.fetch_events()
+    attempt_event = next(
+        event for event in events if event.event_type == "hmi.action.unauthenticated_control_attempt"
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/service/login"
+    assert snapshot.grid_interconnect.breaker_state == "closed"
+    assert attempt_event.action == "single_line_breaker_click"
+    assert attempt_event.result == "rejected"
+    assert attempt_event.asset_id == snapshot.grid_interconnect.asset_id
+    assert attempt_event.endpoint_or_register == "/single-line/breaker-attempt"
+    assert attempt_event.error_code == "service_auth_required"
+    assert attempt_event.requested_value == {
+        "http_method": "GET",
+        "http_path": "/single-line/breaker-attempt",
+        "control": "breaker",
+        "source_view": "/single-line",
+    }
+    assert attempt_event.previous_value == "closed"
+    assert attempt_event.resulting_value == {"http_status": 303, "redirect_to": "/service/login"}
+    assert attempt_event.resulting_state == {
+        "breaker_state": "closed",
+        "export_power_kw": snapshot.revenue_meter.export_power_kw,
+        "export_path_available": True,
+    }
+    assert not any(event.event_type == "hmi.action.service_control_submitted" for event in events)
+    assert not any(event.event_type == "process.breaker.state_changed" for event in events)
 
 
 @pytest.mark.asyncio

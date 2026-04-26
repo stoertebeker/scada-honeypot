@@ -149,6 +149,8 @@ Beispiele:
 - Alarmansicht geoeffnet
 - Trendansicht geoeffnet
 - Bedienoperation versucht
+- unauthentifizierter Breaker-Klick im `/single-line`-Schema, protokolliert
+  als `hmi.action.unauthenticated_control_attempt`
 
 Nutzen:
 - Einschaetzung des Operator-/Recon-Verhaltens
