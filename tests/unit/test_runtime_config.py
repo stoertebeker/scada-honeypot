@@ -22,6 +22,12 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.enable_service_login is True
     assert config.enable_tracker is False
     assert config.modbus_port == 1502
+    assert config.ops_enabled is True
+    assert config.ops_bind_host == "127.0.0.1"
+    assert config.ops_port == 9090
+    assert config.ops_basic_auth_enabled is False
+    assert config.ops_basic_auth_username is None
+    assert config.ops_basic_auth_password is None
     assert config.allow_nonlocal_bind is False
     assert config.attacker_ui_locale_resolution_chain == ("en",)
     assert config.event_store_backend == "sqlite"
@@ -110,6 +116,14 @@ def test_enabled_webhook_exporter_requires_url(monkeypatch, tmp_path: Path) -> N
 
     with pytest.raises(ValidationError):
         RuntimeConfig(_env_file=None, webhook_exporter_enabled=True, webhook_exporter_url="")
+
+
+def test_enabled_ops_basic_auth_requires_credentials(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, ops_basic_auth_enabled=True)
 
 
 def test_enabled_smtp_exporter_requires_host_from_and_to(monkeypatch, tmp_path: Path) -> None:

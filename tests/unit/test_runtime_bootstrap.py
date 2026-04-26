@@ -43,6 +43,18 @@ def test_build_local_runtime_rejects_nonlocal_hmi_bind_host(tmp_path: Path) -> N
         build_local_runtime(env_file=str(env_file))
 
 
+def test_build_local_runtime_rejects_nonlocal_ops_bind_host(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        f"OPS_BIND_HOST=0.0.0.0\nEVENT_STORE_PATH={event_store_path}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="ALLOW_NONLOCAL_BIND=1"):
+        build_local_runtime(env_file=str(env_file))
+
+
 def test_build_local_runtime_allows_nonlocal_binds_when_explicitly_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
@@ -168,6 +180,9 @@ def test_build_local_runtime_wires_jsonl_archive_from_config(tmp_path: Path) -> 
     )
     assert runtime.hmi_app is not None
     assert runtime.hmi_service.address == ("127.0.0.1", 0)
+    assert runtime.ops_app is not None
+    assert runtime.ops_service is not None
+    assert runtime.ops_service.address == ("127.0.0.1", 0)
     assert runtime.exporters == {}
     assert runtime.outbox_runner is None
     assert runtime.outbox_runner_service is None
@@ -300,6 +315,7 @@ def test_build_local_runtime_wires_runtime_status_service_when_enabled(tmp_path:
 
     assert runtime.runtime_status_service is not None
     assert runtime.runtime_status_service.writer.path == status_path
+    assert runtime.runtime_status_service.writer.ops_service is runtime.ops_service
     assert runtime.runtime_status_service.interval_seconds == 2
     assert tuple(runtime.exporters) == ("webhook",)
 
@@ -332,6 +348,7 @@ def test_runtime_status_service_writes_local_status_file(tmp_path: Path) -> None
         assert payload["runtime"]["running"] is True
         assert payload["runtime"]["modbus"]["port"] == runtime.modbus_service.address[1]
         assert payload["runtime"]["hmi"]["port"] == runtime.hmi_service.address[1]
+        assert payload["runtime"]["ops"]["port"] == runtime.ops_service.address[1]
         assert payload["runtime"]["outbox_runner"]["enabled"] is True
         assert payload["exporters"]["webhook"]["status"] == "healthy"
     finally:
@@ -350,8 +367,8 @@ def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     fake_runtime = _FakeRuntime()
     stop_called = False
 
-    def fake_build_local_runtime(*, env_file=".env", modbus_port=None, hmi_port=None):
-        del env_file, modbus_port, hmi_port
+    def fake_build_local_runtime(*, env_file=".env", modbus_port=None, hmi_port=None, ops_port=None):
+        del env_file, modbus_port, hmi_port, ops_port
         return fake_runtime
 
     def fake_stop(runtime) -> None:
@@ -368,6 +385,7 @@ def test_main_returns_success(capsys, monkeypatch, tmp_path: Path) -> None:
     assert "honeypot runtime ready for site-01" in captured.out
     assert "modbus://127.0.0.1:1502" in captured.out
     assert "http://127.0.0.1:8080/overview" in captured.out
+    assert "ops=http://127.0.0.1:9090/" in captured.out
 
 
 def test_main_rejects_unapproved_exporter_egress(monkeypatch, tmp_path: Path) -> None:
@@ -409,6 +427,7 @@ class _FakeRuntime:
         self.snapshot = SimpleNamespace(fixture_name="normal_operation")
         self.modbus_service = SimpleNamespace(address=("127.0.0.1", 1502))
         self.hmi_service = SimpleNamespace(address=("127.0.0.1", 8080))
+        self.ops_service = SimpleNamespace(address=("127.0.0.1", 9090))
         self.exporters = {}
 
     def start(self):

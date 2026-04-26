@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Ops Alerts{% endblock %}
+{% block heading %}Alerts{% endblock %}
+{% block content %}
+<section>
+  <h2>Alert History</h2>
+  {% include "partials/alerts_table.html" %}
+</section>
+{% endblock %}

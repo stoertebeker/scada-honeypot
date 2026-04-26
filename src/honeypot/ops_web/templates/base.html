@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Ops Dashboard{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #eef1ef;
+      --panel: #fbfcfb;
+      --line: #b9c4bd;
+      --ink: #132124;
+      --muted: #58686d;
+      --accent: #23566b;
+      --good: #1f6a4b;
+      --warn: #96651c;
+      --alarm: #9b2e26;
+      --shadow: rgba(19, 33, 36, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: linear-gradient(180deg, #f6f8f5 0%, var(--bg) 100%);
+      font-family: "IBM Plex Sans", "Aptos", sans-serif;
+    }
+
+    .shell {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      margin-bottom: 18px;
+      padding: 20px 22px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 14px 34px var(--shadow);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.1;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .meta,
+    .muted {
+      color: var(--muted);
+    }
+
+    .meta {
+      margin: 6px 0 0;
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+      font-size: 0.82rem;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    nav a {
+      padding: 9px 12px;
+      border: 1px solid var(--accent);
+      color: #f8fbfc;
+      background: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    nav a.current {
+      color: var(--accent);
+      background: transparent;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat,
+    section {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 10px 24px var(--shadow);
+    }
+
+    .stat {
+      padding: 14px 16px;
+      border-top: 4px solid var(--accent);
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 6px;
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+      font-size: 1.25rem;
+    }
+
+    section {
+      margin-bottom: 16px;
+      padding: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th,
+    td {
+      padding: 9px 8px;
+      border-bottom: 1px solid rgba(185, 196, 189, 0.72);
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .mono {
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+      font-size: 0.82rem;
+      overflow-wrap: anywhere;
+    }
+
+    .result-rejected,
+    .state-active_unacknowledged,
+    .state-active_acknowledged,
+    .severity-high,
+    .severity-critical {
+      color: var(--alarm);
+      font-weight: 700;
+    }
+
+    .result-served,
+    .result-accepted,
+    .state-cleared {
+      color: var(--good);
+      font-weight: 700;
+    }
+
+    form.filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    input,
+    button {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      font: inherit;
+    }
+
+    button {
+      border-color: var(--accent);
+      color: #f8fbfc;
+      background: var(--accent);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    @media (max-width: 820px) {
+      header {
+        grid-template-columns: 1fr;
+      }
+
+      nav {
+        justify-content: flex-start;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>{% block heading %}Ops Dashboard{% endblock %}</h1>
+        <p class="meta">{{ site_code }} / {{ ops_bind }}</p>
+      </div>
+      <nav aria-label="Ops navigation">
+        {% for href, label in nav_items %}
+        <a href="{{ href }}" class="{% if current_path == href %}current{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </header>
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

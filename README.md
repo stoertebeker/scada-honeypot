@@ -25,6 +25,7 @@ uv run python -m honeypot.main
 Standardpfade im lokalen Designbetrieb:
 
 - HMI: `http://127.0.0.1:8080/overview`
+- Ops-Backend: `http://127.0.0.1:9090/`
 - Modbus/TCP: `127.0.0.1:1502`
 
 ### Lokaler Reset
@@ -86,12 +87,14 @@ Erster Docker-Schlag fuer den Runtime-Pfad:
 ```bash
 docker build -t scada-honeypot:base .
 docker run --rm \
+  -p 127.0.0.1:9090:9090 \
   -p 8080:8080 \
   -p 1502:1502 \
   -e ALLOW_NONLOCAL_BIND=1 \
   -e MODBUS_BIND_HOST=0.0.0.0 \
   -e HMI_BIND_HOST=0.0.0.0 \
-  -e APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080 \
+  -e OPS_BIND_HOST=0.0.0.0 \
+  -e APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080,ops:0.0.0.0:9090 \
   scada-honeypot:base
 ```
 
@@ -138,6 +141,8 @@ HONEYPOT_ENV_FILE=.env docker compose --profile exposed up --build -d honeypot-e
   Pfaden
 - der Hauptdienst laeuft mit `read_only`, `tmpfs` fuer `/tmp`,
   `restart: unless-stopped` und `no-new-privileges`
+- das interne Ops-Backend laeuft auf eigenem Port und wird im Compose-Betrieb
+  nur auf Host-Loopback veroeffentlicht: `127.0.0.1:${OPS_PUBLISHED_PORT:-9090}`
 - der Healthcheck prueft den echten HMI-Read auf `/overview` plus einen
   Modbus-Socket auf dem internen Runtime-Pfad
 - fuer den Exposure-Sweep gibt es einen getrennten Profil-Dienst:
@@ -204,6 +209,9 @@ uv run python -m playwright install chromium
 
 - `monitoring`
   - lokaler Heartbeat nach `RUNTIME_STATUS_PATH`
+- `ops_web`
+  - internes read-only Backend fuer Events, Alerts und Source-Aktivitaet auf
+    separatem Port
 - `runtime_evolution`
   - tickende `observed_at`-Zeit, wettergetriebene Anlagenleistung und kleine In-Memory-Trendhistorie fuer `/trends`
 - `weather_core`

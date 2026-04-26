@@ -50,10 +50,13 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
     modbus_address: tuple[str, int] | None = None
     hmi_address: tuple[str, int] | None = None
+    ops_address: tuple[str, int] | None = None
     try:
         runtime.start()
         modbus_address = runtime.modbus_service.address
         hmi_address = runtime.hmi_service.address
+        assert runtime.ops_service is not None
+        ops_address = runtime.ops_service.address
         response = send_request(
             modbus_address,
             transaction_id=0x4321,
@@ -63,6 +66,11 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
         )
         overview_response = httpx.get(
             f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+        ops_response = httpx.get(
+            f"http://{ops_address[0]}:{ops_address[1]}/",
             timeout=5.0,
             trust_env=False,
         )
@@ -83,6 +91,9 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert overview_response.status_code == 200
     assert "Plant Overview" in overview_response.text
     assert "5.80 MW" in overview_response.text
+    assert ops_response.status_code == 200
+    assert "Ops Dashboard" in ops_response.text
+    assert runtime.ops_service is not runtime.hmi_service
     assert len(events) == 2
     assert events[0].event_type == "protocol.modbus.holding_registers_read"
     assert events[0].requested_value["register_start"] == 40001
@@ -94,8 +105,11 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert events[1].session_id is not None
     assert modbus_address is not None
     assert hmi_address is not None
+    assert ops_address is not None
+    assert ops_address[1] != hmi_address[1]
     assert_port_closed(modbus_address)
     assert_port_closed(hmi_address)
+    assert_port_closed(ops_address)
 
 
 def test_build_local_runtime_background_evolution_advances_snapshot_in_runtime(tmp_path: Path) -> None:

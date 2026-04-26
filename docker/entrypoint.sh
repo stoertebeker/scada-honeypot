@@ -7,7 +7,8 @@ if [ "${HONEYPOT_FORCE_CONTAINER_BINDS:-0}" = "1" ]; then
     export ALLOW_NONLOCAL_BIND=1
     export HMI_BIND_HOST=0.0.0.0
     export MODBUS_BIND_HOST=0.0.0.0
-    export APPROVED_INGRESS_BINDINGS="modbus:0.0.0.0:${MODBUS_PORT:-1502},hmi:0.0.0.0:${HMI_PORT:-8080}"
+    export OPS_BIND_HOST=0.0.0.0
+    export APPROVED_INGRESS_BINDINGS="modbus:0.0.0.0:${MODBUS_PORT:-1502},hmi:0.0.0.0:${HMI_PORT:-8080},ops:0.0.0.0:${OPS_PORT:-9090}"
 fi
 
 case "${HONEYPOT_RUNTIME_MODE:-normal}" in

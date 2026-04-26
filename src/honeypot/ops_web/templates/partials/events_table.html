@@ -1,0 +1,32 @@
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Source</th>
+        <th>Action</th>
+        <th>Result</th>
+        <th>Endpoint/Register</th>
+        <th>Error</th>
+        <th>Requested</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event in events %}
+      <tr>
+        <td class="mono">{{ event.timestamp }}</td>
+        <td class="mono">{{ event.event_type }}</td>
+        <td class="mono">{{ event.source_ip }}</td>
+        <td>{{ event.action }}</td>
+        <td class="result-{{ event.result }}">{{ event.result }}</td>
+        <td class="mono">{{ event.endpoint_or_register }}</td>
+        <td class="mono">{{ event.error_code }}</td>
+        <td class="mono">{{ event.requested_value }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="muted">No events recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

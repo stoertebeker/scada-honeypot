@@ -59,6 +59,8 @@ Eigenschaften:
 - Reset-Mechanismus validiert
 - Monitoring aktiv; aktuell steht dafuer ein lokaler Heartbeat unter
   `RUNTIME_STATUS_PATH` bereit, ohne neue Netzwerkflaeche zu oeffnen
+- internes Ops-Backend laeuft getrennt von der Angreifer-HMI auf eigenem Port;
+  Remote-Zugriff nur ueber Tunnel/VPN oder vergleichbare Zugriffsschicht
 - ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
   Reset und Fresh-Start ist jetzt im Testharness belegt
 - Stand 23. April 2026: formales `GO` fuer `pre-exposure`, siehe

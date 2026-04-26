@@ -31,5 +31,8 @@ def test_compose_profiles_split_normal_and_exposed_runtime() -> None:
     assert "profiles:\n      - exposed" in compose_yaml
     assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
     assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint
+    assert "export OPS_BIND_HOST=0.0.0.0" in entrypoint
+    assert "ops:0.0.0.0:${OPS_PORT:-9090}" in entrypoint
+    assert "127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}" in compose_yaml
     assert "export EXPOSED_RESEARCH_ENABLED=0" in entrypoint
     assert "export EXPOSED_RESEARCH_ENABLED=1" in entrypoint

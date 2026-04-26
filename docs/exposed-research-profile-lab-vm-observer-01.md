@@ -27,9 +27,15 @@ MODBUS_BIND_HOST=0.0.0.0
 MODBUS_PORT=1502
 HMI_BIND_HOST=0.0.0.0
 HMI_PORT=8080
+OPS_ENABLED=1
+OPS_BIND_HOST=127.0.0.1
+OPS_PORT=9090
+OPS_BASIC_AUTH_ENABLED=0
+OPS_BASIC_AUTH_USERNAME=""
+OPS_BASIC_AUTH_PASSWORD=""
 ALLOW_NONLOCAL_BIND=1
 EXPOSED_RESEARCH_ENABLED=1
-APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080
+APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080,ops:0.0.0.0:9090
 PUBLIC_INGRESS_MAPPINGS=modbus:502:1502,hmi:80:8080
 
 ENABLE_SERVICE_LOGIN=1
@@ -59,6 +65,9 @@ DUTY_ENGINEER_NAME=ops-duty
 
 - Modbus lauscht intern auf `0.0.0.0:1502`
 - HMI lauscht intern auf `0.0.0.0:8080`
+- Ops lauscht im Direktlauf auf `127.0.0.1:9090`; im Containerbetrieb wird der
+  interne Bind auf `0.0.0.0:9090` erzwungen und nur per Host-Loopback
+  veroeffentlicht
 - Non-Local-Bind ist bewusst ueber `ALLOW_NONLOCAL_BIND=1` freigegeben
 - konkrete Bindings sind ueber `APPROVED_INGRESS_BINDINGS` explizit erlaubt
 
@@ -68,6 +77,8 @@ Empfohlenes externes Mapping:
 
 - `tcp/502` extern -> `tcp/1502` auf der Honeypot-VM
 - `tcp/80` extern -> `tcp/8080` auf der Honeypot-VM
+- Ops `tcp/9090` bleibt intern und darf nur ueber VPN/Tunnel/Admin-Netz
+  erreichbar sein
 
 Pflicht:
 

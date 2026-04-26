@@ -25,6 +25,7 @@ def enforce_runtime_ingress_policy(
     config: RuntimeConfig,
     modbus_port: int,
     hmi_port: int,
+    ops_port: int,
 ) -> tuple[str, ...]:
     """Prueft, ob externe Runtime-Bindings explizit freigegeben wurden."""
 
@@ -33,6 +34,9 @@ def enforce_runtime_ingress_policy(
         modbus_port=modbus_port,
         hmi_bind_host=config.hmi_bind_host,
         hmi_port=hmi_port,
+        ops_enabled=config.ops_enabled,
+        ops_bind_host=config.ops_bind_host,
+        ops_port=ops_port,
     )
     if not planned_bindings:
         return ()
@@ -54,14 +58,21 @@ def planned_ingress_bindings(
     modbus_port: int,
     hmi_bind_host: str,
     hmi_port: int,
+    ops_enabled: bool,
+    ops_bind_host: str,
+    ops_port: int,
 ) -> tuple[IngressBinding, ...]:
     """Leitet normalisierte Runtime-Bindings fuer nicht-lokale Dienste ab."""
 
     bindings: list[IngressBinding] = []
-    for binding in (
+    planned = [
         IngressBinding(service="modbus", host=modbus_bind_host.lower(), port=modbus_port),
         IngressBinding(service="hmi", host=hmi_bind_host.lower(), port=hmi_port),
-    ):
+    ]
+    if ops_enabled:
+        planned.append(IngressBinding(service="ops", host=ops_bind_host.lower(), port=ops_port))
+
+    for binding in planned:
         if _is_nonlocal_bind(binding.host) and binding.spec not in {existing.spec for existing in bindings}:
             bindings.append(binding)
     return tuple(bindings)

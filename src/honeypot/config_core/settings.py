@@ -90,6 +90,12 @@ class RuntimeConfig(BaseSettings):
     modbus_port: int = Field(default=1502, ge=1, le=65535)
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
+    ops_enabled: bool = True
+    ops_bind_host: str = "127.0.0.1"
+    ops_port: int = Field(default=9090, ge=1, le=65535)
+    ops_basic_auth_enabled: bool = False
+    ops_basic_auth_username: str | None = None
+    ops_basic_auth_password: str | None = None
     allow_nonlocal_bind: bool = False
     exposed_research_enabled: bool = False
     enable_service_login: bool = True
@@ -139,6 +145,7 @@ class RuntimeConfig(BaseSettings):
         "timezone",
         "modbus_bind_host",
         "hmi_bind_host",
+        "ops_bind_host",
         mode="before",
     )
     @classmethod
@@ -155,6 +162,8 @@ class RuntimeConfig(BaseSettings):
         "smtp_to",
         "telegram_bot_token",
         "telegram_chat_id",
+        "ops_basic_auth_username",
+        "ops_basic_auth_password",
         "watch_officer_name",
         "duty_engineer_name",
         mode="before",
@@ -204,6 +213,17 @@ class RuntimeConfig(BaseSettings):
         if not any((ATTACKER_UI_LOCALE_DIR / f"{locale}.json").is_file() for locale in resolution_chain):
             raise ValueError(
                 "ATTACKER_UI_LOCALE muss ueber ll-RR -> ll -> ATTACKER_UI_FALLBACK_LOCALE aufloesbar sein"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_ops_auth_requirements(self) -> "RuntimeConfig":
+        if self.ops_basic_auth_enabled and (
+            self.ops_basic_auth_username is None or self.ops_basic_auth_password is None
+        ):
+            raise ValueError(
+                "OPS_BASIC_AUTH_USERNAME und OPS_BASIC_AUTH_PASSWORD sind erforderlich, "
+                "wenn OPS_BASIC_AUTH_ENABLED aktiv ist"
             )
         return self
 

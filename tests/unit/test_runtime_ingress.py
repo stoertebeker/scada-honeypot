@@ -18,6 +18,9 @@ def test_planned_ingress_bindings_include_only_nonlocal_services() -> None:
         modbus_port=1502,
         hmi_bind_host="127.0.0.1",
         hmi_port=8080,
+        ops_enabled=True,
+        ops_bind_host="127.0.0.1",
+        ops_port=9090,
     )
 
     assert tuple(binding.spec for binding in bindings) == ("modbus:0.0.0.0:1502",)
@@ -34,7 +37,7 @@ def test_enforce_runtime_ingress_policy_rejects_missing_bind_approvals(tmp_path:
     )
 
     with pytest.raises(RuntimeError, match="APPROVED_INGRESS_BINDINGS"):
-        enforce_runtime_ingress_policy(config=config, modbus_port=1502, hmi_port=8080)
+        enforce_runtime_ingress_policy(config=config, modbus_port=1502, hmi_port=8080, ops_port=9090)
 
 
 def test_enforce_runtime_ingress_policy_accepts_explicit_bind_approvals(tmp_path: Path, monkeypatch) -> None:
@@ -52,6 +55,20 @@ def test_enforce_runtime_ingress_policy_accepts_explicit_bind_approvals(tmp_path
         config=config,
         modbus_port=1502,
         hmi_port=8080,
+        ops_port=9090,
     )
 
     assert approved_bindings == ("modbus:0.0.0.0:1502", "hmi:0.0.0.0:8080")
+
+
+def test_enforce_runtime_ingress_policy_checks_nonlocal_ops_binding(tmp_path: Path, monkeypatch) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+    config = RuntimeConfig(
+        _env_file=None,
+        allow_nonlocal_bind=True,
+        ops_bind_host="0.0.0.0",
+    )
+
+    with pytest.raises(RuntimeError, match="APPROVED_INGRESS_BINDINGS"):
+        enforce_runtime_ingress_policy(config=config, modbus_port=1502, hmi_port=8080, ops_port=9090)

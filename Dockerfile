@@ -29,7 +29,7 @@ RUN groupadd --system honeypot \
     && chown -R honeypot:honeypot /app /home/honeypot \
     && chmod 755 /entrypoint.sh /healthcheck.sh
 
-EXPOSE 1502 8080
+EXPOSE 1502 8080 9090
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "honeypot.main"]

@@ -1,0 +1,28 @@
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Alarm</th>
+        <th>Severity</th>
+        <th>State</th>
+        <th>Asset</th>
+        <th>Message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alert in alerts %}
+      <tr>
+        <td class="mono">{{ alert.created_at }}</td>
+        <td class="mono">{{ alert.alarm_code }}</td>
+        <td class="severity-{{ alert.severity }}">{{ alert.severity }}</td>
+        <td class="state-{{ alert.state }}">{{ alert.state }}</td>
+        <td class="mono">{{ alert.asset_id }}</td>
+        <td>{{ alert.message }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No alerts recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -26,6 +26,7 @@ from honeypot.runtime_exposure import append_exposed_research_finding, enforce_e
 from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
+from honeypot.ops_web import create_ops_app
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS, ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.runtime_reset import reset_local_runtime_artifacts
@@ -49,6 +50,7 @@ MODULES: tuple[str, ...] = (
     "rule_engine",
     "protocol_modbus",
     "hmi_web",
+    "ops_web",
     "runtime_evolution",
     "weather_core",
     "monitoring",
@@ -79,6 +81,8 @@ class LocalRuntime:
     modbus_service: ReadOnlyModbusTcpService
     trend_history: TrendHistoryBuffer
     evolution_service: BackgroundPlantEvolutionService
+    ops_app: FastAPI | None = None
+    ops_service: LocalHmiHttpService | None = None
     exporters: dict[str, HoneypotExporter] = field(default_factory=dict)
     outbox_runner: OutboxRunner | None = None
     outbox_runner_service: BackgroundOutboxRunnerService | None = None
@@ -104,8 +108,23 @@ class LocalRuntime:
             self.modbus_service.stop()
             raise
         try:
+            if self.ops_service is not None:
+                self.ops_service.start_in_thread()
+        except PermissionError as exc:
+            self.hmi_service.stop()
+            self.modbus_service.stop()
+            raise RuntimeError(
+                "Ops-HTTP-Dienst konnte nicht gebunden werden; OPS_PORT oder OPS_BIND_HOST pruefen"
+            ) from exc
+        except Exception:
+            self.hmi_service.stop()
+            self.modbus_service.stop()
+            raise
+        try:
             self.evolution_service.start_in_thread()
         except Exception:
+            if self.ops_service is not None:
+                self.ops_service.stop()
             self.hmi_service.stop()
             self.modbus_service.stop()
             raise
@@ -113,6 +132,8 @@ class LocalRuntime:
             if self.outbox_runner_service is not None:
                 self.outbox_runner_service.start_in_thread()
         except Exception:
+            if self.ops_service is not None:
+                self.ops_service.stop()
             self.evolution_service.stop()
             self.hmi_service.stop()
             self.modbus_service.stop()
@@ -123,6 +144,8 @@ class LocalRuntime:
         except Exception:
             if self.outbox_runner_service is not None:
                 self.outbox_runner_service.stop()
+            if self.ops_service is not None:
+                self.ops_service.stop()
             self.evolution_service.stop()
             self.hmi_service.stop()
             self.modbus_service.stop()
@@ -138,13 +161,17 @@ class LocalRuntime:
                 self.evolution_service.stop()
             finally:
                 try:
-                    self.hmi_service.stop()
+                    if self.ops_service is not None:
+                        self.ops_service.stop()
                 finally:
                     try:
-                        self.modbus_service.stop()
+                        self.hmi_service.stop()
                     finally:
-                        if self.runtime_status_service is not None:
-                            self.runtime_status_service.stop()
+                        try:
+                            self.modbus_service.stop()
+                        finally:
+                            if self.runtime_status_service is not None:
+                                self.runtime_status_service.stop()
 
 
 def bootstrap_runtime() -> RuntimeManifest:
@@ -158,16 +185,21 @@ def build_local_runtime(
     env_file: str | None = ".env",
     modbus_port: int | None = None,
     hmi_port: int | None = None,
+    ops_port: int | None = None,
     clock: Clock | None = None,
 ) -> LocalRuntime:
-    """Verdrahtet den aktuellen lokalen Runtime-Slice mit Fixture, Store, Modbus und HMI."""
+    """Verdrahtet den lokalen Runtime-Slice mit Fixture, Store, Modbus, HMI und Ops."""
 
     config = load_runtime_config(env_file=env_file)
     _enforce_runtime_bind_policy(config)
+    effective_hmi_port = config.hmi_port if hmi_port is None else hmi_port
+    effective_modbus_port = config.modbus_port if modbus_port is None else modbus_port
+    effective_ops_port = _effective_ops_port(config=config, hmi_port=hmi_port, ops_port=ops_port)
     enforce_runtime_ingress_policy(
         config=config,
-        modbus_port=config.modbus_port if modbus_port is None else modbus_port,
-        hmi_port=config.hmi_port if hmi_port is None else hmi_port,
+        modbus_port=effective_modbus_port,
+        hmi_port=effective_hmi_port,
+        ops_port=effective_ops_port,
     )
 
     manifest = bootstrap_runtime()
@@ -215,14 +247,25 @@ def build_local_runtime(
     modbus_service = ReadOnlyModbusTcpService(
         register_map=register_map,
         bind_host=config.modbus_bind_host,
-        port=config.modbus_port if modbus_port is None else modbus_port,
+        port=effective_modbus_port,
         event_recorder=event_recorder,
     )
     hmi_service = LocalHmiHttpService(
         app=hmi_app,
         bind_host=config.hmi_bind_host,
-        port=config.hmi_port if hmi_port is None else hmi_port,
+        port=effective_hmi_port,
         log_level=config.log_level,
+    )
+    ops_app = create_ops_app(event_store=event_store, config=config) if config.ops_enabled else None
+    ops_service = (
+        LocalHmiHttpService(
+            app=ops_app,
+            bind_host=config.ops_bind_host,
+            port=effective_ops_port,
+            log_level=config.log_level,
+        )
+        if ops_app is not None
+        else None
     )
     exporters = _build_exporters(config)
     outbox_runner = None
@@ -246,6 +289,7 @@ def build_local_runtime(
                 event_store=event_store,
                 modbus_service=modbus_service,
                 hmi_service=hmi_service,
+                ops_service=ops_service,
                 exporters=exporters,
                 outbox_runner_service=outbox_runner_service,
                 clock=event_recorder.clock,
@@ -260,6 +304,8 @@ def build_local_runtime(
         event_recorder=event_recorder,
         hmi_app=hmi_app,
         hmi_service=hmi_service,
+        ops_app=ops_app,
+        ops_service=ops_service,
         modbus_service=modbus_service,
         trend_history=trend_history,
         evolution_service=evolution_service,
@@ -281,6 +327,18 @@ def _enforce_runtime_bind_policy(config: RuntimeConfig) -> None:
         raise RuntimeError(
             "HMI_BIND_HOST ausserhalb von 127.0.0.1 erfordert ALLOW_NONLOCAL_BIND=1"
         )
+    if config.ops_enabled and config.ops_bind_host != "127.0.0.1":
+        raise RuntimeError(
+            "OPS_BIND_HOST ausserhalb von 127.0.0.1 erfordert ALLOW_NONLOCAL_BIND=1"
+        )
+
+
+def _effective_ops_port(*, config: RuntimeConfig, hmi_port: int | None, ops_port: int | None) -> int:
+    if ops_port is not None:
+        return ops_port
+    if hmi_port == 0:
+        return 0
+    return config.ops_port
 
 
 def _build_exporters(config: RuntimeConfig) -> dict[str, HoneypotExporter]:
@@ -326,10 +384,15 @@ def _build_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider
 def _runtime_banner(runtime: LocalRuntime) -> str:
     modbus_host, modbus_port = runtime.modbus_service.address
     hmi_host, hmi_port = runtime.hmi_service.address
+    ops_fragment = ""
+    if runtime.ops_service is not None:
+        ops_host, ops_port = runtime.ops_service.address
+        ops_fragment = f" ops=http://{ops_host}:{ops_port}/"
     return (
         f"honeypot runtime ready for {runtime.config.site_code}: "
         f"modbus://{modbus_host}:{modbus_port} "
-        f"http://{hmi_host}:{hmi_port}/overview "
+        f"http://{hmi_host}:{hmi_port}/overview"
+        f"{ops_fragment} "
         f"fixture={runtime.snapshot.fixture_name} "
         f"components={', '.join(runtime.manifest.components)}"
     )

@@ -49,6 +49,7 @@ class RuntimeStatusWriter:
     modbus_service: AddressableService
     hmi_service: AddressableService
     exporters: Mapping[str, HoneypotExporter]
+    ops_service: AddressableService | None = None
     outbox_runner_service: BackgroundOutboxRunnerService | None = None
     clock: Clock = field(default_factory=SystemClock)
 
@@ -80,6 +81,14 @@ class RuntimeStatusWriter:
 
         modbus_host, modbus_port = self.modbus_service.address
         hmi_host, hmi_port = self.hmi_service.address
+        ops_payload: dict[str, Any] | None = None
+        if self.ops_service is not None:
+            ops_host, ops_port = self.ops_service.address
+            ops_payload = {
+                "bind_host": ops_host,
+                "port": ops_port,
+                "dashboard_url": f"http://{ops_host}:{ops_port}/",
+            }
         return {
             "generated_at": _iso_timestamp(self.clock.now()),
             "site_code": self.site_code,
@@ -95,6 +104,7 @@ class RuntimeStatusWriter:
                     "port": hmi_port,
                     "overview_url": f"http://{hmi_host}:{hmi_port}/overview",
                 },
+                "ops": ops_payload,
                 "outbox_runner": {
                     "enabled": self.outbox_runner_service is not None,
                     "drain_count": 0 if self.outbox_runner_service is None else self.outbox_runner_service.drain_count,
