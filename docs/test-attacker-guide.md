@@ -64,6 +64,7 @@ Hier pruefst du:
 - ist der Netzpfad offen oder geschlossen?
 - welche Blocke wirken online oder degradet?
 - geht Leistung Richtung Grid?
+- welche Flusslinie wird beim Hover/Fokus eines Knotens hervorgehoben?
 
 Die Seite ist die schnellste Gegenprobe nach Breaker-Aktionen.
 

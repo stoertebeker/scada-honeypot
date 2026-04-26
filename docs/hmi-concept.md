@@ -232,6 +232,8 @@ Bedienung:
 
 Zweck:
 - einfache technische Anlagenansicht
+- interaktive, read-only Energiekarte als schnelle Sicht auf Leistungsfluss und
+  Exportpfad
 
 Anzuzeigende Inhalte:
 
@@ -247,10 +249,12 @@ Zustaende:
 - Block online/offline/degraded
 - Kommunikationsverlust
 - Leistungsfluss in einfacher Form
+- Hover/Fokus auf Knoten hebt die zugehoerige Flusslinie hervor
 
 Wichtige Regel:
 - das Einlinienschema ist bewusst simpel
 - keine echte Schutz- oder Netzdetailtreue
+- keine Schreibaktionen oder versteckten Steuerpfade in der Grafik
 
 ### 7.3 `/inverters`
 

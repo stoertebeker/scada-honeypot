@@ -95,8 +95,7 @@
     }
 
     .card,
-    .panel,
-    .node {
+    .panel {
       border: 1px solid var(--line);
       background: var(--panel);
       box-shadow: 0 12px 28px var(--shadow);
@@ -107,17 +106,9 @@
       border-top: 4px solid var(--accent);
     }
 
-    .node {
-      padding: 16px;
-      border-top: 4px solid var(--accent);
-    }
-
-    .card.good,
-    .node.good { border-top-color: var(--good); }
-    .card.warn,
-    .node.warn { border-top-color: var(--warn); }
-    .card.alarm,
-    .node.alarm { border-top-color: var(--alarm); }
+    .card.good { border-top-color: var(--good); }
+    .card.warn { border-top-color: var(--warn); }
+    .card.alarm { border-top-color: var(--alarm); }
 
     .card-label,
     .node-label {
@@ -162,50 +153,119 @@
       gap: 16px;
     }
 
-    .line-stage {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      align-items: stretch;
-    }
-
-    .line-path {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      align-items: center;
-      margin: 4px 0;
-    }
-
-    .connector {
+    .energy-map {
       position: relative;
-      min-height: 40px;
-      border-top: 4px solid var(--accent);
+      min-height: 560px;
+      border: 1px solid rgba(180, 191, 181, 0.8);
+      background:
+        linear-gradient(90deg, rgba(52, 88, 103, 0.08) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(52, 88, 103, 0.08) 1px, transparent 1px),
+        linear-gradient(135deg, rgba(251, 252, 249, 0.98), rgba(217, 229, 234, 0.52));
+      background-size: 44px 44px, 44px 44px, auto;
+      overflow: hidden;
     }
 
-    .connector.good { border-top-color: var(--good); }
-    .connector.warn { border-top-color: var(--warn); }
-    .connector.alarm { border-top-color: var(--alarm); }
-
-    .connector::after {
-      content: "";
+    .energy-canvas {
       position: absolute;
-      right: -2px;
-      top: -9px;
-      border-top: 7px solid transparent;
-      border-bottom: 7px solid transparent;
-      border-left: 10px solid currentColor;
-      color: inherit;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
     }
 
-    .connector.good::after { color: var(--good); }
-    .connector.warn::after { color: var(--warn); }
-    .connector.alarm::after { color: var(--alarm); }
+    .flow-line {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-dasharray: 18 18;
+      marker-end: url("#flow-arrow");
+      opacity: 0.74;
+      animation: flow-pulse 1.6s linear infinite;
+    }
 
-    .blocks {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+    .flow-line.good { stroke: var(--good); }
+    .flow-line.warn { stroke: var(--warn); }
+    .flow-line.alarm {
+      stroke: var(--alarm);
+      animation: none;
+      stroke-dasharray: 8 14;
+    }
+
+    .flow-line.export-halted {
+      opacity: 0.28;
+      animation: none;
+    }
+
+    .flow-barrier {
+      fill: rgba(155, 46, 38, 0.14);
+      stroke: var(--alarm);
+      stroke-width: 3;
+      opacity: 0;
+    }
+
+    .energy-map.is-isolated .flow-barrier {
+      opacity: 1;
+    }
+
+    .map-node {
+      position: absolute;
+      z-index: 1;
+      width: min(210px, 28%);
+      min-height: 112px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--accent);
+      background: rgba(251, 252, 249, 0.94);
+      box-shadow: 0 12px 28px var(--shadow);
+      outline: none;
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+    }
+
+    .map-node.good { border-top-color: var(--good); }
+    .map-node.warn { border-top-color: var(--warn); }
+    .map-node.alarm { border-top-color: var(--alarm); }
+
+    .map-node:hover,
+    .map-node:focus-visible {
+      transform: translateY(-3px);
+      box-shadow: 0 18px 36px rgba(20, 34, 38, 0.16);
+      border-color: var(--accent);
+    }
+
+    .map-node.park { left: 5%; top: 7%; }
+    .map-node.ppc { left: 38%; top: 19%; }
+    .map-node.meter { right: 5%; top: 18%; }
+    .map-node.grid { right: 5%; bottom: 8%; }
+    .map-node.invb-01 { left: 6%; bottom: 8%; }
+    .map-node.invb-02 { left: 32%; bottom: 8%; }
+    .map-node.invb-03 { left: 58%; bottom: 8%; }
+
+    .energy-map:has(.park:hover) .flow-line.solar,
+    .energy-map:has(.park:focus-visible) .flow-line.solar,
+    .energy-map:has(.ppc:hover) .flow-line.ppc-link,
+    .energy-map:has(.ppc:focus-visible) .flow-line.ppc-link,
+    .energy-map:has(.meter:hover) .flow-line.meter-link,
+    .energy-map:has(.meter:focus-visible) .flow-line.meter-link,
+    .energy-map:has(.grid:hover) .flow-line.grid-link,
+    .energy-map:has(.grid:focus-visible) .flow-line.grid-link {
+      stroke-width: 12;
+      opacity: 1;
+    }
+
+    .energy-map:has(.invb-01:hover) .flow-line.invb-01,
+    .energy-map:has(.invb-01:focus-visible) .flow-line.invb-01,
+    .energy-map:has(.invb-02:hover) .flow-line.invb-02,
+    .energy-map:has(.invb-02:focus-visible) .flow-line.invb-02,
+    .energy-map:has(.invb-03:hover) .flow-line.invb-03,
+    .energy-map:has(.invb-03:focus-visible) .flow-line.invb-03 {
+      stroke-width: 12;
+      opacity: 1;
+    }
+
+    @keyframes flow-pulse {
+      from { stroke-dashoffset: 36; }
+      to { stroke-dashoffset: 0; }
     }
 
     .tone-good { color: var(--good); }
@@ -263,19 +323,25 @@
     }
 
     @media (max-width: 980px) {
-      .layout,
-      .line-stage,
-      .blocks,
-      .line-path {
+      .layout {
         grid-template-columns: 1fr;
       }
 
-      .connector {
-        min-height: 24px;
+      .energy-map {
+        display: grid;
+        gap: 12px;
+        min-height: auto;
+        padding: 14px;
       }
 
-      .connector::after {
+      .energy-canvas {
         display: none;
+      }
+
+      .map-node {
+        position: static;
+        width: 100%;
+        min-height: auto;
       }
     }
   </style>
@@ -322,35 +388,45 @@
       <section class="panel">
         <h2>{{ t("section.line_path.title") }}</h2>
         <div class="line-grid">
-          <div class="line-stage">
-            <article class="node {{ page.facts[0].tone }}">
+          <div class="energy-map {{ page.flow_tone }} {% if page.export_path_tone == 'alarm' %}is-isolated{% endif %}" role="group" aria-label="{{ t('section.line_path.title') }}">
+            <svg class="energy-canvas" viewBox="0 0 1000 560" role="img" aria-labelledby="energy-flow-title energy-flow-desc">
+              <title id="energy-flow-title">{{ t("section.line_path.title") }}</title>
+              <desc id="energy-flow-desc">{{ page.flow_label }} / {{ t("label.export_power") }} {{ page.facts[1].value }}</desc>
+              <defs>
+                <marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+                </marker>
+              </defs>
+              <path class="flow-line solar {{ page.facts[0].tone }}" d="M 205 104 C 290 90, 340 122, 412 170"></path>
+              <path class="flow-line ppc-link {{ page.flow_tone }}" d="M 515 206 C 604 186, 682 178, 788 186"></path>
+              <path class="flow-line meter-link {{ page.export_path_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 868 246 C 866 304, 864 356, 864 408"></path>
+              <path class="flow-line grid-link {{ page.breaker_tone }} {% if page.export_path_tone == 'alarm' %}export-halted{% endif %}" d="M 520 468 C 624 478, 728 470, 830 450"></path>
+              <path class="flow-line invb-01 {% if page.inverter_nodes|length > 0 %}{{ page.inverter_nodes[0].tone }}{% else %}neutral{% endif %}" d="M 180 438 C 232 356, 310 288, 420 238"></path>
+              <path class="flow-line invb-02 {% if page.inverter_nodes|length > 1 %}{{ page.inverter_nodes[1].tone }}{% else %}neutral{% endif %}" d="M 395 438 C 414 360, 438 296, 468 250"></path>
+              <path class="flow-line invb-03 {% if page.inverter_nodes|length > 2 %}{{ page.inverter_nodes[2].tone }}{% else %}neutral{% endif %}" d="M 610 438 C 582 360, 548 296, 504 250"></path>
+              <rect class="flow-barrier" x="828" y="304" width="74" height="28" rx="2" transform="rotate(90 865 318)"></rect>
+            </svg>
+
+            <article class="map-node park {{ page.facts[0].tone }}" tabindex="0" data-flow-node="park">
               <p class="node-label">{{ t("asset.park") }}</p>
               <p class="node-value">{{ page.facts[0].value }}</p>
             </article>
-            <article class="node {{ page.facts[2].tone }}">
+            <article class="map-node ppc {{ page.facts[2].tone }}" tabindex="0" data-flow-node="ppc">
               <p class="node-label">{{ t("asset.ppc") }}</p>
               <p class="node-value">{{ page.facts[2].value }}</p>
             </article>
-            <article class="node {{ page.export_path_tone }}">
+            <article class="map-node meter {{ page.export_path_tone }}" tabindex="0" data-flow-node="meter">
               <p class="node-label">{{ t("asset.revenue_meter") }}</p>
               <p class="node-value">{{ page.facts[1].value }}</p>
             </article>
-            <article class="node {{ page.breaker_tone }}">
+            <article class="map-node grid {{ page.breaker_tone }}" tabindex="0" data-flow-node="grid">
               <p class="node-label">{{ t("asset.breaker") }}</p>
               <p class="node-value">{{ page.breaker_label }}</p>
               <p class="node-value tone-{{ page.grid_tone }}">{{ page.grid_label }}</p>
             </article>
-          </div>
 
-          <div class="line-path" aria-hidden="true">
-            <div class="connector {{ page.flow_tone }}"></div>
-            <div class="connector {{ page.flow_tone }}"></div>
-            <div class="connector {{ page.breaker_tone }}"></div>
-          </div>
-
-          <div class="blocks">
             {% for node in page.inverter_nodes %}
-            <article class="node {{ node.tone }}">
+            <article class="map-node {{ node.asset_id }} {{ node.tone }}" tabindex="0" data-flow-node="{{ node.asset_id }}">
               <p class="node-label">{{ node.title }}</p>
               <p class="node-value">{{ node.status_label }}</p>
               <p class="node-value tone-{{ node.tone }}">{{ node.detail_label }}</p>
