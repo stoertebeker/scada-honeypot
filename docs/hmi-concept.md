@@ -259,6 +259,7 @@ Wichtige Regel:
 - das Einlinienschema ist bewusst simpel
 - keine echte Schutz- oder Netzdetailtreue
 - DC- und AC-Seite duerfen optisch nicht als dieselbe Leitung erscheinen
+- PPC wird als Controller gezeigt, nicht als Energiepfad
 - keine Schreibaktionen oder versteckten Steuerpfade in der Grafik
 
 ### 7.3 `/inverters`
