@@ -199,11 +199,18 @@ async def test_single_line_page_renders_breaker_path_and_logs_hmi_events(tmp_pat
     assert "energy-map" in response.text
     assert 'data-flow-node="grid"' in response.text
     assert 'data-sld-symbol="breaker"' in response.text
+    assert 'data-sld-symbol="dc-disconnect"' in response.text
+    assert 'data-sld-symbol="block-enable-switch"' in response.text
     assert 'href="/single-line/breaker-attempt"' in response.text
+    assert 'href="/single-line/inverter-attempt?asset_id=invb-02&amp;control=dc_disconnect"' in response.text
+    assert 'href="/single-line/inverter-attempt?asset_id=invb-02&amp;control=block_enable"' in response.text
     assert 'data-sld-action="breaker-click"' in response.text
+    assert 'data-sld-action="dc-disconnect-click"' in response.text
+    assert 'data-sld-action="block-enable-click"' in response.text
     assert 'markerUnits="userSpaceOnUse"' in response.text
     assert "breaker-frame" in response.text
     assert "breaker-terminal" in response.text
+    assert "disconnect-terminal" in response.text
     assert "collection-bus" in response.text
     assert 'data-sld-symbol="dc-strings"' in response.text
     assert 'data-sld-symbol="ac-feeder"' in response.text
@@ -264,6 +271,135 @@ async def test_single_line_breaker_click_logs_rejected_attempt_without_state_cha
     }
     assert not any(event.event_type == "hmi.action.service_control_submitted" for event in events)
     assert not any(event.event_type == "process.breaker.state_changed" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_single_line_inverter_switch_click_logs_rejected_attempt_without_state_change(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-single-line-inverter-attempt.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get(
+            "/single-line/inverter-attempt?asset_id=invb-02&control=dc_disconnect",
+            follow_redirects=False,
+        )
+
+    events = store.fetch_events()
+    attempt_event = next(
+        event for event in events if event.event_type == "hmi.action.unauthenticated_control_attempt"
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/service/login"
+    assert snapshot.inverter_blocks[1].dc_disconnect_state == "closed"
+    assert attempt_event.action == "single_line_dc_disconnect_click"
+    assert attempt_event.result == "rejected"
+    assert attempt_event.asset_id == "invb-02"
+    assert attempt_event.endpoint_or_register == "/single-line/inverter-attempt"
+    assert attempt_event.error_code == "service_auth_required"
+    assert attempt_event.requested_value == {
+        "http_method": "GET",
+        "http_path": "/single-line/inverter-attempt",
+        "asset_id": "invb-02",
+        "control": "dc_disconnect",
+        "source_view": "/single-line",
+    }
+    assert attempt_event.previous_value == "closed"
+    assert attempt_event.resulting_state["dc_disconnect_state"] == "closed"
+    assert attempt_event.resulting_state["block_power_kw"] == pytest.approx(snapshot.inverter_blocks[1].block_power_kw)
+    assert not any(event.event_type == "hmi.action.service_control_submitted" for event in events)
+    assert not any(event.event_type == "process.control.block_dc_disconnect_changed" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_single_line_authenticated_inverter_switches_use_service_controls(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-single-line-service-switches.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        csrf_token = await login_service_client(client)
+        single_line_response = await client.get("/single-line")
+        dc_response = await client.post(
+            "/service/panel/inverter-block/dc-disconnect",
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "asset_id": "invb-02",
+                "dc_disconnect_open": "1",
+                "return_to": "/single-line",
+            },
+            follow_redirects=False,
+        )
+        block_response = await client.post(
+            "/service/panel/inverter-block",
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "asset_id": "invb-03",
+                "block_enable_request": "0",
+                "block_power_limit_pct": "100.0",
+                "return_to": "/single-line",
+            },
+            follow_redirects=False,
+        )
+        updated_response = await client.get(block_response.headers["location"])
+
+    events = store.fetch_events()
+    dc_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "set_block_dc_disconnect_state"
+        and event.result == "accepted"
+    )
+    block_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "set_block_control_state"
+        and event.result == "accepted"
+    )
+    dc_process_event = next(event for event in events if event.event_type == "process.control.block_dc_disconnect_changed")
+    block_process_events = [
+        event
+        for event in events
+        if event.event_type in {"process.setpoint.block_enable_request_changed", "process.setpoint.block_power_limit_changed"}
+        and event.asset_id == "invb-03"
+    ]
+
+    assert single_line_response.status_code == 200
+    assert f'name="service_csrf_token" value="{csrf_token}"' in single_line_response.text
+    assert 'data-sld-action="dc-disconnect-submit"' in single_line_response.text
+    assert 'data-sld-action="block-enable-submit"' in single_line_response.text
+    assert 'name="return_to" value="/single-line"' in single_line_response.text
+    assert dc_response.status_code == 303
+    assert dc_response.headers["location"] == "/single-line?status=dc_disconnect_updated"
+    assert block_response.status_code == 303
+    assert block_response.headers["location"] == "/single-line?status=block_control_updated"
+    assert updated_response.status_code == 200
+    assert "Inverter block control updated successfully." in updated_response.text
+    assert register_map.snapshot.inverter_blocks[1].dc_disconnect_state == "open"
+    assert register_map.snapshot.inverter_blocks[1].status == "online"
+    assert register_map.snapshot.inverter_blocks[1].block_power_kw == 0.0
+    assert register_map.snapshot.inverter_blocks[2].status == "offline"
+    assert register_map.snapshot.inverter_blocks[2].availability_pct == 0
+    assert register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=4).values == (1, 1000, 0, 1)
+    assert register_map.read_holding_registers(unit_id=13, start_offset=199, quantity=4).values[0] == 0
+    assert dc_event.requested_value["asset_id"] == "invb-02"
+    assert dc_event.requested_value["dc_disconnect_state"] == "open"
+    assert dc_event.correlation_id == dc_process_event.correlation_id
+    assert block_event.requested_value["asset_id"] == "invb-03"
+    assert block_event.requested_value["block_enable_request"] == 0
+    assert len(block_process_events) == 2
+    assert {event.correlation_id for event in block_process_events} == {block_event.correlation_id}
 
 
 @pytest.mark.asyncio

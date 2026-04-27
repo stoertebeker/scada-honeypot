@@ -170,6 +170,8 @@
   "state.available": "Available",
   "state.partially_available": "Partially Available",
   "state.unavailable": "Unavailable",
+  "state.enabled": "Enabled",
+  "state.disabled": "Disabled",
   "state.connected": "Connected",
   "state.pv_isolated": "PV isolated",
   "telemetry.not_instrumented": "Not instrumented",

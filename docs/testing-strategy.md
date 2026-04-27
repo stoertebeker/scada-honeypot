@@ -381,6 +381,9 @@ Pflichttests:
   `/inverters`
 - weiterer Browser-Slice prueft den PV-/DC-Disconnect-Schalter auf
   `/service/panel` mit sichtbarer 0-kW-Wirkung in `/inverters`
+- weiterer Browser-Slice prueft PV-/DC- und Block-Enable-Schalter im
+  `/single-line`-Schema mit Service-Login gegen dieselben Service-Control-
+  Pfade
 - fuenfter Browser-Slice prueft `block_reset_request` nach simuliertem
   `COMM_LOSS_INVERTER_BLOCK` auf `/service/panel` mit sichtbarer Wirkung in
   `/inverters` und `/alarms`
@@ -422,6 +425,9 @@ Pflichttests:
   sichtbarer Rueckspiegelung im read-only `/single-line`-Schema
 - einundzwanzigster Browser-Slice prueft den klickbaren Breaker im
   `/single-line`-Schema als abgewiesenen, protokollierten Versuch ohne
+  Prozesszustandsaenderung
+- derselbe Bereich prueft einen anonymen Inverter-Schalter im `/single-line`-
+  Schema als abgewiesenen, protokollierten Versuch ohne
   Prozesszustandsaenderung
 - zweiundzwanzigster Browser-Slice prueft `/weather` als read-only Shared-Truth-Seite
   gegen die Werte aus `Unit 21`

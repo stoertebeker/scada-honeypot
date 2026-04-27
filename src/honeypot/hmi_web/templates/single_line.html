@@ -304,6 +304,32 @@
     .breaker-blade.closed { stroke: var(--good); }
     .breaker-blade.open { stroke: var(--alarm); }
 
+    .disconnect-frame {
+      fill: rgba(251, 252, 249, 0.82);
+      stroke: var(--line);
+      stroke-width: 1.5;
+    }
+
+    .disconnect-terminal {
+      fill: var(--panel);
+      stroke: var(--ink);
+      stroke-width: 2.5;
+    }
+
+    .disconnect-blade,
+    .disconnect-contact {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 3.4;
+      stroke-linecap: round;
+    }
+
+    .disconnect-blade.closed,
+    .disconnect-contact.good { stroke: var(--good); }
+    .disconnect-blade.open,
+    .disconnect-contact.alarm { stroke: var(--alarm); }
+    .disconnect-contact.warn { stroke: var(--warn); }
+
     .sld-switch-link {
       cursor: pointer;
       outline: none;
@@ -315,16 +341,43 @@
       pointer-events: all;
     }
 
+    .sld-fo-switch {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    .sld-fo-hit {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0);
+      cursor: pointer;
+    }
+
+    .sld-fo-hit:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
     .sld-switch-link:hover .breaker-contact,
     .sld-switch-link:hover .breaker-blade,
+    .sld-switch-link:hover .disconnect-contact,
+    .sld-switch-link:hover .disconnect-blade,
     .sld-switch-link:focus .breaker-contact,
-    .sld-switch-link:focus .breaker-blade {
+    .sld-switch-link:focus .breaker-blade,
+    .sld-switch-link:focus .disconnect-contact,
+    .sld-switch-link:focus .disconnect-blade {
       stroke-width: 5;
       filter: drop-shadow(0 8px 8px rgba(20, 34, 38, 0.16));
     }
 
     .sld-switch-link:hover .breaker-frame,
-    .sld-switch-link:focus .breaker-frame {
+    .sld-switch-link:hover .disconnect-frame,
+    .sld-switch-link:focus .breaker-frame,
+    .sld-switch-link:focus .disconnect-frame {
       stroke: var(--accent);
     }
 
@@ -411,6 +464,18 @@
     .tone-good { color: var(--good); }
     .tone-warn { color: var(--warn); }
     .tone-alarm { color: var(--alarm); }
+
+    .status-notice {
+      padding: 10px 12px;
+      border: 1px solid rgba(180, 191, 181, 0.78);
+      border-left-width: 4px;
+      background: rgba(251, 252, 249, 0.78);
+      font-weight: 700;
+    }
+
+    .status-notice.good { border-left-color: var(--good); color: var(--good); }
+    .status-notice.warn { border-left-color: var(--warn); color: var(--warn); }
+    .status-notice.alarm { border-left-color: var(--alarm); color: var(--alarm); }
 
     .facts,
     .alarm-list {
@@ -515,6 +580,12 @@
       </article>
     </section>
 
+    {% if page.status_label %}
+    <section class="status-notice {{ page.status_tone }}" role="status">
+      {{ page.status_label }}
+    </section>
+    {% endif %}
+
     <main class="layout">
       <section class="panel">
         <h2>{{ t("section.line_path.title") }}</h2>
@@ -538,6 +609,83 @@
               {% set node_center = 145 + loop.index0 * 205 %}
               <path class="dc-wire flow-line solar {{ node.asset_id }} {{ node.tone }}" data-sld-symbol="dc-feeder" d="M {{ node_center }} 170 V 250"></path>
               <path class="sld-wire flow-line ac-feeder {{ node.asset_id }} {{ node.tone }}" data-sld-symbol="ac-feeder" d="M {{ node_center }} 368 V 430"></path>
+              {% endif %}
+              {% endfor %}
+
+              {% for node in page.inverter_nodes %}
+              {% if loop.index <= 3 %}
+              {% set node_center = 145 + loop.index0 * 205 %}
+              {% set switch_x = node_center - 32 %}
+              {% if page.service_csrf_token %}
+              <g class="sld-switch-link" data-sld-action="dc-disconnect-click">
+              {% else %}
+              <a class="sld-switch-link" href="/single-line/inverter-attempt?asset_id={{ node.asset_id }}&amp;control=dc_disconnect" data-sld-action="dc-disconnect-click" aria-label="{{ node.asset_id }} {{ t('label.dc_disconnect_open') }} {{ node.dc_disconnect_label }}">
+              {% endif %}
+                <g data-sld-symbol="dc-disconnect" data-flow-node="{{ node.asset_id }}-dc-switch">
+                  <rect class="sld-switch-hit" x="{{ switch_x }}" y="184" width="64" height="58" rx="4"></rect>
+                  <rect class="disconnect-frame" x="{{ node_center - 20 }}" y="188" width="40" height="50" rx="3"></rect>
+                  <text class="sld-code" x="{{ node_center - 16 }}" y="203">QDC</text>
+                  <circle class="disconnect-terminal" cx="{{ node_center }}" cy="210" r="4"></circle>
+                  <circle class="disconnect-terminal" cx="{{ node_center }}" cy="226" r="4"></circle>
+                  {% if node.dc_disconnect_state == "open" %}
+                  <line class="disconnect-blade open" x1="{{ node_center }}" y1="210" x2="{{ node_center + 17 }}" y2="196"></line>
+                  {% else %}
+                  <line class="disconnect-blade closed" x1="{{ node_center }}" y1="210" x2="{{ node_center }}" y2="226"></line>
+                  {% endif %}
+                </g>
+              {% if page.service_csrf_token %}
+              </g>
+              <foreignObject x="{{ switch_x }}" y="184" width="64" height="58">
+                <form xmlns="http://www.w3.org/1999/xhtml" class="sld-fo-switch" method="post" action="/service/panel/inverter-block/dc-disconnect">
+                  <input type="hidden" name="service_csrf_token" value="{{ page.service_csrf_token }}">
+                  <input type="hidden" name="asset_id" value="{{ node.asset_id }}">
+                  <input type="hidden" name="dc_disconnect_open" value="{{ node.dc_disconnect_next_value }}">
+                  <input type="hidden" name="return_to" value="/single-line">
+                  <button class="sld-fo-hit" type="submit" data-sld-action="dc-disconnect-submit" aria-label="{{ node.asset_id }} {{ t('label.dc_disconnect_open') }} {{ node.dc_disconnect_label }}"></button>
+                </form>
+              </foreignObject>
+              {% else %}
+              </a>
+              {% endif %}
+              {% endif %}
+              {% endfor %}
+
+              {% for node in page.inverter_nodes %}
+              {% if loop.index <= 3 %}
+              {% set node_center = 145 + loop.index0 * 205 %}
+              {% set switch_x = node_center - 32 %}
+              {% if page.service_csrf_token %}
+              <g class="sld-switch-link" data-sld-action="block-enable-click">
+              {% else %}
+              <a class="sld-switch-link" href="/single-line/inverter-attempt?asset_id={{ node.asset_id }}&amp;control=block_enable" data-sld-action="block-enable-click" aria-label="{{ node.asset_id }} {{ t('label.block_enable_request') }} {{ node.block_enable_label }}">
+              {% endif %}
+                <g data-sld-symbol="block-enable-switch" data-flow-node="{{ node.asset_id }}-ac-switch">
+                  <rect class="sld-switch-hit" x="{{ switch_x }}" y="382" width="64" height="48" rx="4"></rect>
+                  <rect class="disconnect-frame" x="{{ node_center - 20 }}" y="386" width="40" height="40" rx="3"></rect>
+                  <text class="sld-code" x="{{ node_center - 15 }}" y="401">QAC</text>
+                  <circle class="disconnect-terminal" cx="{{ node_center }}" cy="408" r="4"></circle>
+                  <circle class="disconnect-terminal" cx="{{ node_center }}" cy="420" r="4"></circle>
+                  {% if node.block_enable_request == 0 %}
+                  <line class="disconnect-blade open" x1="{{ node_center }}" y1="408" x2="{{ node_center + 16 }}" y2="394"></line>
+                  {% else %}
+                  <line class="disconnect-blade closed" x1="{{ node_center }}" y1="408" x2="{{ node_center }}" y2="420"></line>
+                  {% endif %}
+                </g>
+              {% if page.service_csrf_token %}
+              </g>
+              <foreignObject x="{{ switch_x }}" y="382" width="64" height="48">
+                <form xmlns="http://www.w3.org/1999/xhtml" class="sld-fo-switch" method="post" action="/service/panel/inverter-block">
+                  <input type="hidden" name="service_csrf_token" value="{{ page.service_csrf_token }}">
+                  <input type="hidden" name="asset_id" value="{{ node.asset_id }}">
+                  <input type="hidden" name="block_enable_request" value="{{ node.block_enable_next_value }}">
+                  <input type="hidden" name="block_power_limit_pct" value="{{ node.block_power_limit_pct_value }}">
+                  <input type="hidden" name="return_to" value="/single-line">
+                  <button class="sld-fo-hit" type="submit" data-sld-action="block-enable-submit" aria-label="{{ node.asset_id }} {{ t('label.block_enable_request') }} {{ node.block_enable_label }}"></button>
+                </form>
+              </foreignObject>
+              {% else %}
+              </a>
+              {% endif %}
               {% endif %}
               {% endfor %}
 

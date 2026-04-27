@@ -232,8 +232,9 @@ Bedienung:
 
 Zweck:
 - einfache technische Anlagenansicht
-- interaktive, read-only Energiekarte im Stil eines vereinfachten
-  SCADA-Single-Line-Diagramms
+- interaktive Energiekarte im Stil eines vereinfachten
+  SCADA-Single-Line-Diagramms; ohne Service-Login bleiben Schaltversuche
+  reine Koederpfade
 
 Anzuzeigende Inhalte:
 
@@ -241,6 +242,8 @@ Anzuzeigende Inhalte:
 - PPC
 - drei Inverter-Bloecke
 - getrennte DC-String-Zweige vor den Inverter-Bloecken
+- PV-/DC-Isolator je Inverter-Block vor der Wandlung
+- Block-Enable-/AC-Schalter je Inverter-Block vor der AC-Sammelschiene
 - AC-Sammelschiene erst nach der Inverter-Wandlung
 - Revenue Meter
 - Grid Interconnect / Breaker mit sichtbarer Open/Closed-Stellung
@@ -261,9 +264,14 @@ Wichtige Regel:
 - ein Klick auf den Breaker ist ein sichtbarer Koederpfad: er schreibt keinen
   Prozesszustand, protokolliert `hmi.action.unauthenticated_control_attempt`
   und fuehrt zur Service-Anmeldung
+- Klicks auf PV-/DC-Isolator oder Block-Enable ohne Service-Login sind
+  ebenfalls reine Koederpfade und veraendern den Prozesszustand nicht
+- mit aktiver Service-Session duerfen diese Inverter-Schalter per
+  CSRF-geschuetztem `POST` die bestehenden Service-Control-Pfade nutzen
 - DC- und AC-Seite duerfen optisch nicht als dieselbe Leitung erscheinen
 - PPC wird als Controller gezeigt, nicht als Energiepfad
-- keine Schreibaktionen oder versteckten Steuerpfade in der Grafik
+- keine anonymen Schreibaktionen oder versteckten Host-Steuerpfade in der
+  Grafik
 
 ### 7.3 `/inverters`
 

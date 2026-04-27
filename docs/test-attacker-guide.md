@@ -73,6 +73,11 @@ Schema ist klickbar, aber vor Login kein echter Schaltpfad: ein Klick fuehrt
 nach `/service/login`, laesst den Anlagenzustand unveraendert und schreibt
 `hmi.action.unauthenticated_control_attempt` in das Eventlog.
 
+Die PV-/DC-Isolatoren und Block-Enable-Schalter der drei Inverter-Bloecke sind
+ebenfalls direkt im Schema sichtbar. Ohne Service-Login sind Klicks darauf
+abgewiesene Koederpfade; mit Service-Login nutzen sie dieselben Service-Control-
+Pfade wie `/service/panel`.
+
 ### 3.3 `/inverters`
 
 Hier suchst du:
@@ -307,6 +312,8 @@ Schreibversuche dort fuehren zu:
    - Unit `12`, `40200 = 0`
    - optional zusaetzlich `40201 = 500`
    - optional alternativ `40203 = 1`, um nur die PV-/DC-Seite zu isolieren
+   - alternativ im eingeloggten `/single-line`-Schema den `QAC`- oder
+     `QDC`-Schalter von `invb-02` bedienen
 3. Wirkung pruefen:
    - Block wirkt `Offline by request`, `Stale telemetry`, `PV isolated` oder leistungsgedrosselt
    - Parkleistung kann sinken

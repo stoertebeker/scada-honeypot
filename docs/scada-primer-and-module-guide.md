@@ -207,9 +207,9 @@ Wichtige aktive Units in V1:
 | Unit `1`, `40201` oder HMI `reactive power` | Blindleistungsziel setzen | PPC-Sollwert aendert sich, ohne dass der Park ausfaellt | `/overview`, Unit `1` |
 | Unit `1`, `40202` oder HMI `plant mode` | Bedienwunsch fuer Modus setzen | `plant_mode_request` wird gelatcht, echter Betriebsmodus springt nicht heimlich um | Service-Panel, Modbus |
 | Unit `41`, `40200/40201` oder HMI `breaker` | Breaker oeffnen oder schliessen | Exportpfad trennt oder verbindet den Park | `/single-line`, `/meter`, `/alarms` |
-| Unit `11-13`, `40200` oder HMI Block Enable | Block deaktivieren oder aktivieren | Block faellt aus oder kommt wieder | `/inverters`, `/overview`, `/alarms` |
+| Unit `11-13`, `40200` oder HMI Block Enable | Block deaktivieren oder aktivieren | Block faellt aus oder kommt wieder | `/single-line`, `/inverters`, `/overview`, `/alarms` |
 | Unit `11-13`, `40201` oder HMI Block Limit | Blockleistung begrenzen | Minderleistung pro Block | `/inverters`, `/trends`, Folge-Alerts moeglich |
-| Unit `11-13`, `40203` oder HMI PV Disconnect | PV-/DC-Isolator eines Blocks oeffnen oder schliessen | DC-Eingang des Blocks wird simuliert getrennt, Inverter bleibt kommunikativ sichtbar | `/service/panel`, `/inverters`, `/overview`, `/trends`, Modbus |
+| Unit `11-13`, `40203` oder HMI PV Disconnect | PV-/DC-Isolator eines Blocks oeffnen oder schliessen | DC-Eingang des Blocks wird simuliert getrennt, Inverter bleibt kommunikativ sichtbar | `/single-line`, `/service/panel`, `/inverters`, `/overview`, `/trends`, Modbus |
 | Unit `11-13`, `40202` oder HMI Block Reset | simulierten Block-Reset ausloesen | Comm-Loss kann in den Normalzustand zurueckgefuehrt werden | `/inverters`, `/alarms` |
 
 ## 8. Wichtige Folge-Alerts in V1
@@ -238,7 +238,7 @@ Wenn du nur die grobe Bedienlogik mitnehmen willst, reicht diese Kurzfassung:
 
 1. `overview` sagt dir, ob der Park gesund wirkt.
 2. `single-line` zeigt dir, ob der Strompfad zum Netz offen oder geschlossen
-   ist.
+   ist und ob einzelne PV-/DC- oder Inverter-Schalter geoeffnet wirken.
 3. `inverters` zeigt dir, ob einzelne Blocke ausfallen, begrenzt oder PV-seitig
    isoliert werden.
 4. `weather` sagt dir, ob geringe Leistung plausibel oder verdaechtig ist.

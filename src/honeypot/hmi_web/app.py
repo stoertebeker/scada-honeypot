@@ -115,6 +115,15 @@ class SingleLineNode:
     status_label: str
     detail_label: str
     tone: str
+    block_enable_request: int
+    block_enable_label: str
+    block_enable_tone: str
+    block_enable_next_value: str
+    block_power_limit_pct_value: str
+    dc_disconnect_state: str
+    dc_disconnect_label: str
+    dc_disconnect_tone: str
+    dc_disconnect_next_value: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +148,9 @@ class SingleLineViewModel:
     grid_tone: str
     export_path_label: str
     export_path_tone: str
+    status_label: str | None
+    status_tone: str
+    service_csrf_token: str | None
     facts: tuple[SingleLineFact, ...]
     inverter_nodes: tuple[SingleLineNode, ...]
     active_alarms: tuple[OverviewAlarm, ...]
@@ -648,7 +660,21 @@ def create_hmi_app(
     async def single_line(request: Request) -> HTMLResponse:
         snapshot = snapshot_provider()
         session_id, set_cookie = _session_state(request)
-        view_model = build_single_line_view_model(snapshot=snapshot, config=config, texts=texts)
+        service_session = (
+            service_sessions.touch(request.cookies.get(SERVICE_SESSION_COOKIE_NAME))
+            if config.enable_service_login
+            else None
+        )
+        status_label, status_tone = _service_panel_status(request=request, texts=texts)
+        view_model = build_single_line_view_model(
+            snapshot=snapshot,
+            config=config,
+            texts=texts,
+            service_controls=service_controls,
+            service_csrf_token=(service_session.csrf_token if service_session is not None else None),
+            status_label=status_label,
+            status_tone=status_tone,
+        )
         response = templates.TemplateResponse(
             request=request,
             name="single_line.html",
@@ -661,11 +687,13 @@ def create_hmi_app(
         )
         if set_cookie:
             _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+        if service_session is not None:
+            _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
 
         _record_page_view(
             request=request,
             snapshot=snapshot,
-            session_id=session_id,
+            session_id=(service_session.handle if service_session is not None else session_id),
             event_recorder=event_recorder,
             event_type="hmi.page.single_line_viewed",
             action="view_single_line",
@@ -678,6 +706,82 @@ def create_hmi_app(
             },
             message="Single-line page rendered",
             tags=("read-only", "single-line", "web"),
+        )
+        return response
+
+    @app.get("/single-line/inverter-attempt", include_in_schema=False)
+    async def single_line_inverter_attempt(request: Request) -> RedirectResponse:
+        snapshot = snapshot_provider()
+        session_id, set_cookie = _session_state(request)
+        asset_id = request.query_params.get("asset_id", "").strip()
+        control = request.query_params.get("control", "").strip()
+        response = RedirectResponse(url="/service/login", status_code=303)
+        if set_cookie:
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+
+        try:
+            block = _require_inverter_block(snapshot, asset_id)
+        except ValueError:
+            _record_unauthenticated_control_attempt(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=session_id,
+                asset_id=asset_id or "inverter-block",
+                action="single_line_inverter_click",
+                requested_value={"asset_id": asset_id, "control": control, "source_view": "/single-line"},
+                previous_value=None,
+                resulting_state={"asset_id": asset_id, "plant_power_mw": snapshot.site.plant_power_mw},
+                message="Single-line inverter control click used an invalid asset id",
+                tags=("single-line", "inverter-block", "control-attempt", "unauthenticated", "web"),
+            )
+            return response
+
+        block_enable_request = 0 if block.status == "offline" and block.availability_pct == 0 else 1
+        if control == "dc_disconnect":
+            action = "single_line_dc_disconnect_click"
+            previous_value: object = block.dc_disconnect_state
+            resulting_state = {
+                "dc_disconnect_state": block.dc_disconnect_state,
+                "status": block.status,
+                "communication_state": block.communication_state,
+                "block_power_kw": block.block_power_kw,
+                "plant_power_mw": snapshot.site.plant_power_mw,
+            }
+            tags = ("single-line", "inverter-block", "dc-disconnect", "control-attempt", "unauthenticated", "web")
+        elif control == "block_enable":
+            action = "single_line_block_enable_click"
+            previous_value = block_enable_request
+            resulting_state = {
+                "block_enable_request": block_enable_request,
+                "status": block.status,
+                "communication_state": block.communication_state,
+                "availability_pct": block.availability_pct,
+                "block_power_kw": block.block_power_kw,
+                "plant_power_mw": snapshot.site.plant_power_mw,
+            }
+            tags = ("single-line", "inverter-block", "block-enable", "control-attempt", "unauthenticated", "web")
+        else:
+            action = "single_line_inverter_click"
+            previous_value = None
+            resulting_state = {
+                "status": block.status,
+                "communication_state": block.communication_state,
+                "block_power_kw": block.block_power_kw,
+                "plant_power_mw": snapshot.site.plant_power_mw,
+            }
+            tags = ("single-line", "inverter-block", "control-attempt", "unauthenticated", "web")
+
+        _record_unauthenticated_control_attempt(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=session_id,
+            asset_id=block.asset_id,
+            action=action,
+            requested_value={"asset_id": block.asset_id, "control": control, "source_view": "/single-line"},
+            previous_value=previous_value,
+            resulting_state=resulting_state,
+            message="Single-line inverter control click rejected before service authentication",
+            tags=tags,
         )
         return response
 
@@ -1516,6 +1620,7 @@ def create_hmi_app(
 
         try:
             form = await _read_urlencoded_form(request)
+            return_to = _service_return_path(form)
             _validate_service_csrf_token(form, service_session)
         except HmiFormRequestError:
             _record_service_control_event(
@@ -1543,6 +1648,7 @@ def create_hmi_app(
                 config=config,
                 status_code="control_invalid",
             )
+        return_to = _service_return_path(form)
         asset_id = (form.get("asset_id", [""])[0]).strip()
 
         try:
@@ -1574,6 +1680,7 @@ def create_hmi_app(
                 service_session=service_session,
                 config=config,
                 status_code="control_invalid",
+                return_to=return_to,
             )
 
         raw_enable_request = (form.get("block_enable_request", [""])[0]).strip()
@@ -1617,6 +1724,7 @@ def create_hmi_app(
                 service_session=service_session,
                 config=config,
                 status_code="control_invalid",
+                return_to=return_to,
             )
 
         event_context = SimulationEventContext(
@@ -1669,6 +1777,7 @@ def create_hmi_app(
                 service_session=service_session,
                 config=config,
                 status_code="control_rejected",
+                return_to=return_to,
             )
 
         _record_service_control_event(
@@ -1703,6 +1812,7 @@ def create_hmi_app(
             service_session=service_session,
             config=config,
             status_code="block_control_updated",
+            return_to=return_to,
         )
 
     @app.post("/service/panel/inverter-block/dc-disconnect", response_class=HTMLResponse, include_in_schema=False)
@@ -1742,6 +1852,7 @@ def create_hmi_app(
 
         try:
             form = await _read_urlencoded_form(request)
+            return_to = _service_return_path(form)
             _validate_service_csrf_token(form, service_session)
         except HmiFormRequestError:
             _record_service_control_event(
@@ -1766,6 +1877,7 @@ def create_hmi_app(
                 status_code="control_invalid",
             )
 
+        return_to = _service_return_path(form)
         asset_id = (form.get("asset_id", [""])[0]).strip()
         raw_disconnect_open = (form.get("dc_disconnect_open", ["0"])[0]).strip()
         try:
@@ -1792,6 +1904,7 @@ def create_hmi_app(
                 service_session=service_session,
                 config=config,
                 status_code="control_invalid",
+                return_to=return_to,
             )
 
         if raw_disconnect_open not in {"0", "1"}:
@@ -1821,6 +1934,7 @@ def create_hmi_app(
                 service_session=service_session,
                 config=config,
                 status_code="control_invalid",
+                return_to=return_to,
             )
 
         requested_dc_disconnect_state = "open" if raw_disconnect_open == "1" else "closed"
@@ -1865,6 +1979,7 @@ def create_hmi_app(
                 service_session=service_session,
                 config=config,
                 status_code="control_rejected",
+                return_to=return_to,
             )
 
         _record_service_control_event(
@@ -1888,6 +2003,7 @@ def create_hmi_app(
             service_session=service_session,
             config=config,
             status_code="dc_disconnect_updated",
+            return_to=return_to,
         )
 
     @app.post("/service/panel/inverter-block/reset", response_class=HTMLResponse, include_in_schema=False)
@@ -2257,6 +2373,10 @@ def build_single_line_view_model(
     snapshot: PlantSnapshot,
     config: RuntimeConfig,
     texts: dict[str, str],
+    service_controls: ServiceControlPort | None = None,
+    service_csrf_token: str | None = None,
+    status_label: str | None = None,
+    status_tone: str = "neutral",
 ) -> SingleLineViewModel:
     """Bereitet die sichtbaren Werte fuer das einfache Einlinienschema auf."""
 
@@ -2286,16 +2406,35 @@ def build_single_line_view_model(
         ),
     )
 
-    inverter_nodes = tuple(
-        SingleLineNode(
-            asset_id=block.asset_id,
-            title=block.asset_id.upper(),
-            status_label=_enum_text(texts, block.status),
-            detail_label=_single_line_inverter_detail_label(block, texts),
-            tone=_tone_for_inverter_block(block),
+    inverter_nodes: list[SingleLineNode] = []
+    for block in snapshot.inverter_blocks:
+        if service_controls is None:
+            block_enable_request = 0 if block.status == "offline" and block.availability_pct == 0 else 1
+            block_power_limit_pct = 100.0
+            dc_disconnect_state = block.dc_disconnect_state
+        else:
+            block_enable_request = service_controls.get_block_enable_request(asset_id=block.asset_id)
+            block_power_limit_pct = service_controls.get_block_power_limit_pct(asset_id=block.asset_id)
+            dc_disconnect_state = service_controls.get_block_dc_disconnect_state(asset_id=block.asset_id)
+
+        inverter_nodes.append(
+            SingleLineNode(
+                asset_id=block.asset_id,
+                title=block.asset_id.upper(),
+                status_label=_enum_text(texts, block.status),
+                detail_label=_single_line_inverter_detail_label(block, texts),
+                tone=_tone_for_inverter_block(block),
+                block_enable_request=block_enable_request,
+                block_enable_label=texts["state.enabled"] if block_enable_request == 1 else texts["state.disabled"],
+                block_enable_tone="good" if block_enable_request == 1 else "alarm",
+                block_enable_next_value="0" if block_enable_request == 1 else "1",
+                block_power_limit_pct_value=f"{block_power_limit_pct:.1f}",
+                dc_disconnect_state=dc_disconnect_state,
+                dc_disconnect_label=_dc_disconnect_label(dc_disconnect_state, texts),
+                dc_disconnect_tone="alarm" if dc_disconnect_state == "open" else "good",
+                dc_disconnect_next_value="0" if dc_disconnect_state == "open" else "1",
+            )
         )
-        for block in snapshot.inverter_blocks
-    )
 
     return SingleLineViewModel(
         page_title=texts["page.single_line.title"],
@@ -2311,8 +2450,11 @@ def build_single_line_view_model(
         grid_tone="good" if snapshot.grid_interconnect.grid_acceptance_state == "accepted" else "warn",
         export_path_label=export_path_label,
         export_path_tone="good" if snapshot.grid_interconnect.export_path_available else "alarm",
+        status_label=status_label,
+        status_tone=status_tone,
+        service_csrf_token=service_csrf_token,
         facts=facts,
-        inverter_nodes=inverter_nodes,
+        inverter_nodes=tuple(inverter_nodes),
         active_alarms=_active_alarm_view_models(snapshot, texts),
     )
 
@@ -3019,15 +3161,23 @@ def _service_panel_redirect_response(
     service_session: ServiceSession,
     config: RuntimeConfig,
     status_code: str,
+    return_to: str = "/service/panel",
 ) -> RedirectResponse:
     response = RedirectResponse(
-        url=f"/service/panel?{urlencode({'status': status_code})}",
+        url=f"{return_to}?{urlencode({'status': status_code})}",
         status_code=303,
     )
     if set_cookie:
         _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
     _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
     return response
+
+
+def _service_return_path(form: dict[str, list[str]]) -> str:
+    return_to = form.get("return_to", ["/service/panel"])[0].strip()
+    if return_to == "/single-line":
+        return "/single-line"
+    return "/service/panel"
 
 
 def _render_error_page(
