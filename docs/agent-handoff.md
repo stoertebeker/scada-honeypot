@@ -12,8 +12,9 @@ Aktueller Kurs:
 - `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
   freizugeben
 - Gesamtteststand: `295 passed`
-- Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine kleine
-  Runtime-Historie und `observed_at`, nicht mehr nur ueber den Fixture-Start
+- Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
+  30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
+  Fixture-Start
 - der Docker-/Compose-Kurs ist vorhanden, inklusive Healthcheck,
   `read_only`-Rootfs, Profiltrennung zwischen normalem Dienst und
   `exposed-research` und einem Entry-Point, der Container-Binds bewusst auf
@@ -96,7 +97,7 @@ docker compose --profile verify run --rm honeypot-sweep
 - `monitoring`
   - Heartbeat nach `RUNTIME_STATUS_PATH`
 - `runtime_evolution`
-  - tickende Snapshot-Zeit plus wettergetriebene Leistungs-/Meterfortschreibung und kleine In-Memory-Trendhistorie fuer `/trends`
+  - tickende Snapshot-Zeit plus wettergetriebene Leistungs-/Meterfortschreibung und persistente 30-Tage-Erzeugungshistorie fuer `/trends`
 - `weather_core`
   - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
 - `exporter_sdk`

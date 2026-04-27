@@ -2,6 +2,7 @@
 
 import argparse
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 import socket
 from struct import pack, unpack
@@ -21,6 +22,7 @@ from honeypot.exporter_runner import (
     WebhookExporter,
 )
 from honeypot.exporter_sdk import HoneypotExporter
+from honeypot.history_core import apply_history_sample_to_snapshot
 from honeypot.runtime_egress import enforce_runtime_egress_policy
 from honeypot.runtime_exposure import append_exposed_research_finding, enforce_exposed_research_policy
 from honeypot.runtime_ingress import enforce_runtime_ingress_policy
@@ -30,7 +32,13 @@ from honeypot.ops_web import create_ops_app
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS, ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.runtime_reset import reset_local_runtime_artifacts
-from honeypot.runtime_evolution import BackgroundPlantEvolutionService, TrendHistoryBuffer, trend_history_capacity
+from honeypot.runtime_evolution import (
+    PLANT_HISTORY_RETENTION_DAYS,
+    BackgroundPlantEvolutionService,
+    TrendHistoryBuffer,
+    seed_plant_history_if_empty,
+    trend_history_capacity,
+)
 from honeypot.rule_engine import RuleEngine
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import Clock, SystemClock
@@ -217,8 +225,22 @@ def build_local_runtime(
             low_output_threshold_pct=config.alarm_threshold_low_output_pct,
         ),
     )
-    register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder)
-    simulator = PlantSimulator.from_snapshot(snapshot)
+    seed_simulator = PlantSimulator.from_snapshot(snapshot)
+    simulator = PlantSimulator.from_snapshot(snapshot, event_recorder=event_recorder)
+    seed_plant_history_if_empty(
+        history_store=event_store,
+        snapshot=snapshot,
+        simulator=seed_simulator,
+        clock=runtime_clock,
+        timezone=config.timezone,
+        weather_latitude=config.weather_latitude,
+        weather_longitude=config.weather_longitude,
+        weather_elevation_m=config.weather_elevation_m,
+    )
+    latest_history = event_store.fetch_plant_history(limit=1)
+    if latest_history and weather_provider is not None:
+        snapshot = apply_history_sample_to_snapshot(snapshot, latest_history[-1])
+    register_map = ReadOnlyRegisterMap(snapshot, event_recorder=event_recorder, simulator=simulator)
     trend_history = TrendHistoryBuffer(
         max_samples=trend_history_capacity(
             window_minutes=config.trend_window_minutes,
@@ -236,10 +258,15 @@ def build_local_runtime(
         weather_longitude=config.weather_longitude,
         weather_elevation_m=config.weather_elevation_m,
         interval_seconds=EVOLUTION_INTERVAL_SECONDS,
+        history_store=event_store,
     )
     hmi_app = create_hmi_app(
         snapshot_provider=lambda: register_map.snapshot,
-        trend_history_provider=trend_history.snapshot,
+        trend_history_provider=lambda: _merged_trend_history(
+            event_store=event_store,
+            trend_history=trend_history,
+            clock=runtime_clock,
+        ),
         config=config,
         event_recorder=event_recorder,
         service_controls=register_map,
@@ -383,6 +410,26 @@ def _build_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider
         timeout_seconds=float(config.weather_request_timeout_seconds),
         cache_ttl_seconds=config.weather_cache_ttl_seconds,
     )
+
+
+def _merged_trend_history(
+    *,
+    event_store: SQLiteEventStore,
+    trend_history: TrendHistoryBuffer,
+    clock: Clock,
+) -> tuple:
+    cutoff = clock.now() - timedelta(days=PLANT_HISTORY_RETENTION_DAYS)
+    samples_by_time = {
+        sample.observed_at: sample
+        for sample in event_store.fetch_plant_history(since=cutoff)
+    }
+    for sample in trend_history.snapshot():
+        if sample.observed_at >= cutoff:
+            existing_sample = samples_by_time.get(sample.observed_at)
+            if existing_sample is not None and sample.export_energy_mwh_total is None:
+                continue
+            samples_by_time[sample.observed_at] = sample
+    return tuple(samples_by_time[key] for key in sorted(samples_by_time))
 
 
 def _runtime_banner(runtime: LocalRuntime) -> str:

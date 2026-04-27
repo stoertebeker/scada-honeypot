@@ -197,7 +197,8 @@ uv run python -m playwright install chromium
 - `event_core`
   - erzeugt, korreliert und persistiert Events, Alerts und Outbox-Eintraege
 - `storage`
-  - SQLite-Eventstore plus optionales JSONL-Archiv
+  - SQLite-Eventstore, persistente `plant_history` fuer Erzeugungstrends plus
+    optionales JSONL-Archiv
 - `rule_engine`
   - leitet Folge-Alerts wie `GRID_PATH_UNAVAILABLE` oder
     `LOW_SITE_OUTPUT_UNEXPECTED` ab
@@ -219,8 +220,11 @@ uv run python -m playwright install chromium
     separatem Port
   - persistente Backend-Settings, Source-IP-Anreicherung und Audit-Events fuer
     Settings-Aenderungen
+  - Wartungsaktion zum Loeschen der Anlagenhistorie, auditierbar ueber
+    `ops.history.deleted`
 - `runtime_evolution`
-  - tickende `observed_at`-Zeit, wettergetriebene Anlagenleistung und kleine In-Memory-Trendhistorie fuer `/trends`
+  - tickende `observed_at`-Zeit, wettergetriebene Anlagenleistung und
+    persistente 30-Tage-Erzeugungshistorie fuer `/trends`
 - `weather_core`
   - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
 - `exporter_sdk`

@@ -151,6 +151,8 @@ Beispiele:
 - Bedienoperation versucht
 - unauthentifizierter Breaker-Klick im `/single-line`-Schema, protokolliert
   als `hmi.action.unauthenticated_control_attempt`
+- Loeschen der Anlagenhistorie im Ops-Backend, protokolliert als
+  `ops.history.deleted`
 
 Nutzen:
 - Einschaetzung des Operator-/Recon-Verhaltens

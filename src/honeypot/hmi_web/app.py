@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
+from honeypot.asset_domain import PlantSnapshot
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
 from honeypot.plant_sim import SimulationEventContext
@@ -37,6 +37,15 @@ SERVICE_LOGIN_BACKOFF = timedelta(minutes=5)
 SERVICE_LOGIN_THROTTLE_MAX_SOURCES = 256
 SERVICE_CSRF_FIELD_NAME = "service_csrf_token"
 SERVICE_CSRF_TOKEN_BYTES = 32
+DEFAULT_TREND_WINDOW = "30d"
+MAX_TREND_RENDER_POINTS = 180
+TREND_WINDOWS: dict[str, tuple[str, timedelta]] = {
+    "1h": ("1 h", timedelta(hours=1)),
+    "6h": ("6 h", timedelta(hours=6)),
+    "24h": ("24 h", timedelta(hours=24)),
+    "7d": ("7 d", timedelta(days=7)),
+    "30d": ("30 d", timedelta(days=30)),
+}
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LOCALE_DIR = _REPO_ROOT / "resources" / "locales" / "attacker-ui"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -250,6 +259,13 @@ class TrendSeriesView:
 
 
 @dataclass(frozen=True, slots=True)
+class TrendWindowLink:
+    label: str
+    href: str
+    is_current: bool
+
+
+@dataclass(frozen=True, slots=True)
 class TrendsViewModel:
     page_title: str
     page_subtitle: str
@@ -260,6 +276,10 @@ class TrendsViewModel:
     series: tuple[TrendSeriesView, ...]
     context_label: str
     context_tone: str
+    window_label: str
+    window_links: tuple[TrendWindowLink, ...]
+    sample_count: int
+    window_energy_label: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -827,11 +847,13 @@ def create_hmi_app(
     async def trends(request: Request) -> HTMLResponse:
         snapshot = snapshot_provider()
         session_id, set_cookie = _session_state(request)
+        trend_window = _normalize_trend_window(request.query_params.get("window"))
         view_model = build_trends_view_model(
             snapshot=snapshot,
             config=config,
             texts=texts,
             trend_history=() if trend_history_provider is None else trend_history_provider(),
+            trend_window=trend_window,
         )
         response = templates.TemplateResponse(
             request=request,
@@ -856,9 +878,13 @@ def create_hmi_app(
             asset_id=snapshot.power_plant_controller.asset_id,
             resulting_state={
                 "series_count": len(view_model.series),
+                "trend_window": trend_window,
+                "history_points": view_model.sample_count,
+                "window_energy": view_model.window_energy_label,
                 "plant_power_mw": snapshot.site.plant_power_mw,
                 "active_power_limit_pct": snapshot.power_plant_controller.active_power_limit_pct,
                 "export_power_kw": snapshot.revenue_meter.export_power_kw,
+                "export_energy_mwh_total": snapshot.revenue_meter.export_energy_mwh_total,
             },
             message="Trends page rendered",
             tags=("read-only", "trends", "web"),
@@ -1399,7 +1425,6 @@ def create_hmi_app(
                 status_code="control_rejected",
             )
 
-        after_snapshot = snapshot_provider()
         _record_service_control_event(
             request=request,
             event_recorder=event_recorder,
@@ -2350,22 +2375,34 @@ def build_trends_view_model(
     config: RuntimeConfig,
     texts: dict[str, str],
     trend_history: tuple[TrendSample, ...] = (),
+    trend_window: str = DEFAULT_TREND_WINDOW,
 ) -> TrendsViewModel:
     """Bereitet eine kleine glaubhafte Verlaufssicht aus echter Mini-Historie auf."""
 
-    history = _trend_history_or_fallback(snapshot, trend_history)
+    resolved_window = _normalize_trend_window(trend_window)
+    history = _trend_history_for_window(
+        snapshot=snapshot,
+        trend_history=trend_history,
+        trend_window=resolved_window,
+    )
+    window_energy_mwh = _window_energy_mwh(history)
     context_label, context_tone = _trends_context(snapshot, history, texts)
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
         OverviewMetric(
-            "label.power_limit",
-            f"{snapshot.power_plant_controller.active_power_limit_pct:.1f} %",
-            _tone_for_limit(snapshot),
-        ),
-        OverviewMetric(
             "label.export_power",
             _format_power_kw(snapshot.revenue_meter.export_power_kw),
             "good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
+        ),
+        OverviewMetric(
+            "label.window_energy",
+            _format_energy_mwh(window_energy_mwh),
+            "good" if window_energy_mwh > 0 else "warn",
+        ),
+        OverviewMetric(
+            "label.power_limit",
+            f"{snapshot.power_plant_controller.active_power_limit_pct:.1f} %",
+            _tone_for_limit(snapshot),
         ),
         OverviewMetric(
             "label.active_alarms",
@@ -2402,6 +2439,13 @@ def build_trends_view_model(
             value_formatter=lambda value: f"{value:.2f} MW",
             tone="good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
         ),
+        _trend_series_view(
+            asset_id=snapshot.revenue_meter.asset_id,
+            title=texts["trend.export_energy"],
+            values=_export_energy_series(history),
+            value_formatter=_format_energy_mwh,
+            tone="good" if window_energy_mwh > 0 else "warn",
+        ),
         *tuple(
             _trend_series_view(
                 asset_id=current_block.asset_id,
@@ -2424,6 +2468,10 @@ def build_trends_view_model(
         series=series,
         context_label=context_label,
         context_tone=context_tone,
+        window_label=TREND_WINDOWS[resolved_window][0],
+        window_links=_trend_window_links(resolved_window),
+        sample_count=len(history),
+        window_energy_label=_format_energy_mwh(window_energy_mwh),
     )
 
 
@@ -3120,6 +3168,10 @@ def _format_power_kw(value: float) -> str:
     return f"{value:.0f} kW"
 
 
+def _format_energy_mwh(value: float) -> str:
+    return f"{value:.3f} MWh"
+
+
 def _format_block_power_kw(value: float) -> str:
     return f"{value:.1f} kW"
 
@@ -3417,19 +3469,65 @@ def _trend_history_or_fallback(
     if trend_history:
         return trend_history
     return (
-        TrendSample(
-            observed_at=snapshot.observed_at,
-            plant_power_mw=snapshot.site.plant_power_mw,
-            active_power_limit_pct=snapshot.power_plant_controller.active_power_limit_pct,
-            irradiance_w_m2=float(snapshot.weather_station.irradiance_w_m2),
-            export_power_mw=snapshot.revenue_meter.export_power_kw / 1000,
-            block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
-        ),
+        TrendSample.from_snapshot(snapshot),
     )
+
+
+def _trend_history_for_window(
+    *,
+    snapshot: PlantSnapshot,
+    trend_history: tuple[TrendSample, ...],
+    trend_window: str,
+) -> tuple[TrendSample, ...]:
+    history = tuple(sorted(_trend_history_or_fallback(snapshot, trend_history), key=lambda sample: sample.observed_at))
+    window_delta = TREND_WINDOWS[_normalize_trend_window(trend_window)][1]
+    cutoff = ensure_utc_datetime(snapshot.observed_at) - window_delta
+    filtered = tuple(sample for sample in history if ensure_utc_datetime(sample.observed_at) >= cutoff)
+    if not filtered:
+        filtered = (history[-1],)
+    return _decimate_trend_history(filtered, max_points=MAX_TREND_RENDER_POINTS)
+
+
+def _decimate_trend_history(history: tuple[TrendSample, ...], *, max_points: int) -> tuple[TrendSample, ...]:
+    if len(history) <= max_points:
+        return history
+    step = (len(history) - 1) / (max_points - 1)
+    selected_indexes = {round(index * step) for index in range(max_points)}
+    selected_indexes.add(0)
+    selected_indexes.add(len(history) - 1)
+    return tuple(history[index] for index in sorted(selected_indexes))
 
 
 def _block_series(history: tuple[TrendSample, ...], asset_id: str) -> tuple[float, ...]:
     return tuple(dict(sample.block_power_kw).get(asset_id, 0.0) for sample in history)
+
+
+def _export_energy_series(history: tuple[TrendSample, ...]) -> tuple[float, ...]:
+    return tuple(0.0 if sample.export_energy_mwh_total is None else sample.export_energy_mwh_total for sample in history)
+
+
+def _window_energy_mwh(history: tuple[TrendSample, ...]) -> float:
+    totals = tuple(sample.export_energy_mwh_total for sample in history if sample.export_energy_mwh_total is not None)
+    if len(totals) < 2:
+        return 0.0
+    return round(max(totals[-1] - totals[0], 0.0), 3)
+
+
+def _normalize_trend_window(value: str | None) -> str:
+    if value in TREND_WINDOWS:
+        return value
+    return DEFAULT_TREND_WINDOW
+
+
+def _trend_window_links(current_window: str) -> tuple[TrendWindowLink, ...]:
+    return tuple(
+        TrendWindowLink(
+            label=label,
+            href=f"/trends?{urlencode({'window': window_key})}",
+            is_current=window_key == current_window,
+        )
+        for window_key, (label, _) in TREND_WINDOWS.items()
+    )
 
 
 def _sparkline_points(values: tuple[float, ...], *, width: int = 280, height: int = 90, padding: int = 10) -> str:

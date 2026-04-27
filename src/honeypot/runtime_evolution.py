@@ -7,24 +7,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from math import ceil
 from threading import Event, Lock, Thread
+from typing import Any
 
 from honeypot.asset_domain import PlantSnapshot
+from honeypot.history_core import PlantHistorySample
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ReadOnlyRegisterMap
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
-from honeypot.weather_core import WeatherObservationProvider
+from honeypot.weather_core import DeterministicDiurnalWeatherProvider, WeatherObservationProvider
+
+PLANT_HISTORY_RETENTION_DAYS = 30
+PLANT_HISTORY_SEED_STEP_MINUTES = 60
+PLANT_HISTORY_LIVE_SAMPLE_SECONDS = 60
 
 
-@dataclass(frozen=True, slots=True)
-class TrendSample:
-    """Verdichteter Verlaufspunkt fuer die HMI-Trendansicht."""
-
-    observed_at: datetime
-    plant_power_mw: float
-    active_power_limit_pct: float
-    irradiance_w_m2: float
-    export_power_mw: float
-    block_power_kw: tuple[tuple[str, float], ...]
+TrendSample = PlantHistorySample
 
 
 @dataclass(slots=True)
@@ -41,14 +38,7 @@ class TrendHistoryBuffer:
         self._samples = deque(maxlen=self.max_samples)
 
     def append_snapshot(self, snapshot: PlantSnapshot) -> TrendSample:
-        sample = TrendSample(
-            observed_at=snapshot.observed_at,
-            plant_power_mw=snapshot.site.plant_power_mw,
-            active_power_limit_pct=snapshot.power_plant_controller.active_power_limit_pct,
-            irradiance_w_m2=float(snapshot.weather_station.irradiance_w_m2),
-            export_power_mw=snapshot.revenue_meter.export_power_kw / 1000,
-            block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
-        )
+        sample = TrendSample.from_snapshot(snapshot)
         with self._lock:
             if self._samples and self._samples[-1].observed_at == sample.observed_at:
                 self._samples[-1] = sample
@@ -75,11 +65,15 @@ class BackgroundPlantEvolutionService:
     weather_longitude: float | None = None
     weather_elevation_m: float | None = None
     interval_seconds: float = 5.0
+    history_store: Any | None = None
+    history_retention_days: int = PLANT_HISTORY_RETENTION_DAYS
+    history_live_sample_seconds: int = PLANT_HISTORY_LIVE_SAMPLE_SECONDS
     _stop_event: Event = field(default_factory=Event, init=False, repr=False)
     _wake_event: Event = field(default_factory=Event, init=False, repr=False)
     _thread: Thread | None = field(default=None, init=False, repr=False)
     _lock: Lock = field(default_factory=Lock, init=False, repr=False)
     _evolution_count: int = field(default=0, init=False, repr=False)
+    _last_persisted_history_at: datetime | None = field(default=None, init=False, repr=False)
 
     @property
     def evolution_count(self) -> int:
@@ -119,7 +113,8 @@ class BackgroundPlantEvolutionService:
         observed_at = now if now > snapshot.observed_at else ensure_utc_datetime(snapshot.observed_at + timedelta(seconds=1))
         evolved_snapshot = self._evolve_snapshot(snapshot=snapshot, observed_at=observed_at)
         self.register_map.replace_snapshot(evolved_snapshot)
-        self.history.append_snapshot(evolved_snapshot)
+        sample = self.history.append_snapshot(evolved_snapshot)
+        self._persist_history_sample(sample)
         with self._lock:
             self._evolution_count += 1
         return evolved_snapshot
@@ -159,6 +154,138 @@ class BackgroundPlantEvolutionService:
             if self._stop_event.is_set():
                 break
             self.evolve_once()
+
+    def _persist_history_sample(self, sample: TrendSample) -> None:
+        if self.history_store is None:
+            return
+
+        observed_at = ensure_utc_datetime(sample.observed_at)
+        if self._last_persisted_history_at is not None:
+            elapsed = (observed_at - self._last_persisted_history_at).total_seconds()
+            if elapsed < self.history_live_sample_seconds:
+                return
+
+        sample_to_store = self._sample_with_integrated_energy(sample)
+        self.history_store.append_plant_history_sample(sample_to_store)
+        self.history_store.prune_plant_history(
+            before=observed_at - timedelta(days=self.history_retention_days)
+        )
+        self._last_persisted_history_at = observed_at
+
+    def _sample_with_integrated_energy(self, sample: TrendSample) -> TrendSample:
+        if self.history_store is None or sample.export_energy_mwh_total is not None:
+            return sample
+
+        latest_history = self.history_store.fetch_plant_history(limit=1)
+        if not latest_history:
+            return TrendSample(
+                observed_at=sample.observed_at,
+                plant_power_mw=sample.plant_power_mw,
+                active_power_limit_pct=sample.active_power_limit_pct,
+                irradiance_w_m2=sample.irradiance_w_m2,
+                export_power_mw=sample.export_power_mw,
+                block_power_kw=sample.block_power_kw,
+                export_energy_mwh_total=0.0,
+            )
+
+        latest_sample = latest_history[-1]
+        base_total = 0.0 if latest_sample.export_energy_mwh_total is None else latest_sample.export_energy_mwh_total
+        interval_hours = max(
+            (ensure_utc_datetime(sample.observed_at) - ensure_utc_datetime(latest_sample.observed_at)).total_seconds(),
+            0.0,
+        ) / 3600
+        return TrendSample(
+            observed_at=sample.observed_at,
+            plant_power_mw=sample.plant_power_mw,
+            active_power_limit_pct=sample.active_power_limit_pct,
+            irradiance_w_m2=sample.irradiance_w_m2,
+            export_power_mw=sample.export_power_mw,
+            block_power_kw=sample.block_power_kw,
+            export_energy_mwh_total=round(base_total + max(sample.export_power_mw, 0.0) * interval_hours, 4),
+        )
+
+
+def seed_plant_history_if_empty(
+    *,
+    history_store: Any,
+    snapshot: PlantSnapshot,
+    simulator: PlantSimulator,
+    clock: Clock,
+    timezone: str,
+    weather_latitude: float | None = None,
+    weather_longitude: float | None = None,
+    weather_elevation_m: float | None = None,
+    retention_days: int = PLANT_HISTORY_RETENTION_DAYS,
+    step_minutes: int = PLANT_HISTORY_SEED_STEP_MINUTES,
+) -> int:
+    """Fuellt einen frischen Store mit einer plausiblen 30-Tage-Erzeugungshistorie."""
+
+    if history_store.count_rows("plant_history") > 0:
+        now = ensure_utc_datetime(clock.now())
+        history_store.prune_plant_history(before=now - timedelta(days=retention_days))
+        return 0
+
+    now = ensure_utc_datetime(clock.now())
+    step = timedelta(minutes=step_minutes)
+    start = now - timedelta(days=retention_days)
+    weather_provider = DeterministicDiurnalWeatherProvider()
+    previous_observed_at = start - step
+    export_energy_mwh_total = 0.0
+    samples: list[TrendSample] = []
+    observed_at = start
+
+    while observed_at <= now:
+        step_snapshot = _snapshot_for_history_seed(
+            snapshot=snapshot,
+            observed_at=previous_observed_at,
+            export_energy_mwh_total=export_energy_mwh_total,
+        )
+        observation = weather_provider.observe(
+            observed_at=observed_at,
+            timezone=timezone,
+            latitude=weather_latitude,
+            longitude=weather_longitude,
+            elevation_m=weather_elevation_m,
+        )
+        working_snapshot = simulator.evolve_with_weather(
+            step_snapshot,
+            observed_at=observed_at,
+            weather_observation=observation,
+        )
+        samples.append(TrendSample.from_snapshot(working_snapshot))
+        export_energy_mwh_total = working_snapshot.revenue_meter.export_energy_mwh_total or export_energy_mwh_total
+        previous_observed_at = observed_at
+        observed_at += step
+
+    history_store.append_plant_history_samples(samples)
+    history_store.prune_plant_history(before=now - timedelta(days=retention_days))
+    return len(samples)
+
+
+def _snapshot_for_history_seed(
+    *,
+    snapshot: PlantSnapshot,
+    observed_at: datetime,
+    export_energy_mwh_total: float,
+) -> PlantSnapshot:
+    observed_at = ensure_utc_datetime(observed_at)
+    return snapshot.model_copy(
+        update={
+            "observed_at": observed_at,
+            "power_plant_controller": snapshot.power_plant_controller.model_copy(update={"last_update_ts": observed_at}),
+            "inverter_blocks": tuple(
+                block.model_copy(update={"last_update_ts": observed_at}) for block in snapshot.inverter_blocks
+            ),
+            "weather_station": snapshot.weather_station.model_copy(update={"last_update_ts": observed_at}),
+            "revenue_meter": snapshot.revenue_meter.model_copy(
+                update={
+                    "last_update_ts": observed_at,
+                    "export_energy_mwh_total": export_energy_mwh_total,
+                }
+            ),
+            "grid_interconnect": snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at}),
+        }
+    )
 
 
 def trend_history_capacity(*, window_minutes: int, interval_seconds: float) -> int:

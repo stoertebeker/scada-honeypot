@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any
 
 from honeypot.asset_domain import PlantAlarm, PlantSnapshot
 from honeypot.event_core import EventRecorder
@@ -153,11 +152,21 @@ class RegisterMultiWriteResult:
 class ReadOnlyRegisterMap:
     """Registersicht fuer die aktiven V1-Modbus-Slices."""
 
-    def __init__(self, snapshot: PlantSnapshot, *, event_recorder: EventRecorder | None = None):
+    def __init__(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        event_recorder: EventRecorder | None = None,
+        simulator: PlantSimulator | None = None,
+    ):
         self._lock = Lock()
         self._snapshot = snapshot
         self._event_recorder = event_recorder
-        self._simulator = PlantSimulator.from_snapshot(snapshot, event_recorder=event_recorder)
+        self._simulator = (
+            PlantSimulator.from_snapshot(snapshot, event_recorder=event_recorder)
+            if simulator is None
+            else simulator
+        )
         self._plant_mode_request_override: int | None = None
         self._block_enable_request_overrides: dict[int, int] = {}
         self._block_power_limit_request_overrides: dict[int, int] = {}

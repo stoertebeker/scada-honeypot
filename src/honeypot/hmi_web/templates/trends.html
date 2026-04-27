@@ -159,6 +159,40 @@
       margin: 0;
     }
 
+    .window-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .window-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .window-links a {
+      min-width: 58px;
+      padding: 8px 11px;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      text-align: center;
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .window-links a.current {
+      color: #f4f7f8;
+      background: var(--accent);
+    }
+
+    .window-summary {
+      margin: 0;
+      color: var(--muted);
+    }
+
     .tone-good { color: var(--good); }
     .tone-warn { color: var(--warn); }
     .tone-alarm { color: var(--alarm); }
@@ -237,6 +271,20 @@
         <p class="card-value">{{ metric.value }}</p>
       </article>
       {% endfor %}
+    </section>
+
+    <section class="panel">
+      <h2>{{ t("section.trends.window") }}</h2>
+      <div class="window-toolbar">
+        <div class="window-links" aria-label="{{ t('section.trends.window') }}">
+          {% for link in page.window_links %}
+          <a href="{{ link.href }}" class="{% if link.is_current %}current{% endif %}">{{ link.label }}</a>
+          {% endfor %}
+        </div>
+        <p class="window-summary mono">
+          {{ page.window_label }} / {{ t("label.samples") }} {{ page.sample_count }} / {{ t("label.window_energy") }} {{ page.window_energy_label }}
+        </p>
+      </div>
     </section>
 
     <section class="panel">

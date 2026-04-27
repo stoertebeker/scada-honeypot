@@ -81,9 +81,13 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     byte_count = pdu[1]
     registers = unpack(f">{byte_count // 2}H", pdu[2:])
     events = runtime.event_store.fetch_events()
+    plant_history = runtime.event_store.fetch_plant_history(limit=2)
 
     assert runtime.config.site_code == "runtime-test-01"
     assert runtime.snapshot.fixture_name == "normal_operation"
+    assert runtime.event_store.count_rows("plant_history") > 0
+    assert plant_history[-1].export_energy_mwh_total is not None
+    assert plant_history[-1].export_energy_mwh_total > 0
     assert transaction_id == 0x4321
     assert protocol_id == 0
     assert unit_id == 1

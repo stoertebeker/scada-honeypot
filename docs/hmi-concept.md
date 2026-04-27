@@ -354,13 +354,17 @@ Anzuzeigende Standardtrends:
 - Power limit
 - Irradiance
 - Export power
+- Export energy
 - Block power je Inverter-Block
 
 Wichtige Regel:
 - die Trenddaten muessen nicht hochaufgeloest oder endlos sein
-- ein kleiner, glaubhafter Verlauf reicht fuer V1
+- die sichtbare Anlagenhistorie ist auf 30 Tage begrenzt
+- ein glaubhafter Verlauf der Erzeugungswerte ist wichtiger als
+  historische Wetterdetails
+- auswaehlbare Zeitfenster fuer V1: `1h`, `6h`, `24h`, `7d`, `30d`
 - die sichtbare Snapshot-Zeit muss aus dem gemeinsamen `observed_at` kommen
-- die Trendkarten sollen aus einer kleinen Runtime-Historie statt aus einer
+- die Trendkarten sollen aus persistierter Runtime-Historie statt aus einer
   reinen Fixture-Baseline gespeist werden
 
 ### 7.8 `/service/login`

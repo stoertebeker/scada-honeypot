@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from honeypot.event_core.models import AlertRecord, EventRecord, OutboxEntry
+from honeypot.history_core import PlantHistorySample
 from honeypot.time_core import ensure_utc_datetime
 
 
@@ -116,8 +117,21 @@ class SQLiteEventStore:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS plant_history (
+                    observed_at TEXT PRIMARY KEY,
+                    plant_power_mw REAL NOT NULL,
+                    active_power_limit_pct REAL NOT NULL,
+                    irradiance_w_m2 REAL NOT NULL,
+                    export_power_mw REAL NOT NULL,
+                    export_energy_mwh_total REAL,
+                    block_power_json TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_outbox_status_next_attempt
                 ON outbox(status, next_attempt_at);
+
+                CREATE INDEX IF NOT EXISTS idx_plant_history_observed_at
+                ON plant_history(observed_at);
                 """
             )
 
@@ -259,11 +273,103 @@ class SQLiteEventStore:
             )
 
     def count_rows(self, table_name: str) -> int:
-        if table_name not in {"current_state", "event_log", "alert_log", "outbox", "ops_settings"}:
+        if table_name not in {"current_state", "event_log", "alert_log", "outbox", "ops_settings", "plant_history"}:
             raise ValueError(f"ungueltiger Tabellenname: {table_name}")
         with self._connect() as connection:
             row = connection.execute(f"SELECT COUNT(*) AS row_count FROM {table_name}").fetchone()
         return int(row["row_count"])
+
+    def append_plant_history_sample(self, sample: PlantHistorySample) -> None:
+        self.append_plant_history_samples((sample,))
+
+    def append_plant_history_samples(self, samples: Sequence[PlantHistorySample]) -> None:
+        if not samples:
+            return
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO plant_history (
+                    observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                    export_power_mw, export_energy_mwh_total, block_power_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(observed_at) DO UPDATE SET
+                    plant_power_mw = excluded.plant_power_mw,
+                    active_power_limit_pct = excluded.active_power_limit_pct,
+                    irradiance_w_m2 = excluded.irradiance_w_m2,
+                    export_power_mw = excluded.export_power_mw,
+                    export_energy_mwh_total = excluded.export_energy_mwh_total,
+                    block_power_json = excluded.block_power_json
+                """,
+                tuple(_plant_history_params(sample) for sample in samples),
+            )
+
+    def fetch_plant_history(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int | None = None,
+    ) -> tuple[PlantHistorySample, ...]:
+        if limit is not None and limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+
+        clauses: list[str] = []
+        params: list[Any] = []
+        if since is not None:
+            clauses.append("observed_at >= ?")
+            params.append(_iso_timestamp(since))
+        if until is not None:
+            clauses.append("observed_at <= ?")
+            params.append(_iso_timestamp(until))
+        where = "" if not clauses else f"WHERE {' AND '.join(clauses)}"
+
+        with self._connect() as connection:
+            if limit is None:
+                rows = connection.execute(
+                    f"""
+                    SELECT observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                           export_power_mw, export_energy_mwh_total, block_power_json
+                    FROM plant_history
+                    {where}
+                    ORDER BY observed_at
+                    """,
+                    tuple(params),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    f"""
+                    SELECT observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                           export_power_mw, export_energy_mwh_total, block_power_json
+                    FROM (
+                        SELECT observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                               export_power_mw, export_energy_mwh_total, block_power_json
+                        FROM plant_history
+                        {where}
+                        ORDER BY observed_at DESC
+                        LIMIT ?
+                    )
+                    ORDER BY observed_at
+                    """,
+                    tuple(params + [limit]),
+                ).fetchall()
+
+        return tuple(_plant_history_sample_from_row(row) for row in rows)
+
+    def prune_plant_history(self, *, before: datetime) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM plant_history
+                WHERE observed_at < ?
+                """,
+                (_iso_timestamp(before),),
+            )
+            return cursor.rowcount
+
+    def delete_plant_history(self) -> int:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM plant_history")
+            return cursor.rowcount
 
     def fetch_ops_settings(self) -> dict[str, Any]:
         with self._connect() as connection:
@@ -506,6 +612,33 @@ def _alert_from_row(row: sqlite3.Row) -> AlertRecord:
         asset_id=str(row["asset_id"]),
         message=row["message"],
         created_at=_parse_timestamp(str(row["created_at"])),
+    )
+
+
+def _plant_history_params(sample: PlantHistorySample) -> tuple[Any, ...]:
+    return (
+        _iso_timestamp(sample.observed_at),
+        sample.plant_power_mw,
+        sample.active_power_limit_pct,
+        sample.irradiance_w_m2,
+        sample.export_power_mw,
+        sample.export_energy_mwh_total,
+        _json_blob(tuple(sample.block_power_kw)),
+    )
+
+
+def _plant_history_sample_from_row(row: sqlite3.Row) -> PlantHistorySample:
+    block_power = json.loads(str(row["block_power_json"]))
+    return PlantHistorySample(
+        observed_at=_parse_timestamp(str(row["observed_at"])),
+        plant_power_mw=float(row["plant_power_mw"]),
+        active_power_limit_pct=float(row["active_power_limit_pct"]),
+        irradiance_w_m2=float(row["irradiance_w_m2"]),
+        export_power_mw=float(row["export_power_mw"]),
+        export_energy_mwh_total=(
+            None if row["export_energy_mwh_total"] is None else float(row["export_energy_mwh_total"])
+        ),
+        block_power_kw=tuple((str(asset_id), float(power_kw)) for asset_id, power_kw in block_power),
     )
 
 

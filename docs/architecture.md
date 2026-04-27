@@ -303,6 +303,7 @@ Wichtiger Grundsatz:
 - aktueller Anlagenzustand
 - Event-Historie
 - Alarmhistorie
+- 30-Tage-Anlagenhistorie fuer HMI-Erzeugungstrends
 - Exportstatus
 - optionale Rohartefakte wie JSONL oder PCAP
 

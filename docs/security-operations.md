@@ -63,6 +63,9 @@ Eigenschaften:
   Remote-Zugriff nur ueber Tunnel/VPN oder vergleichbare Zugriffsschicht
 - operative Ops-Backend-Settings liegen persistent im lokalen Eventstore;
   Aenderungen erzeugen `ops.settings.updated`-Events
+- Anlagenhistorie fuer HMI-Trends liegt als `plant_history` im lokalen
+  SQLite-Store, ist auf 30 Tage begrenzt und kann im Ops-Backend gezielt
+  geloescht werden; diese Wartungsaktion erzeugt `ops.history.deleted`
 - Source-IP-Anreicherung nutzt lokale Mapping-/GeoIP-Daten; rDNS ist
   standardmaessig deaktiviert, weil es aktiven DNS-Egress erzeugt
 - ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
@@ -272,6 +275,8 @@ Aktueller lokaler V1-Pfad:
 - `uv run python -m honeypot.main --reset-runtime`
 - entfernt `EVENT_STORE_PATH`, SQLite-`-wal`/`-shm`, `JSONL_ARCHIVE_PATH`,
   `RUNTIME_STATUS_PATH` und `PCAP_CAPTURE_PATH`
+- der Ops-Settings-Knopf loescht nur `plant_history`; Event- und Alertspuren
+  bleiben fuer Forensik erhalten
 - verweigert Verzeichnis- oder Symlink-Artefaktpfade, um keine unsauberen
   Reset-Loeschpfade zu oeffnen
 

@@ -10,6 +10,7 @@ import pytest
 
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
+from honeypot.history_core import PlantHistorySample
 from honeypot.ops_web import create_ops_app
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
@@ -164,6 +165,57 @@ async def test_ops_settings_enable_static_ip_enrichment_and_audit_change(tmp_pat
     assert any(source["rdns"] == "scan.example.test" for source in enriched_sources)
     assert store.fetch_ops_settings()["ip_enrichment_enabled"] is True
     assert any(event.event_type == "ops.settings.updated" for event in store.fetch_events())
+
+
+@pytest.mark.asyncio
+async def test_ops_settings_delete_plant_history_and_audit_event(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-history.db")
+    seed_ops_store(store)
+    store.append_plant_history_samples(
+        (
+            PlantHistorySample(
+                observed_at=datetime(2026, 4, 26, 19, 0, tzinfo=UTC),
+                plant_power_mw=4.2,
+                active_power_limit_pct=100.0,
+                irradiance_w_m2=640.0,
+                export_power_mw=4.18,
+                export_energy_mwh_total=12.5,
+                block_power_kw=(("invb-01", 1400.0),),
+            ),
+            PlantHistorySample(
+                observed_at=datetime(2026, 4, 26, 20, 0, tzinfo=UTC),
+                plant_power_mw=3.6,
+                active_power_limit_pct=100.0,
+                irradiance_w_m2=520.0,
+                export_power_mw=3.58,
+                export_energy_mwh_total=16.08,
+                block_power_kw=(("invb-01", 1200.0),),
+            ),
+        )
+    )
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        settings_page = await client.get("/settings")
+        csrf_token = _extract_csrf_token(settings_page.text)
+        response = await client.post(
+            "/settings/history/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+
+    events = store.fetch_events()
+    history_event = events[-1]
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/settings?history_deleted=1"
+    assert store.count_rows("plant_history") == 0
+    assert store.count_rows("event_log") == 2
+    assert store.count_rows("alert_log") == 1
+    assert history_event.event_type == "ops.history.deleted"
+    assert history_event.action == "delete_plant_history"
+    assert history_event.resulting_value == {"deleted_rows": 2}
 
 
 def _extract_csrf_token(rendered_html: str) -> str:

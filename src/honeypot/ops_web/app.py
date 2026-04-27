@@ -196,6 +196,8 @@ def create_ops_app(
             settings=load_ops_settings(event_store),
             csrf_token=settings_csrf_token,
             saved=request.query_params.get("saved") == "1",
+            history_deleted=request.query_params.get("history_deleted") == "1",
+            plant_history_count=event_store.count_rows("plant_history"),
         )
         return templates.TemplateResponse(request=request, name="settings.html", context=context)
 
@@ -214,6 +216,7 @@ def create_ops_app(
                 config=config,
                 settings=before,
                 csrf_token=settings_csrf_token,
+                plant_history_count=event_store.count_rows("plant_history"),
                 error=str(exc),
                 saved=False,
             )
@@ -234,6 +237,23 @@ def create_ops_app(
                 settings=after,
             )
         return RedirectResponse(url="/settings?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/settings/history/delete", response_class=HTMLResponse, include_in_schema=False)
+    async def settings_delete_history(request: Request, _: None = Depends(require_ops_auth)) -> Any:
+        form = await _read_ops_form(request)
+        if _first_form_value(form, "csrf_token") != settings_csrf_token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid settings token")
+
+        before_count = event_store.count_rows("plant_history")
+        deleted_count = event_store.delete_plant_history()
+        _record_history_delete(
+            request=request,
+            event_recorder=ops_event_recorder,
+            before_count=before_count,
+            deleted_count=deleted_count,
+            after_count=event_store.count_rows("plant_history"),
+        )
+        return RedirectResponse(url="/settings?history_deleted=1", status_code=status.HTTP_303_SEE_OTHER)
 
     @app.get("/api/summary", include_in_schema=False)
     async def api_summary(_: None = Depends(require_ops_auth)) -> dict[str, Any]:
@@ -338,6 +358,8 @@ def _settings_context(
     settings: OpsBackendSettings,
     csrf_token: str,
     saved: bool = False,
+    history_deleted: bool = False,
+    plant_history_count: int = 0,
     error: str = "",
 ) -> dict[str, Any]:
     return _template_context(
@@ -347,6 +369,8 @@ def _settings_context(
         settings=settings,
         csrf_token=csrf_token,
         saved=saved,
+        history_deleted=history_deleted,
+        plant_history_count=plant_history_count,
         error=error,
     )
 
@@ -402,6 +426,36 @@ def _record_settings_change(
         resulting_value=settings.to_mapping(),
         message="Ops backend settings updated",
         tags=("ops", "settings"),
+    )
+    event_recorder.record(event)
+
+
+def _record_history_delete(
+    *,
+    request: Request,
+    event_recorder: EventRecorder,
+    before_count: int,
+    deleted_count: int,
+    after_count: int,
+) -> None:
+    event = event_recorder.build_event(
+        event_type="ops.history.deleted",
+        category="system",
+        severity="medium",
+        source_ip=_request_source_ip(request),
+        actor_type="ops_user",
+        component="ops-web",
+        asset_id="ops-backend",
+        action="delete_plant_history",
+        result="accepted",
+        protocol="http",
+        service="ops-web",
+        endpoint_or_register="/settings/history/delete",
+        requested_value={"target": "plant_history", "row_count_before": before_count},
+        resulting_value={"deleted_rows": deleted_count},
+        resulting_state={"plant_history_rows": after_count},
+        message="Ops backend plant history deleted",
+        tags=("ops", "settings", "history-delete"),
     )
     event_recorder.record(event)
 

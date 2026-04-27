@@ -470,11 +470,14 @@ async def test_trends_page_renders_snapshot_derived_traces_and_logs_hmi_events(t
     assert "Plant Power" in response.text
     assert "Irradiance" in response.text
     assert "Export Power" in response.text
+    assert "Export Energy" in response.text
+    assert "History Window" in response.text
     assert "invb-01" in response.text
     assert "5.80 MW" in response.text
     assert "100.0 %" in response.text
     assert trends_event.event_type == "hmi.page.trends_viewed"
-    assert trends_event.resulting_state["series_count"] == 7
+    assert trends_event.resulting_state["series_count"] == 8
+    assert trends_event.resulting_state["trend_window"] == "30d"
     assert trends_event.resulting_state["plant_power_mw"] == 5.8
 
 
@@ -513,7 +516,7 @@ async def test_trends_page_uses_live_history_without_location_leak(tmp_path: Pat
 
     assert response.status_code == 200
     assert "Trend Overview" in response.text
-    assert "The trace shows recent live movement across output and irradiance." in response.text
+    assert "The trace shows recent live movement across output and generation." in response.text
     assert "Start / 5.80 MW" in response.text
     assert "Current values stay aligned with the baseline operating trace." not in response.text
     assert "52.52" not in response.text
