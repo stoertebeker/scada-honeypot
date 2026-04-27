@@ -14,6 +14,7 @@ from honeypot.asset_domain.fixtures import AssetFixture, PlantFixture
 OperatingMode = Literal["normal", "curtailed", "maintenance", "faulted"]
 AvailabilityState = Literal["available", "partially_available", "unavailable"]
 BreakerState = Literal["closed", "open", "transitioning"]
+DcDisconnectState = Literal["closed", "open", "transitioning"]
 CommunicationState = Literal["healthy", "degraded", "lost"]
 AssetStatus = Literal["online", "offline", "degraded", "faulted"]
 DataQuality = Literal["good", "estimated", "stale", "invalid"]
@@ -68,6 +69,7 @@ class InverterBlock(AssetBase):
 
     block_power_kw: float = Field(ge=0)
     availability_pct: int = Field(ge=0, le=100)
+    dc_disconnect_state: DcDisconnectState = "closed"
     block_dc_voltage_v: float | None = Field(default=None, ge=0)
     block_dc_current_a: float | None = Field(default=None, ge=0)
     block_ac_voltage_v: float | None = Field(default=None, ge=0)
@@ -224,6 +226,7 @@ class PlantSnapshot(BaseModel):
                         last_update_ts=fixture.start_time,
                         block_power_kw=_measurement_float(asset, "block_power_kw"),
                         availability_pct=_measurement_int(asset, "availability_pct"),
+                        dc_disconnect_state=_measurement_string(asset, "dc_disconnect_state", fallback="closed"),
                         block_dc_voltage_v=_optional_measurement_float(asset, "block_dc_voltage_v"),
                         block_dc_current_a=_optional_measurement_float(asset, "block_dc_current_a"),
                         block_ac_voltage_v=_optional_measurement_float(asset, "block_ac_voltage_v"),

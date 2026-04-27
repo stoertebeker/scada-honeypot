@@ -131,6 +131,36 @@ def test_block_enable_request_zeroes_target_block_and_reduces_site_power() -> No
     assert disabled_snapshot.revenue_meter.export_power_kw == pytest.approx(3880.0)
 
 
+def test_block_dc_disconnect_isolates_pv_input_without_losing_comms() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    isolated_snapshot = simulator.apply_block_dc_disconnect_state(
+        snapshot,
+        asset_id="invb-02",
+        dc_disconnect_state="open",
+    )
+    restored_snapshot = simulator.apply_block_dc_disconnect_state(
+        isolated_snapshot,
+        asset_id="invb-02",
+        dc_disconnect_state="closed",
+    )
+
+    isolated_block = next(block for block in isolated_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    restored_block = next(block for block in restored_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    assert isolated_block.dc_disconnect_state == "open"
+    assert isolated_block.status == "online"
+    assert isolated_block.communication_state == "healthy"
+    assert isolated_block.availability_pct == 0
+    assert isolated_block.block_power_kw == pytest.approx(0.0)
+    assert isolated_snapshot.site.plant_power_mw == pytest.approx(3.88)
+    assert isolated_snapshot.revenue_meter.export_power_kw == pytest.approx(3880.0)
+    assert isolated_snapshot.active_alarm_codes == ()
+    assert restored_block.dc_disconnect_state == "closed"
+    assert restored_block.availability_pct == 100
+    assert restored_snapshot.site.plant_power_mw == pytest.approx(5.8)
+
+
 def test_sequential_block_enable_requests_preserve_prior_disabled_blocks() -> None:
     snapshot = build_snapshot()
     simulator = PlantSimulator.from_snapshot(snapshot)
@@ -159,6 +189,41 @@ def test_sequential_block_enable_requests_preserve_prior_disabled_blocks() -> No
     assert remaining_block.block_power_kw > 1900
     assert second_disabled_snapshot.site.plant_power_mw < 2.0
     assert second_disabled_snapshot.site.availability_state == "partially_available"
+
+
+def test_block_dc_disconnect_records_process_event_and_current_state(tmp_path) -> None:
+    snapshot = build_snapshot()
+    simulator, store = build_recording_simulator(snapshot, tmp_path)
+
+    simulator.apply_block_dc_disconnect_state(
+        snapshot,
+        asset_id="invb-02",
+        dc_disconnect_state="open",
+        event_context=SimulationEventContext(
+            source_ip="203.0.113.50",
+            actor_type="remote_client",
+            correlation_id="corr_dc_disconnect",
+            protocol="http",
+            service="web-hmi",
+            session_id="svc_dc_disconnect",
+        ),
+    )
+
+    events = store.fetch_events()
+    inverter_states = store.fetch_current_state("inverter_blocks")
+    isolated_block_state = next(block for block in inverter_states if block["asset_id"] == "invb-02")
+
+    assert len(events) == 1
+    assert events[0].event_type == "process.control.block_dc_disconnect_changed"
+    assert events[0].action == "set_block_dc_disconnect_state"
+    assert events[0].asset_id == "invb-02"
+    assert events[0].requested_value == "open"
+    assert events[0].previous_value == "closed"
+    assert events[0].resulting_value == "open"
+    assert events[0].resulting_state["block_power_kw"] == pytest.approx(0.0)
+    assert events[0].resulting_state["plant_power_mw"] == pytest.approx(3.88)
+    assert isolated_block_state["dc_disconnect_state"] == "open"
+    assert isolated_block_state["block_power_kw"] == pytest.approx(0.0)
 
 
 def test_block_reset_restores_comm_loss_block_without_forcing_plant_mode() -> None:

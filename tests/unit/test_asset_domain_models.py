@@ -20,6 +20,7 @@ def test_plant_snapshot_maps_normal_operation_fixture() -> None:
     assert snapshot.power_plant_controller.last_update_ts == snapshot.start_time
     assert tuple(block.asset_id for block in snapshot.inverter_blocks) == ("invb-01", "invb-02", "invb-03")
     assert all(block.last_update_ts == snapshot.start_time for block in snapshot.inverter_blocks)
+    assert all(block.dc_disconnect_state == "closed" for block in snapshot.inverter_blocks)
     assert snapshot.total_inverter_power_kw == pytest.approx(5800.0)
     assert snapshot.weather_station.module_temperature_c == pytest.approx(31.5)
     assert snapshot.weather_station.wind_speed_m_s == pytest.approx(4.2)

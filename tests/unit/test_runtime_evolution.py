@@ -221,6 +221,35 @@ def test_background_evolution_preserves_latched_inverter_block_controls() -> Non
     assert limited_block.block_power_kw < unrestricted_block.block_power_kw * 0.5
 
 
+def test_background_evolution_preserves_dc_disconnect_state() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+    register_map = ReadOnlyRegisterMap(snapshot, simulator=simulator)
+    register_map.set_block_dc_disconnect_state(asset_id="invb-02", dc_disconnect_state="open")
+    service = BackgroundPlantEvolutionService(
+        register_map=register_map,
+        history=TrendHistoryBuffer(max_samples=8),
+        clock=FrozenClock(datetime(2026, 4, 27, 10, 30, tzinfo=UTC)),
+        simulator=simulator,
+        weather_provider=DeterministicDiurnalWeatherProvider(),
+        timezone="Europe/Berlin",
+        weather_latitude=53.5511,
+        weather_longitude=9.9937,
+        weather_elevation_m=15,
+    )
+
+    evolved_snapshot = service.evolve_once()
+    isolated_block = next(block for block in evolved_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    active_block = next(block for block in evolved_snapshot.inverter_blocks if block.asset_id == "invb-01")
+
+    assert isolated_block.dc_disconnect_state == "open"
+    assert isolated_block.status == "online"
+    assert isolated_block.communication_state == "healthy"
+    assert isolated_block.block_power_kw == 0.0
+    assert active_block.block_power_kw > 0
+    assert evolved_snapshot.site.plant_power_mw < snapshot.site.plant_power_mw
+
+
 def test_seed_plant_history_creates_one_month_generation_history(tmp_path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "history.db")

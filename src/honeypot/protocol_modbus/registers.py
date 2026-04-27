@@ -149,6 +149,17 @@ class RegisterMultiWriteResult:
     resulting_state: dict[str, object]
 
 
+@dataclass(frozen=True, slots=True)
+class PlantControlResult:
+    """Rueckgabe eines internen Service-Control-Pfads ohne eigenes Modbus-Register."""
+
+    asset_id: str
+    requested_value: object
+    previous_value: object
+    resulting_value: object
+    resulting_state: dict[str, object]
+
+
 class ReadOnlyRegisterMap:
     """Registersicht fuer die aktiven V1-Modbus-Slices."""
 
@@ -335,6 +346,49 @@ class ReadOnlyRegisterMap:
         except ModbusRegisterError as exc:
             raise ValueError(str(exc)) from exc
         return raw_limit / 10
+
+    def get_block_dc_disconnect_state(self, *, asset_id: str) -> str:
+        """Liest den sichtbaren PV/DC-Isolatorzustand eines Inverter-Blocks."""
+
+        try:
+            unit_id = _unit_id_for_inverter_asset(asset_id)
+            with self._lock:
+                return _inverter_block_for_unit(self._snapshot, unit_id).dc_disconnect_state
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
+
+    def set_block_dc_disconnect_state(
+        self,
+        *,
+        asset_id: str,
+        dc_disconnect_state: str,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantControlResult:
+        """Setzt den simulierten PV/DC-Isolator eines Inverter-Blocks."""
+
+        try:
+            unit_id = _unit_id_for_inverter_asset(asset_id)
+            with self._lock:
+                previous_block = _inverter_block_for_unit(self._snapshot, unit_id)
+                working_snapshot = self._simulator.apply_block_dc_disconnect_state(
+                    self._snapshot,
+                    asset_id=asset_id,
+                    dc_disconnect_state=dc_disconnect_state,
+                    event_context=event_context,
+                )
+                self._replace_snapshot_locked(working_snapshot)
+                resulting_block = _inverter_block_for_unit(self._snapshot, unit_id)
+                return PlantControlResult(
+                    asset_id=asset_id,
+                    requested_value=dc_disconnect_state,
+                    previous_value=previous_block.dc_disconnect_state,
+                    resulting_value=resulting_block.dc_disconnect_state,
+                    resulting_state=self._write_result_state(unit_id),
+                )
+        except PlantSimulationError as exc:
+            raise ValueError(str(exc)) from exc
+        except ModbusRegisterError as exc:
+            raise ValueError(str(exc)) from exc
 
     def get_block_control_states(self) -> dict[str, tuple[bool, float]]:
         """Liefert die aktuell gelatchten Inverter-Enable- und Leistungslimit-Requests."""
@@ -731,6 +785,7 @@ class ReadOnlyRegisterMap:
                 "status": block.status,
                 "communication_state": block.communication_state,
                 "availability_pct": block.availability_pct,
+                "dc_disconnect_state": block.dc_disconnect_state,
                 "block_power_kw": block.block_power_kw,
                 "plant_power_mw": self._snapshot.site.plant_power_mw,
                 "active_alarm_codes": list(self._snapshot.active_alarm_codes),

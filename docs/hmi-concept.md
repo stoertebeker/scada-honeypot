@@ -275,6 +275,7 @@ Anzuzeigende Inhalte je Block:
 - Status
 - Kommunikationszustand
 - Leistung
+- PV-/DC-Isolatorzustand
 - AC-/DC-nahe Werte
 - Temperatur
 - lokale Alarmanzahl
@@ -284,6 +285,7 @@ Optionale Interaktion:
 - nur fuer berechtigte Service-Sicht:
   - enable/disable request
   - power limit request
+  - PV-/DC-Isolator oeffnen/schliessen
   - reset request
 
 ### 7.4 `/weather`
@@ -569,6 +571,7 @@ Beispiele:
 - `overview.plant_power` <-> `Unit 1 / 40104-40105`
 - `overview.breaker_state` <-> `Unit 1 / 40109`
 - `inverters.block_power` <-> `Unit 11-13 / 40104-40105`
+- `inverters.pv_isolator` <-> gemeinsamer `PlantSnapshot.inverter_blocks[*].dc_disconnect_state`
 - `weather.irradiance` <-> `Unit 21 / 40103`
 - `meter.export_power` <-> `Unit 31 / 40103-40104`
 - `single-line.breaker_state` <-> `Unit 41 / 40102`

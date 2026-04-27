@@ -1176,6 +1176,71 @@ async def test_service_panel_inverter_block_controls_shared_truth_and_log_events
 
 
 @pytest.mark.asyncio
+async def test_service_panel_dc_disconnect_switch_reduces_output_and_logs_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-dc-disconnect.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app, register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path, recorder=recorder)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        csrf_token = await login_service_client(client)
+        control_response = await client.post(
+            "/service/panel/inverter-block/dc-disconnect",
+            data={
+                SERVICE_CSRF_FIELD_NAME: csrf_token,
+                "asset_id": "invb-02",
+                "dc_disconnect_open": "1",
+            },
+            follow_redirects=False,
+        )
+        panel_response = await client.get(control_response.headers["location"])
+        inverters_response = await client.get("/inverters")
+
+    events = store.fetch_events()
+    control_event = next(
+        event
+        for event in events
+        if event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "set_block_dc_disconnect_state"
+    )
+    process_event = next(event for event in events if event.event_type == "process.control.block_dc_disconnect_changed")
+    isolated_block = register_map.snapshot.inverter_blocks[1]
+
+    assert control_response.status_code == 303
+    assert control_response.headers["location"] == "/service/panel?status=dc_disconnect_updated"
+    assert panel_response.status_code == 200
+    assert "PV disconnect state updated successfully." in panel_response.text
+    assert "PV Disconnect Open" in panel_response.text
+    assert inverters_response.status_code == 200
+    assert "PV Isolator" in inverters_response.text
+    assert "PV isolated" in inverters_response.text
+    assert isolated_block.asset_id == "invb-02"
+    assert isolated_block.dc_disconnect_state == "open"
+    assert isolated_block.status == "online"
+    assert isolated_block.communication_state == "healthy"
+    assert isolated_block.block_power_kw == 0.0
+    assert register_map.snapshot.site.plant_power_mw == pytest.approx(3.88)
+    assert register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12).values[0:6] == (
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    assert control_event.result == "accepted"
+    assert control_event.requested_value["asset_id"] == "invb-02"
+    assert control_event.requested_value["dc_disconnect_state"] == "open"
+    assert control_event.requested_value["http_path"] == "/service/panel/inverter-block/dc-disconnect"
+    assert control_event.previous_value == "closed"
+    assert control_event.resulting_value["value"] == "open"
+    assert control_event.resulting_value["http_status"] == 303
+    assert control_event.resulting_state["block_power_kw"] == 0.0
+    assert control_event.correlation_id == process_event.correlation_id
+
+
+@pytest.mark.asyncio
 async def test_service_panel_inverter_block_reset_recovers_comm_loss_and_logs_control_event(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")

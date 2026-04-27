@@ -84,6 +84,7 @@ Jeder Block hat:
 - Verfuegbarkeit
 - AC-Leistung
 - DC-nahe Indikatoren
+- PV-/DC-Isolatorzustand
 - Kommunikationsstatus
 - eigene Alarme
 
@@ -331,7 +332,15 @@ Wenn der Breaker offen ist:
 - Alarme koennen aktiv werden
 - die Anlage kann in `faulted` oder `unavailable` wechseln
 
-### 9.4 Kommunikation beeinflusst Sichtbarkeit
+### 9.4 PV-/DC-Isolator beeinflusst Blockleistung
+
+Wenn ein Inverter-Block `dc_disconnect_state = open` hat:
+- bleibt der Inverter kommunikativ sichtbar
+- faellt die Blockleistung auf null
+- sinken Parkleistung und Export entsprechend dem betroffenen Blockanteil
+- `/inverters` zeigt den Block als PV-seitig isoliert
+
+### 9.5 Kommunikation beeinflusst Sichtbarkeit
 
 Wenn ein Asset `communication_state = lost` hat:
 - werden Werte als `stale` oder `invalid` markiert
@@ -504,6 +513,8 @@ Diese fachlichen Regeln sollten spaeter explizit getestet werden:
 - Parkleistung kann nicht ueber laengere Zeit deutlich ueber verfuegbarem
   Wetterpotenzial liegen
 - geoeffneter Breaker reduziert Export sichtbar
+- offener PV-/DC-Isolator reduziert genau den betroffenen Inverter-Block,
+  ohne Kommunikationsverlust vorzutaeuschen
 - Kommunikationsverlust fuehrt nicht automatisch zu denselben Effekten wie
   echte Leistungsreduktion
 - Quittierung eines Alarms setzt den Prozess nicht automatisch zurueck

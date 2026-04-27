@@ -896,6 +896,48 @@ def test_playwright_inverter_block_control_updates_inverters_view(runtime: Local
     )
 
 
+def test_playwright_dc_disconnect_switch_updates_inverters_view(runtime: LocalRuntime, page: Page) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    _login_to_service_panel(page, base_url=base_url)
+
+    block_card = page.locator("article.block-card").filter(has=page.get_by_text("invb-02"))
+    expect(block_card).to_contain_text("invb-02")
+    block_card.get_by_label("PV Disconnect Open").check()
+    block_card.get_by_role("button", name="Apply PV Disconnect").click()
+
+    expect(page).to_have_url(re.compile(r".*/service/panel\?status=dc_disconnect_updated$"))
+    expect(page.get_by_text("PV disconnect state updated successfully.")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("PV isolated")
+
+    page.get_by_role("link", name="Inverters").click()
+
+    expect(page).to_have_url(re.compile(r".*/inverters$"))
+    expect(page.get_by_role("heading", name="Inverter Fleet")).to_be_visible()
+    expect(page.locator("body")).to_contain_text("PV Isolator")
+    expect(page.locator("body")).to_contain_text("PV isolated")
+    expect(page.locator("body")).to_contain_text("0.0 kW")
+
+    events = runtime.event_store.fetch_events()
+
+    assert any(
+        event.event_type == "hmi.action.service_control_submitted"
+        and event.action == "set_block_dc_disconnect_state"
+        and event.result == "accepted"
+        and event.asset_id == "invb-02"
+        for event in events
+    )
+    assert any(
+        event.event_type == "process.control.block_dc_disconnect_changed"
+        and event.asset_id == "invb-02"
+        and event.resulting_state["block_power_kw"] == 0.0
+        for event in events
+    )
+    assert runtime.modbus_service.register_map.snapshot.inverter_blocks[1].dc_disconnect_state == "open"
+    assert runtime.modbus_service.register_map.snapshot.site.plant_power_mw < 5.8
+
+
 def test_playwright_block_reset_recovers_comm_loss_in_inverters_and_alarms(runtime: LocalRuntime, page: Page) -> None:
     _seed_runtime_comm_loss(runtime, asset_id="invb-02")
 

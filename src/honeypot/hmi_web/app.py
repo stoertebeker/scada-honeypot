@@ -152,6 +152,7 @@ class InverterDetailRow:
     quality_label: str
     power_label: str
     availability_label: str
+    dc_disconnect_label: str
     dc_label: str
     ac_label: str
     temperature_label: str
@@ -324,6 +325,9 @@ class ServiceInverterControl:
     power_label: str
     enable_request_value: str
     power_limit_pct_value: str
+    dc_disconnect_state_value: str
+    dc_disconnect_label: str
+    dc_disconnect_checked: bool
     tone: str
 
 
@@ -386,6 +390,16 @@ class ServiceControlPort(Protocol):
     def get_block_enable_request(self, *, asset_id: str) -> int: ...
 
     def get_block_power_limit_pct(self, *, asset_id: str) -> float: ...
+
+    def get_block_dc_disconnect_state(self, *, asset_id: str) -> str: ...
+
+    def set_block_dc_disconnect_state(
+        self,
+        *,
+        asset_id: str,
+        dc_disconnect_state: str,
+        event_context: SimulationEventContext | None = None,
+    ) -> Any: ...
 
     def set_block_control_state(
         self,
@@ -1691,6 +1705,191 @@ def create_hmi_app(
             status_code="block_control_updated",
         )
 
+    @app.post("/service/panel/inverter-block/dc-disconnect", response_class=HTMLResponse, include_in_schema=False)
+    async def service_panel_inverter_block_dc_disconnect(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        before_snapshot = snapshot_provider()
+        correlation_id = uuid4().hex
+
+        if service_controls is None:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id="inverter-block",
+                action="set_block_dc_disconnect_state",
+                result="rejected",
+                requested_value={"asset_id": None, "dc_disconnect_state": None},
+                resulting_state={"controls_available": False},
+                message="Service inverter block PV/DC disconnect path unavailable",
+                tags=("service", "control", "inverter-block", "dc-disconnect", "web"),
+                error_code="service_control_unavailable",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                config=config,
+                status_code="control_unavailable",
+            )
+
+        try:
+            form = await _read_urlencoded_form(request)
+            _validate_service_csrf_token(form, service_session)
+        except HmiFormRequestError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id="inverter-block",
+                action="set_block_dc_disconnect_state",
+                result="rejected",
+                requested_value={"asset_id": "", "dc_disconnect_open": ""},
+                resulting_state={"asset_id": ""},
+                message="Service inverter block PV/DC disconnect used an invalid form body",
+                tags=("service", "control", "inverter-block", "dc-disconnect", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                config=config,
+                status_code="control_invalid",
+            )
+
+        asset_id = (form.get("asset_id", [""])[0]).strip()
+        raw_disconnect_open = (form.get("dc_disconnect_open", ["0"])[0]).strip()
+        try:
+            before_block = _require_inverter_block(before_snapshot, asset_id)
+            current_dc_disconnect_state = service_controls.get_block_dc_disconnect_state(asset_id=asset_id)
+        except ValueError:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id or "inverter-block",
+                action="set_block_dc_disconnect_state",
+                result="rejected",
+                requested_value={"asset_id": asset_id, "dc_disconnect_open": raw_disconnect_open},
+                resulting_state={"asset_id": asset_id},
+                message="Service inverter block PV/DC disconnect used an invalid asset id",
+                tags=("service", "control", "inverter-block", "dc-disconnect", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                config=config,
+                status_code="control_invalid",
+            )
+
+        if raw_disconnect_open not in {"0", "1"}:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id,
+                action="set_block_dc_disconnect_state",
+                result="rejected",
+                requested_value={"asset_id": asset_id, "dc_disconnect_open": raw_disconnect_open},
+                previous_value=current_dc_disconnect_state,
+                resulting_state={
+                    "dc_disconnect_state": current_dc_disconnect_state,
+                    "status": before_block.status,
+                    "communication_state": before_block.communication_state,
+                    "block_power_kw": before_block.block_power_kw,
+                },
+                message="Service inverter block PV/DC disconnect request could not be parsed",
+                tags=("service", "control", "inverter-block", "dc-disconnect", "web"),
+                error_code="service_control_invalid",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                config=config,
+                status_code="control_invalid",
+            )
+
+        requested_dc_disconnect_state = "open" if raw_disconnect_open == "1" else "closed"
+        event_context = SimulationEventContext(
+            source_ip=source_ip,
+            actor_type="remote_client",
+            correlation_id=correlation_id,
+            session_id=service_session.handle,
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+        )
+        try:
+            result = service_controls.set_block_dc_disconnect_state(
+                asset_id=asset_id,
+                dc_disconnect_state=requested_dc_disconnect_state,
+                event_context=event_context,
+            )
+        except ValueError as exc:
+            _record_service_control_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=service_session.handle,
+                correlation_id=correlation_id,
+                asset_id=asset_id,
+                action="set_block_dc_disconnect_state",
+                result="rejected",
+                requested_value={"asset_id": asset_id, "dc_disconnect_state": requested_dc_disconnect_state},
+                previous_value=current_dc_disconnect_state,
+                resulting_state={
+                    "dc_disconnect_state": current_dc_disconnect_state,
+                    "status": before_block.status,
+                    "communication_state": before_block.communication_state,
+                    "block_power_kw": before_block.block_power_kw,
+                },
+                message=f"Service inverter block PV/DC disconnect request rejected: {exc}",
+                tags=("service", "control", "inverter-block", "dc-disconnect", "web"),
+                error_code="service_control_rejected",
+            )
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                config=config,
+                status_code="control_rejected",
+            )
+
+        _record_service_control_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=service_session.handle,
+            correlation_id=correlation_id,
+            asset_id=result.asset_id,
+            action="set_block_dc_disconnect_state",
+            result="accepted",
+            requested_value={"asset_id": asset_id, "dc_disconnect_state": requested_dc_disconnect_state},
+            previous_value=current_dc_disconnect_state,
+            resulting_value=result.resulting_value,
+            resulting_state=result.resulting_state,
+            message="Service inverter block PV/DC disconnect request accepted",
+            tags=("service", "control", "inverter-block", "dc-disconnect", "web"),
+        )
+        return _service_panel_redirect_response(
+            session_id=session_id,
+            set_cookie=set_cookie,
+            service_session=service_session,
+            config=config,
+            status_code="dc_disconnect_updated",
+        )
+
     @app.post("/service/panel/inverter-block/reset", response_class=HTMLResponse, include_in_schema=False)
     async def service_panel_inverter_block_reset(request: Request) -> HTMLResponse:
         service_session = _require_service_session(
@@ -2028,7 +2227,7 @@ def build_overview_view_model(
             quality_label=_enum_text(texts, block.quality),
             power_label=f"{block.block_power_kw:.0f} kW",
             local_alarm_count=_inverter_local_alarm_count(block),
-            tone=_tone_for_block(block.status, block.communication_state),
+            tone=_tone_for_inverter_block(block),
         )
         for block in snapshot.inverter_blocks
     )
@@ -2092,8 +2291,8 @@ def build_single_line_view_model(
             asset_id=block.asset_id,
             title=block.asset_id.upper(),
             status_label=_enum_text(texts, block.status),
-            detail_label=f"{_format_power_kw(block.block_power_kw)} / {_enum_text(texts, block.communication_state)}",
-            tone=_tone_for_block(block.status, block.communication_state),
+            detail_label=_single_line_inverter_detail_label(block, texts),
+            tone=_tone_for_inverter_block(block),
         )
         for block in snapshot.inverter_blocks
     )
@@ -2134,11 +2333,12 @@ def build_inverters_view_model(
             quality_label=_enum_text(texts, block.quality),
             power_label=_format_block_power_kw(block.block_power_kw),
             availability_label=f"{block.availability_pct} %",
+            dc_disconnect_label=_inverter_dc_disconnect_label(block, texts),
             dc_label=_format_block_bus_values(block, block.block_dc_voltage_v, block.block_dc_current_a, texts),
             ac_label=_format_block_bus_values(block, block.block_ac_voltage_v, block.block_ac_current_a, texts),
             temperature_label=_format_block_temperature(block, texts),
             local_alarm_count=_inverter_local_alarm_count(block),
-            tone=_tone_for_block(block.status, block.communication_state),
+            tone=_tone_for_inverter_block(block),
         )
         for block in snapshot.inverter_blocks
     )
@@ -2156,9 +2356,9 @@ def build_inverters_view_model(
             "alarm" if _count_degraded_blocks(snapshot) else "good",
         ),
         OverviewMetric(
-            "label.power_limit",
-            f"{snapshot.power_plant_controller.active_power_limit_pct:.1f} %",
-            _tone_for_limit(snapshot),
+            "label.pv_isolated_blocks",
+            str(_count_dc_isolated_blocks(snapshot)),
+            "warn" if _count_dc_isolated_blocks(snapshot) else "good",
         ),
     )
 
@@ -2467,7 +2667,7 @@ def build_trends_view_model(
                 title=f"{texts['trend.block_power']} {current_block.asset_id.upper()}",
                 values=_block_series(render_history, current_block.asset_id),
                 value_formatter=lambda value: f"{value:.1f} kW",
-                tone=_tone_for_block(current_block.status, current_block.communication_state),
+                tone=_tone_for_inverter_block(current_block),
             )
             for current_block in snapshot.inverter_blocks
         ),
@@ -2576,6 +2776,7 @@ def build_service_panel_view_model(
             texts["service.action.plant_mode"],
             texts["service.action.breaker"],
             texts["service.action.block_control"],
+            texts["service.action.dc_disconnect"],
             texts["service.action.block_reset"],
         ),
     )
@@ -2592,9 +2793,11 @@ def _service_panel_inverter_controls(
         if service_controls is None:
             enable_request = 0 if block.status == "offline" and block.availability_pct == 0 else 1
             power_limit_pct = 100.0
+            dc_disconnect_state = block.dc_disconnect_state
         else:
             enable_request = service_controls.get_block_enable_request(asset_id=block.asset_id)
             power_limit_pct = service_controls.get_block_power_limit_pct(asset_id=block.asset_id)
+            dc_disconnect_state = service_controls.get_block_dc_disconnect_state(asset_id=block.asset_id)
         controls.append(
             ServiceInverterControl(
                 asset_id=block.asset_id,
@@ -2603,7 +2806,10 @@ def _service_panel_inverter_controls(
                 power_label=_format_power_kw(block.block_power_kw),
                 enable_request_value=str(enable_request),
                 power_limit_pct_value=f"{power_limit_pct:.1f}",
-                tone=_tone_for_block(block.status, block.communication_state),
+                dc_disconnect_state_value=dc_disconnect_state,
+                dc_disconnect_label=_dc_disconnect_label(dc_disconnect_state, texts),
+                dc_disconnect_checked=dc_disconnect_state == "open",
+                tone=_tone_for_inverter_block(block),
             )
         )
     return tuple(controls)
@@ -2777,6 +2983,7 @@ def _service_panel_status(*, request: Request, texts: dict[str, str]) -> tuple[s
         "reactive_power_updated": ("service.status.reactive_power_updated", "good"),
         "plant_mode_updated": ("service.status.plant_mode_updated", "good"),
         "block_control_updated": ("service.status.block_control_updated", "good"),
+        "dc_disconnect_updated": ("service.status.dc_disconnect_updated", "good"),
         "block_reset_requested": ("service.status.block_reset_requested", "good"),
         "breaker_open_requested": ("service.status.breaker_open_requested", "good"),
         "breaker_close_requested": ("service.status.breaker_close_requested", "good"),
@@ -3143,6 +3350,14 @@ def _tone_for_quality(quality: str) -> str:
     return "alarm"
 
 
+def _tone_for_inverter_block(block: Any) -> str:
+    if block.dc_disconnect_state == "open":
+        return "warn"
+    if block.availability_pct == 0 and block.status != "faulted":
+        return "warn"
+    return _tone_for_block(block.status, block.communication_state)
+
+
 def _tone_for_block(status: str, communication_state: str) -> str:
     if communication_state == "lost" or status == "faulted":
         return "alarm"
@@ -3168,6 +3383,20 @@ def _inverter_local_alarm_count(block: Any) -> int:
     if block.status == "offline" or block.availability_pct == 0:
         count += 1
     return count
+
+
+def _dc_disconnect_label(dc_disconnect_state: str, texts: dict[str, str]) -> str:
+    return texts["state.pv_isolated"] if dc_disconnect_state == "open" else texts["state.connected"]
+
+
+def _inverter_dc_disconnect_label(block: Any, texts: dict[str, str]) -> str:
+    return _dc_disconnect_label(block.dc_disconnect_state, texts)
+
+
+def _single_line_inverter_detail_label(block: Any, texts: dict[str, str]) -> str:
+    if block.dc_disconnect_state == "open":
+        return f"{_format_power_kw(block.block_power_kw)} / {_inverter_dc_disconnect_label(block, texts)}"
+    return f"{_format_power_kw(block.block_power_kw)} / {_enum_text(texts, block.communication_state)}"
 
 
 def _snapshot_time(snapshot: PlantSnapshot) -> str:
@@ -3242,6 +3471,10 @@ def _count_degraded_blocks(snapshot: PlantSnapshot) -> int:
         for block in snapshot.inverter_blocks
         if block.status != "online" or block.communication_state != "healthy" or block.quality != "good"
     )
+
+
+def _count_dc_isolated_blocks(snapshot: PlantSnapshot) -> int:
+    return sum(1 for block in snapshot.inverter_blocks if block.dc_disconnect_state == "open")
 
 
 def _alert_history(event_recorder: EventRecorder | None) -> tuple[AlertRecord, ...]:

@@ -79,6 +79,7 @@ Hier suchst du:
 - Block mit Comm-Loss
 - Block mit `Offline by request` oder `Stale telemetry`
 - Block mit reduzierter Leistung
+- Block mit offenem PV-Isolator (`PV isolated`)
 - lokale Alarmanzahl
 
 Diese Seite ist die beste Gegenprobe fuer `Unit 11-13`.
@@ -160,10 +161,13 @@ Erwartete Wirkung:
 Aktionen:
 - Block `enable/disable`
 - Blockleistungslimit setzen
+- PV-/DC-Isolator oeffnen oder schliessen
 - Block-Reset ausloesen
 
 Erwartete Wirkung:
 - `/inverters` zeigt Status-, Leistungs- und Qualitaetsaenderungen
+- ein offener PV-/DC-Isolator setzt die Blockleistung auf `0`, ohne den
+  Inverter kommunikativ zu verlieren
 - Folge-Alerts sind moeglich, wenn mehrere Blocke betroffen sind
 
 ### 4.6 Breaker Open / Close
@@ -300,7 +304,7 @@ Schreibversuche dort fuehren zu:
    - Unit `12`, `40200 = 0`
    - optional zusaetzlich `40201 = 500`
 3. Wirkung pruefen:
-   - Block wirkt `Offline by request`, `Stale telemetry` oder leistungsgedrosselt
+   - Block wirkt `Offline by request`, `Stale telemetry`, `PV isolated` oder leistungsgedrosselt
    - Parkleistung kann sinken
 4. Rueckbau:
    - Unit `12`, `40200 = 1`

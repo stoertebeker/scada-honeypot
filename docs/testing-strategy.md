@@ -377,6 +377,8 @@ Pflichttests:
 - vierter Browser-Slice prueft `block_enable_request` und
   `block_power_limit_pct` auf `/service/panel` mit sichtbarer Wirkung in
   `/inverters`
+- weiterer Browser-Slice prueft den PV-/DC-Disconnect-Schalter auf
+  `/service/panel` mit sichtbarer 0-kW-Wirkung in `/inverters`
 - fuenfter Browser-Slice prueft `block_reset_request` nach simuliertem
   `COMM_LOSS_INVERTER_BLOCK` auf `/service/panel` mit sichtbarer Wirkung in
   `/inverters` und `/alarms`

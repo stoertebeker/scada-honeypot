@@ -200,11 +200,18 @@ class PlantSimulator:
 
         total_power_kw = self.estimate_available_power_kw(snapshot)
         inverter_blocks = _with_rebalanced_block_power(snapshot, total_power_kw)
+        effective_power_kw = round(sum(block.block_power_kw for block in inverter_blocks), 1)
+        available_count = sum(1 for block in inverter_blocks if block.availability_pct > 0)
+        availability_state = (
+            "unavailable"
+            if available_count == 0
+            else ("available" if available_count == len(inverter_blocks) else "partially_available")
+        )
         site = snapshot.site.model_copy(
             update={
                 "operating_mode": "normal",
-                "availability_state": "available",
-                "plant_power_mw": round(total_power_kw / 1000, 3),
+                "availability_state": availability_state,
+                "plant_power_mw": round(effective_power_kw / 1000, 3),
                 "plant_power_limit_pct": 100,
                 "breaker_state": "closed",
                 "communications_health": "healthy",
@@ -217,7 +224,7 @@ class PlantSimulator:
         )
         revenue_meter = snapshot.revenue_meter.model_copy(
             update={
-                "export_power_kw": total_power_kw,
+                "export_power_kw": effective_power_kw,
             }
         )
         grid_interconnect = snapshot.grid_interconnect.model_copy(
@@ -257,10 +264,18 @@ class PlantSimulator:
             1,
         )
         inverter_blocks = _with_rebalanced_block_power(base_snapshot, total_power_kw)
+        effective_power_kw = round(sum(block.block_power_kw for block in inverter_blocks), 1)
+        available_count = sum(1 for block in inverter_blocks if block.availability_pct > 0)
+        availability_state = (
+            "unavailable"
+            if available_count == 0
+            else ("available" if available_count == len(inverter_blocks) else "partially_available")
+        )
         site = base_snapshot.site.model_copy(
             update={
                 "operating_mode": "normal" if normalized_limit_pct == 100 else "curtailed",
-                "plant_power_mw": round(total_power_kw / 1000, 3),
+                "availability_state": availability_state,
+                "plant_power_mw": round(effective_power_kw / 1000, 3),
                 "plant_power_limit_pct": normalized_limit_pct,
             }
         )
@@ -271,7 +286,7 @@ class PlantSimulator:
         )
         revenue_meter = base_snapshot.revenue_meter.model_copy(
             update={
-                "export_power_kw": total_power_kw,
+                "export_power_kw": effective_power_kw,
             }
         )
         alarms = _replace_scenario_alarms(
@@ -456,6 +471,51 @@ class PlantSimulator:
         )
         return resulting_snapshot
 
+    def apply_block_dc_disconnect_state(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        asset_id: str,
+        dc_disconnect_state: str,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Oeffnet oder schliesst den simulierten PV/DC-Isolator eines Blocks."""
+
+        normalized_state = _normalize_dc_disconnect_state(dc_disconnect_state)
+        previous_block = _require_block(snapshot, asset_id)
+        resulting_snapshot = self._apply_inverter_block_control_matrix(
+            snapshot,
+            block_control_states={},
+            dc_disconnect_states={asset_id: normalized_state},
+        )
+        resulting_block = _require_block(resulting_snapshot, asset_id)
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.control.block_dc_disconnect_changed",
+            category="process",
+            severity="medium",
+            asset_id=asset_id,
+            action="set_block_dc_disconnect_state",
+            requested_value=normalized_state,
+            previous_value=previous_block.dc_disconnect_state,
+            resulting_value=resulting_block.dc_disconnect_state,
+            resulting_state={
+                "dc_disconnect_state": resulting_block.dc_disconnect_state,
+                "status": resulting_block.status,
+                "communication_state": resulting_block.communication_state,
+                "availability_pct": resulting_block.availability_pct,
+                "block_power_kw": resulting_block.block_power_kw,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "export_power_kw": resulting_snapshot.revenue_meter.export_power_kw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=None,
+            tags=("control-path", "inverter-block", "dc-disconnect"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
     def reset_block(
         self,
         snapshot: PlantSnapshot,
@@ -595,12 +655,14 @@ class PlantSimulator:
         snapshot: PlantSnapshot,
         *,
         block_control_states: dict[str, tuple[bool, float]],
+        dc_disconnect_states: dict[str, str] | None = None,
         reset_asset_ids: frozenset[str] = frozenset(),
     ) -> PlantSnapshot:
         merged_block_control_states = _current_block_control_states(
             snapshot=snapshot,
             baseline_block_power_kw=self.baseline_block_power_kw,
         )
+        merged_dc_disconnect_states = _current_dc_disconnect_states(snapshot)
         for control_asset_id, (control_enable_request, control_power_limit_pct) in block_control_states.items():
             if not 0 <= control_power_limit_pct <= 100:
                 raise PlantSimulationError("block_power_limit_pct muss im Bereich 0..100 liegen")
@@ -608,6 +670,11 @@ class PlantSimulator:
             merged_block_control_states[control_asset_id] = (
                 control_enable_request,
                 round(control_power_limit_pct, 1),
+            )
+        for control_asset_id, control_dc_disconnect_state in (dc_disconnect_states or {}).items():
+            _require_block(snapshot, control_asset_id)
+            merged_dc_disconnect_states[control_asset_id] = _normalize_dc_disconnect_state(
+                control_dc_disconnect_state
             )
 
         effective_total_power_kw = 0.0 if snapshot.site.breaker_state == "open" else round(
@@ -619,11 +686,13 @@ class PlantSimulator:
             total_power_kw=effective_total_power_kw,
             baseline_block_power_kw=self.baseline_block_power_kw,
             block_control_states=merged_block_control_states,
+            dc_disconnect_states=merged_dc_disconnect_states,
         )
 
         inverter_blocks = []
         for block in snapshot.inverter_blocks:
             block_enable_request, block_power_limit_pct = merged_block_control_states[block.asset_id]
+            dc_disconnect_state = merged_dc_disconnect_states[block.asset_id]
             target_limit_factor = round(block_power_limit_pct / 100, 3)
             is_reset = block.asset_id in reset_asset_ids
             if is_reset:
@@ -640,6 +709,10 @@ class PlantSimulator:
             if not block_enable_request:
                 status = "offline"
                 communication_state = "degraded"
+                availability_pct = 0
+            elif dc_disconnect_state == "open":
+                status = "online" if base_block.status == "offline" else base_block.status
+                communication_state = base_block.communication_state
                 availability_pct = 0
             elif _is_block_disabled(base_block):
                 status = "online"
@@ -662,6 +735,7 @@ class PlantSimulator:
                         "communication_state": communication_state,
                         "quality": determine_data_quality(status=status, communication_state=communication_state),
                         "availability_pct": availability_pct,
+                        "dc_disconnect_state": dc_disconnect_state,
                         "block_power_kw": block_power_kw,
                     }
                 )
@@ -944,8 +1018,8 @@ def _with_rebalanced_block_power(snapshot: PlantSnapshot, total_power_kw: float)
                 "status": "online",
                 "communication_state": "healthy",
                 "quality": determine_data_quality(status="online", communication_state="healthy"),
-                "availability_pct": 100,
-                "block_power_kw": distribution[index],
+                "availability_pct": 0 if _is_dc_disconnected(block) else 100,
+                "block_power_kw": 0.0 if _is_dc_disconnected(block) else distribution[index],
             }
         )
         for index, block in enumerate(snapshot.inverter_blocks)
@@ -958,6 +1032,7 @@ def _distribute_power_kw_for_controls(
     total_power_kw: float,
     baseline_block_power_kw: dict[str, float],
     block_control_states: dict[str, tuple[bool, float]],
+    dc_disconnect_states: dict[str, str],
 ) -> dict[str, float]:
     weights = [max(baseline_block_power_kw.get(block.asset_id, block.block_power_kw), 1.0) for block in blocks]
     total_weight = sum(weights)
@@ -975,7 +1050,7 @@ def _distribute_power_kw_for_controls(
             remaining_power_kw = round(remaining_power_kw - base_share, 1)
 
         block_enable_request, block_power_limit_pct = block_control_states[block.asset_id]
-        if not block_enable_request:
+        if not block_enable_request or dc_disconnect_states.get(block.asset_id) == "open":
             distribution[block.asset_id] = 0.0
             continue
         distribution[block.asset_id] = round(base_share * (block_power_limit_pct / 100), 1)
@@ -1167,6 +1242,17 @@ def _is_block_disabled(block) -> bool:
     return block.status == "offline" and block.availability_pct == 0
 
 
+def _is_dc_disconnected(block) -> bool:
+    return block.dc_disconnect_state == "open"
+
+
+def _normalize_dc_disconnect_state(value: str) -> str:
+    normalized_value = value.strip().lower()
+    if normalized_value not in {"closed", "open"}:
+        raise PlantSimulationError("dc_disconnect_state muss 'closed' oder 'open' sein")
+    return normalized_value
+
+
 def _derived_block_power_limit_pct(
     *,
     snapshot: PlantSnapshot,
@@ -1176,6 +1262,8 @@ def _derived_block_power_limit_pct(
     block = _require_block(snapshot, asset_id)
     if _is_block_disabled(block):
         return 0.0
+    if _is_dc_disconnected(block) or snapshot.site.breaker_state == "open":
+        return 100.0
     baseline_power_kw = max(baseline_block_power_kw.get(asset_id, block.block_power_kw), 0.0)
     if baseline_power_kw <= 0:
         return 100.0
@@ -1202,6 +1290,10 @@ def _current_block_control_states(
         )
         for block in snapshot.inverter_blocks
     }
+
+
+def _current_dc_disconnect_states(snapshot: PlantSnapshot) -> dict[str, str]:
+    return {block.asset_id: block.dc_disconnect_state for block in snapshot.inverter_blocks}
 
 
 def _weather_evolution_block_control_states(snapshot: PlantSnapshot) -> dict[str, tuple[bool, float]]:

@@ -171,7 +171,7 @@
     }
 
     .inverter-table {
-      min-width: 940px;
+      min-width: 1040px;
       table-layout: fixed;
     }
 
@@ -207,6 +207,7 @@
     .col-quality { width: 86px; }
     .col-power { width: 92px; }
     .col-availability { width: 94px; }
+    .col-isolator { width: 104px; }
     .col-bus { width: 126px; }
     .col-temperature { width: 116px; }
     .col-alarms { width: 76px; }
@@ -260,15 +261,15 @@
       }
 
       .inverter-table {
-        min-width: 720px;
+        min-width: 820px;
       }
 
-      th:nth-child(6),
-      td:nth-child(6),
-      th:nth-child(7),
-      td:nth-child(7),
       th:nth-child(8),
-      td:nth-child(8) {
+      td:nth-child(8),
+      th:nth-child(9),
+      td:nth-child(9),
+      th:nth-child(10),
+      td:nth-child(10) {
         display: none;
       }
     }
@@ -314,6 +315,7 @@
             <col class="col-quality">
             <col class="col-power">
             <col class="col-availability">
+            <col class="col-isolator">
             <col class="col-bus">
             <col class="col-bus">
             <col class="col-temperature">
@@ -327,6 +329,7 @@
               <th>{{ t("table.quality") }}</th>
               <th>{{ t("table.power") }}</th>
               <th>{{ t("table.availability") }}</th>
+              <th>{{ t("table.pv_isolator") }}</th>
               <th>{{ t("table.dc_bus") }}</th>
               <th>{{ t("table.ac_bus") }}</th>
               <th>{{ t("table.temperature") }}</th>
@@ -342,6 +345,7 @@
               <td>{{ row.quality_label }}</td>
               <td class="mono">{{ row.power_label }}</td>
               <td class="mono">{{ row.availability_label }}</td>
+              <td>{{ row.dc_disconnect_label }}</td>
               <td class="mono">{{ row.dc_label }}</td>
               <td class="mono">{{ row.ac_label }}</td>
               <td class="mono">{{ row.temperature_label }}</td>

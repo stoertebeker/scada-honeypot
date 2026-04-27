@@ -123,7 +123,7 @@ Wichtige End-to-End-Pfade, die schon stehen:
 - Blindleistungsziel ueber HMI und Modbus
 - `plant_mode_request` als gelatchter Bedienwunsch
 - Breaker Open/Close mit sichtbarer Meter- und Alarmwirkung
-- Inverter-Block Enable/Disable, Limit und Reset
+- Inverter-Block Enable/Disable, Limit, PV-/DC-Disconnect und Reset
 - Folge-Alerts:
   - `REPEATED_LOGIN_FAILURE`
   - `GRID_PATH_UNAVAILABLE`

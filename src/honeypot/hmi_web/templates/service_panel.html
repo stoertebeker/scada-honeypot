@@ -163,6 +163,69 @@
       font-size: 0.92rem;
     }
 
+    .switch-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid rgba(184, 193, 186, 0.8);
+      background: rgba(251, 252, 248, 0.72);
+      color: var(--ink);
+    }
+
+    .switch-row > span:first-child {
+      min-width: 0;
+    }
+
+    .switch-input {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .switch-control {
+      position: relative;
+      width: 46px;
+      height: 24px;
+    }
+
+    .switch-track {
+      position: relative;
+      display: block;
+      width: 46px;
+      height: 24px;
+      border: 1px solid var(--line);
+      background: #d7ded8;
+    }
+
+    .switch-track::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border: 1px solid rgba(20, 34, 38, 0.2);
+      transition: transform 120ms ease;
+    }
+
+    .switch-input:checked + .switch-track {
+      border-color: var(--warn);
+      background: rgba(156, 106, 31, 0.25);
+    }
+
+    .switch-input:checked + .switch-track::after {
+      transform: translateX(22px);
+      background: var(--warn);
+    }
+
     input,
     select {
       padding: 12px 14px;
@@ -393,6 +456,7 @@
               <p class="hint">{{ t("label.power_limit") }}: {{ block.power_limit_pct_value }} %</p>
             </div>
             <p class="hint">{{ t("table.status") }}: {{ block.status_label }} / {{ t("table.communication") }}: {{ block.communication_label }} / {{ t("table.power") }}: {{ block.power_label }}</p>
+            <p class="hint">{{ t("table.pv_isolator") }}: {{ block.dc_disconnect_label }}</p>
             <form method="post" action="/service/panel/inverter-block">
               <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
               <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
@@ -417,6 +481,24 @@
               </label>
               <button type="submit">{{ t("action.apply_block_control") }}</button>
             </form>
+            <form method="post" action="/service/panel/inverter-block/dc-disconnect">
+              <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
+              <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
+              <label class="switch-row">
+                <span>{{ t("label.dc_disconnect_open") }}</span>
+                <span class="switch-control">
+                  <input
+                    class="switch-input"
+                    type="checkbox"
+                    name="dc_disconnect_open"
+                    value="1"
+                    {% if block.dc_disconnect_checked %}checked{% endif %}
+                  >
+                  <span class="switch-track" aria-hidden="true"></span>
+                </span>
+              </label>
+              <button type="submit">{{ t("action.apply_dc_disconnect") }}</button>
+            </form>
             <form method="post" action="/service/panel/inverter-block/reset">
               <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
               <input type="hidden" name="asset_id" value="{{ block.asset_id }}">
@@ -426,6 +508,7 @@
           {% endfor %}
         </div>
         <p class="hint">{{ t("service.inverter_block_hint") }}</p>
+        <p class="hint">{{ t("service.dc_disconnect_hint") }}</p>
         {% else %}
         <p class="hint">{{ t("service.status.control_unavailable") }}</p>
         {% endif %}

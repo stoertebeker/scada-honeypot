@@ -249,6 +249,30 @@ def test_unit_12_fc06_disable_and_reenable_updates_block_state() -> None:
     assert reenabled_status.values[5] == 1920
 
 
+def test_service_dc_disconnect_control_updates_shared_snapshot_and_visible_registers() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    open_result = register_map.set_block_dc_disconnect_state(asset_id="invb-02", dc_disconnect_state="open")
+    isolated_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
+    isolated_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    close_result = register_map.set_block_dc_disconnect_state(asset_id="invb-02", dc_disconnect_state="closed")
+    restored_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+
+    assert open_result.previous_value == "closed"
+    assert open_result.resulting_value == "open"
+    assert open_result.resulting_state["dc_disconnect_state"] == "open"
+    assert open_result.resulting_state["status"] == "online"
+    assert open_result.resulting_state["block_power_kw"] == pytest.approx(0.0)
+    assert isolated_setpoints.values == (1, 1000, 0)
+    assert isolated_status.values[0:4] == (0, 0, 0, 0)
+    assert isolated_status.values[5] == 0
+    assert isolated_status.values[11] == 1
+    assert close_result.previous_value == "open"
+    assert close_result.resulting_value == "closed"
+    assert restored_status.values[0:4] == (0, 0, 0, 1000)
+    assert restored_status.values[5] == 1920
+
+
 def test_unit_12_fc16_updates_power_limit_and_reset_clears_comm_loss() -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")
