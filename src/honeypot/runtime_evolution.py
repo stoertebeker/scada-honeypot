@@ -38,7 +38,7 @@ class TrendHistoryBuffer:
         self._samples = deque(maxlen=self.max_samples)
 
     def append_snapshot(self, snapshot: PlantSnapshot) -> TrendSample:
-        sample = TrendSample.from_snapshot(snapshot)
+        sample = _trend_sample_for_minute(snapshot)
         with self._lock:
             if self._samples and self._samples[-1].observed_at == sample.observed_at:
                 self._samples[-1] = sample
@@ -134,8 +134,9 @@ class BackgroundPlantEvolutionService:
                 }
             )
 
+        measurement_at = _minute_measurement_time(observed_at)
         observation = self.weather_provider.observe(
-            observed_at=observed_at,
+            observed_at=measurement_at,
             timezone=self.timezone,
             latitude=self.weather_latitude,
             longitude=self.weather_longitude,
@@ -287,6 +288,29 @@ def _snapshot_for_history_seed(
             "grid_interconnect": snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at}),
         }
     )
+
+
+def _trend_sample_for_minute(snapshot: PlantSnapshot) -> TrendSample:
+    sample = TrendSample.from_snapshot(snapshot)
+    return TrendSample(
+        observed_at=_minute_bucket(sample.observed_at),
+        plant_power_mw=sample.plant_power_mw,
+        active_power_limit_pct=sample.active_power_limit_pct,
+        irradiance_w_m2=sample.irradiance_w_m2,
+        export_power_mw=sample.export_power_mw,
+        block_power_kw=sample.block_power_kw,
+        export_energy_mwh_total=sample.export_energy_mwh_total,
+    )
+
+
+def _minute_measurement_time(value: datetime) -> datetime:
+    bucket = _minute_bucket(value)
+    return bucket + timedelta(seconds=30)
+
+
+def _minute_bucket(value: datetime) -> datetime:
+    value = ensure_utc_datetime(value)
+    return value.replace(second=0, microsecond=0)
 
 
 def trend_history_capacity(*, window_minutes: int, interval_seconds: float) -> int:

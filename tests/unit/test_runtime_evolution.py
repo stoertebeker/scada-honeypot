@@ -14,11 +14,41 @@ from honeypot.runtime_evolution import (
 )
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
-from honeypot.weather_core import DeterministicDiurnalWeatherProvider
+from honeypot.weather_core import DeterministicDiurnalWeatherProvider, WeatherObservation
 
 
 def build_snapshot() -> PlantSnapshot:
     return PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
+
+
+class RecordingMinuteWeatherProvider:
+    provider_name = "deterministic"
+
+    def __init__(self) -> None:
+        self.observed_at_values: list[datetime] = []
+
+    def observe(
+        self,
+        *,
+        observed_at: datetime,
+        timezone: str,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        elevation_m: float | None = None,
+    ) -> WeatherObservation:
+        self.observed_at_values.append(observed_at)
+        irradiance = 600 + observed_at.minute
+        return WeatherObservation(
+            provider="deterministic",
+            observed_at=observed_at,
+            local_time=observed_at,
+            quality="good",
+            confidence_pct_x10=1000,
+            irradiance_w_m2=irradiance,
+            ambient_temperature_c=22.0,
+            module_temperature_c=round(22.0 + irradiance * 0.015, 1),
+            wind_speed_m_s=3.0,
+        )
 
 
 def test_background_evolution_service_advances_observed_at_and_asset_freshness() -> None:
@@ -45,7 +75,7 @@ def test_background_evolution_service_advances_observed_at_and_asset_freshness()
     assert second_snapshot.revenue_meter.last_update_ts == second_snapshot.observed_at
     assert second_snapshot.grid_interconnect.last_update_ts == second_snapshot.observed_at
     assert tuple(sample.observed_at for sample in history.snapshot()) == (
-        datetime(2026, 4, 1, 10, 0, 1, tzinfo=UTC),
+        datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
         datetime(2026, 4, 1, 10, 5, tzinfo=UTC),
     )
 
@@ -85,6 +115,44 @@ def test_background_evolution_service_drives_weather_and_power_from_provider() -
     assert night_snapshot.revenue_meter.export_energy_mwh_total > 0
     assert night_snapshot.revenue_meter.grid_voltage_v is not None
     assert night_snapshot.revenue_meter.grid_frequency_hz is not None
+
+
+def test_background_evolution_uses_stable_minute_weather_values() -> None:
+    snapshot = build_snapshot()
+    clock = FrozenClock(datetime(2026, 4, 27, 10, 30, 5, tzinfo=UTC))
+    register_map = ReadOnlyRegisterMap(snapshot)
+    history = TrendHistoryBuffer(max_samples=8)
+    weather_provider = RecordingMinuteWeatherProvider()
+    service = BackgroundPlantEvolutionService(
+        register_map=register_map,
+        history=history,
+        clock=clock,
+        simulator=PlantSimulator.from_snapshot(snapshot),
+        weather_provider=weather_provider,
+        timezone="Europe/Berlin",
+        weather_latitude=53.5511,
+        weather_longitude=9.9937,
+        weather_elevation_m=15,
+    )
+
+    first_snapshot = service.evolve_once()
+    clock.advance(timedelta(seconds=20))
+    second_snapshot = service.evolve_once()
+    clock.advance(timedelta(minutes=1))
+    third_snapshot = service.evolve_once()
+
+    assert weather_provider.observed_at_values == [
+        datetime(2026, 4, 27, 10, 30, 30, tzinfo=UTC),
+        datetime(2026, 4, 27, 10, 30, 30, tzinfo=UTC),
+        datetime(2026, 4, 27, 10, 31, 30, tzinfo=UTC),
+    ]
+    assert first_snapshot.weather_station.irradiance_w_m2 == second_snapshot.weather_station.irradiance_w_m2
+    assert first_snapshot.site.plant_power_mw == second_snapshot.site.plant_power_mw
+    assert third_snapshot.weather_station.irradiance_w_m2 != second_snapshot.weather_station.irradiance_w_m2
+    assert tuple(sample.observed_at for sample in history.snapshot()) == (
+        datetime(2026, 4, 27, 10, 30, tzinfo=UTC),
+        datetime(2026, 4, 27, 10, 31, tzinfo=UTC),
+    )
 
 
 def test_background_evolution_does_not_latch_history_power_as_inverter_limit() -> None:

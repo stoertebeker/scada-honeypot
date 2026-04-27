@@ -82,6 +82,36 @@ def test_open_meteo_forecast_provider_reduces_payload_to_internal_observation() 
     assert observation.local_time.isoformat() == "2026-06-21T12:00:00+02:00"
 
 
+def test_open_meteo_selects_nearest_hour_in_payload_timezone() -> None:
+    provider = OpenMeteoForecastProvider(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "timezone": "Europe/Berlin",
+                    "hourly": {
+                        "time": ["2026-06-21T11:00", "2026-06-21T12:00", "2026-06-21T13:00"],
+                        "temperature_2m": [20.0, 24.0, 26.0],
+                        "wind_speed_10m": [3.5, 4.0, 4.5],
+                        "shortwave_radiation": [250.0, 820.0, 780.0],
+                        "is_day": [1, 1, 1],
+                    },
+                },
+            )
+        )
+    )
+
+    observation = provider.observe(
+        observed_at=datetime(2026, 6, 21, 10, 0, tzinfo=UTC),
+        timezone="Europe/Berlin",
+        latitude=53.5511,
+        longitude=9.9937,
+    )
+
+    assert observation.irradiance_w_m2 == 820
+    assert observation.local_time.isoformat() == "2026-06-21T12:00:00+02:00"
+
+
 def test_open_meteo_uses_cached_observation_as_estimated_fallback() -> None:
     responses = iter(
         [

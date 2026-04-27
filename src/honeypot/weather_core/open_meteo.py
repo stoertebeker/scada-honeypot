@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from honeypot.time_core import ensure_utc_datetime, parse_utc_timestamp
+from honeypot.time_core import ensure_utc_datetime
 from honeypot.weather_core.models import WeatherObservation
 from honeypot.weather_core.provider import DeterministicDiurnalWeatherProvider
 
@@ -156,7 +156,8 @@ def _parse_forecast_payload(
 ) -> WeatherObservation:
     hourly = payload["hourly"]
     timestamps = hourly["time"]
-    index = _nearest_index(timestamps, observed_at)
+    timezone_name = str(payload.get("timezone", "UTC"))
+    index = _nearest_index(timestamps, observed_at, timezone_name=timezone_name)
     irradiance = round(_hourly_value(hourly, "shortwave_radiation", index, default=0.0))
     ambient_temperature_c = round(_hourly_value(hourly, "temperature_2m", index, default=15.0), 1)
     module_temperature_c = round(ambient_temperature_c + irradiance * 0.015, 1)
@@ -175,9 +176,9 @@ def _parse_forecast_payload(
     )
 
 
-def _nearest_index(timestamps: list[str], observed_at: datetime) -> int:
+def _nearest_index(timestamps: list[str], observed_at: datetime, *, timezone_name: str) -> int:
     target = ensure_utc_datetime(observed_at)
-    indexed = [_parse_reference_time(value) for value in timestamps]
+    indexed = [_parse_reference_time(value, timezone_name=timezone_name) for value in timestamps]
     return min(range(len(indexed)), key=lambda index: abs((indexed[index] - target).total_seconds()))
 
 
@@ -192,12 +193,11 @@ def _seconds_delta(value: int) -> timedelta:
     return timedelta(seconds=value)
 
 
-def _parse_reference_time(value: str) -> datetime:
-    try:
-        return parse_utc_timestamp(value)
-    except ValueError:
-        naive = datetime.fromisoformat(value)
-        return ensure_utc_datetime(naive.replace(tzinfo=ZoneInfo("UTC")))
+def _parse_reference_time(value: str, *, timezone_name: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+        return ensure_utc_datetime(parsed)
+    return ensure_utc_datetime(parsed.replace(tzinfo=ZoneInfo(timezone_name)))
 
 
 def _parse_local_time(*, payload: dict[str, Any], raw_time: str) -> datetime:
