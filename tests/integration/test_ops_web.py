@@ -129,6 +129,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v0.9.2" in versions.text
+    assert "Overview service-login lure" in versions.text
     assert "v0.9.1" in versions.text
     assert "Backend version log" in versions.text
     assert "v0.9.0" in versions.text

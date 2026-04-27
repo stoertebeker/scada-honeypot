@@ -87,6 +87,17 @@
       color: var(--accent);
     }
 
+    .card-action {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 10px 14px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #f4f7f8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
     .metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -276,6 +287,11 @@
         <p class="card-value">{{ metric.value }}</p>
       </article>
       {% endfor %}
+      <article class="card warn">
+        <p class="card-label">{{ t("label.service_access") }}</p>
+        <p class="card-value">{{ t("state.restricted") }}</p>
+        <a class="card-action" href="/service/login">{{ t("page.service_login.title") }}</a>
+      </article>
     </section>
 
     <main class="grid">

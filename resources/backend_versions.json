@@ -1,5 +1,22 @@
 [
   {
+    "version": "v0.9.2",
+    "released_at": "2026-04-27",
+    "category": "Feature",
+    "title": "Overview service-login lure",
+    "summary": "Adds a persistent Service Access card on the HMI overview that links attackers to the service-login path.",
+    "areas": ["hmi-web", "documentation"],
+    "changes": [
+      "Show the Service Access card on /overview regardless of service-login enablement.",
+      "Style the login link like the existing HMI buttons while keeping it inside the normal metric-card layout.",
+      "Keep disabled service-login behavior unchanged behind the link."
+    ],
+    "security_notes": [
+      "The card exposes only the honeypot HMI login path and does not link to the protected Ops backend.",
+      "If service login is disabled for a deployment, the lure remains visible while /service/login still returns the quiet 403 page."
+    ]
+  },
+  {
     "version": "v0.9.1",
     "released_at": "2026-04-27",
     "category": "Feature",

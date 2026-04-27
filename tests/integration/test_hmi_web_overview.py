@@ -137,6 +137,9 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert "Meter" in overview_response.text
     assert "Alarms" in overview_response.text
     assert "Trends" in overview_response.text
+    assert "Service Access" in overview_response.text
+    assert "Restricted" in overview_response.text
+    assert 'href="/service/login"' in overview_response.text
     assert "5.80 MW" in overview_response.text
     assert "100.0 %" in overview_response.text
     assert "Closed" in overview_response.text
@@ -152,6 +155,27 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert overview_event.requested_value == {"http_method": "GET", "http_path": "/overview"}
     assert overview_event.resulting_value == {"http_status": 200}
     assert overview_event.session_id is not None
+
+
+@pytest.mark.asyncio
+async def test_overview_service_login_card_is_visible_when_service_login_is_disabled(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    config = build_config(tmp_path).model_copy(update={"enable_service_login": False})
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+        event_recorder=None,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        overview_response = await client.get("/overview")
+        login_response = await client.get("/service/login")
+
+    assert overview_response.status_code == 200
+    assert "Service Access" in overview_response.text
+    assert 'href="/service/login"' in overview_response.text
+    assert login_response.status_code == 403
 
 
 @pytest.mark.asyncio
