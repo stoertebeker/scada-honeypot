@@ -14,7 +14,7 @@ from honeypot.history_core import PlantHistorySample
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ReadOnlyRegisterMap
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
-from honeypot.weather_core import DeterministicDiurnalWeatherProvider, WeatherObservationProvider
+from honeypot.weather_core import PlausibleHistoricalWeatherProvider, WeatherObservationProvider
 
 PLANT_HISTORY_RETENTION_DAYS = 30
 PLANT_HISTORY_SEED_STEP_MINUTES = 60
@@ -219,6 +219,7 @@ def seed_plant_history_if_empty(
     weather_elevation_m: float | None = None,
     retention_days: int = PLANT_HISTORY_RETENTION_DAYS,
     step_minutes: int = PLANT_HISTORY_SEED_STEP_MINUTES,
+    weather_provider: WeatherObservationProvider | None = None,
 ) -> int:
     """Fuellt einen frischen Store mit einer plausiblen 30-Tage-Erzeugungshistorie."""
 
@@ -230,7 +231,15 @@ def seed_plant_history_if_empty(
     now = ensure_utc_datetime(clock.now())
     step = timedelta(minutes=step_minutes)
     start = now - timedelta(days=retention_days)
-    weather_provider = DeterministicDiurnalWeatherProvider()
+    history_weather_provider = _prepared_history_weather_provider(
+        PlausibleHistoricalWeatherProvider() if weather_provider is None else weather_provider,
+        start_at=start,
+        end_at=now,
+        timezone=timezone,
+        latitude=weather_latitude,
+        longitude=weather_longitude,
+        elevation_m=weather_elevation_m,
+    )
     previous_observed_at = start - step
     export_energy_mwh_total = 0.0
     samples: list[TrendSample] = []
@@ -242,7 +251,7 @@ def seed_plant_history_if_empty(
             observed_at=previous_observed_at,
             export_energy_mwh_total=export_energy_mwh_total,
         )
-        observation = weather_provider.observe(
+        observation = history_weather_provider.observe(
             observed_at=observed_at,
             timezone=timezone,
             latitude=weather_latitude,
@@ -262,6 +271,33 @@ def seed_plant_history_if_empty(
     history_store.append_plant_history_samples(samples)
     history_store.prune_plant_history(before=now - timedelta(days=retention_days))
     return len(samples)
+
+
+def _prepared_history_weather_provider(
+    provider: WeatherObservationProvider,
+    *,
+    start_at: datetime,
+    end_at: datetime,
+    timezone: str,
+    latitude: float | None,
+    longitude: float | None,
+    elevation_m: float | None,
+) -> WeatherObservationProvider:
+    prepare_range = getattr(provider, "prepare_range", None)
+    if not callable(prepare_range):
+        return provider
+    try:
+        prepare_range(
+            start_at=start_at,
+            end_at=end_at,
+            timezone=timezone,
+            latitude=latitude,
+            longitude=longitude,
+            elevation_m=elevation_m,
+        )
+    except Exception:
+        return PlausibleHistoricalWeatherProvider()
+    return provider
 
 
 def _snapshot_for_history_seed(

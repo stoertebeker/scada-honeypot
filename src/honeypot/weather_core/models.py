@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from honeypot.time_core import ensure_utc_datetime
 
-WeatherProviderName = Literal["disabled", "deterministic", "open_meteo_forecast", "open_meteo_satellite"]
+WeatherProviderName = Literal[
+    "disabled",
+    "deterministic",
+    "open_meteo_forecast",
+    "open_meteo_satellite",
+    "open_meteo_archive",
+]
 WeatherObservationQuality = Literal["good", "estimated", "stale", "invalid"]
 
 

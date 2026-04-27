@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.history_core import PlantHistorySample, apply_history_sample_to_snapshot
@@ -14,7 +14,7 @@ from honeypot.runtime_evolution import (
 )
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
-from honeypot.weather_core import DeterministicDiurnalWeatherProvider, WeatherObservation
+from honeypot.weather_core import DeterministicDiurnalWeatherProvider, PlausibleHistoricalWeatherProvider, WeatherObservation
 
 
 def build_snapshot() -> PlantSnapshot:
@@ -258,3 +258,36 @@ def test_seed_plant_history_creates_one_month_generation_history(tmp_path) -> No
     assert history[-1].export_energy_mwh_total > history[0].export_energy_mwh_total
     assert any(sample.export_power_mw > 0 for sample in history)
     assert all(sample.observed_at >= clock.now() - timedelta(days=30) for sample in history)
+
+
+def test_seed_plant_history_uses_plausible_weather_variation(tmp_path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "history.db")
+    clock = FrozenClock(datetime(2026, 4, 27, 12, 0, tzinfo=UTC))
+
+    seed_plant_history_if_empty(
+        history_store=store,
+        snapshot=snapshot,
+        simulator=PlantSimulator.from_snapshot(snapshot),
+        clock=clock,
+        timezone="Europe/Berlin",
+        weather_latitude=53.5511,
+        weather_longitude=9.9937,
+        weather_elevation_m=15,
+        weather_provider=PlausibleHistoricalWeatherProvider(),
+    )
+
+    history = store.fetch_plant_history()
+    daily_energy_mwh: dict[date, float] = {}
+    daily_peak_mw: dict[date, float] = {}
+    for sample in history:
+        local_date = sample.observed_at.date()
+        daily_energy_mwh[local_date] = daily_energy_mwh.get(local_date, 0.0) + sample.export_power_mw
+        daily_peak_mw[local_date] = max(daily_peak_mw.get(local_date, 0.0), sample.plant_power_mw)
+
+    complete_daily_energy = tuple(value for value in daily_energy_mwh.values() if value > 0)
+    complete_daily_peaks = tuple(value for value in daily_peak_mw.values() if value > 0)
+
+    assert len(complete_daily_energy) >= 25
+    assert max(complete_daily_energy) - min(complete_daily_energy) > 10
+    assert len({round(value, 1) for value in complete_daily_peaks}) >= 8

@@ -6,7 +6,9 @@ import httpx
 from honeypot.weather_core import (
     DeterministicDiurnalWeatherProvider,
     OpenMeteoForecastProvider,
+    OpenMeteoHistoricalArchiveProvider,
     OpenMeteoSatelliteRadiationProvider,
+    PlausibleHistoricalWeatherProvider,
 )
 
 
@@ -47,6 +49,37 @@ def test_deterministic_provider_returns_timezone_aware_local_time() -> None:
     assert observation.quality == "good"
 
 
+def test_plausible_historical_provider_varies_daily_cloud_conditions() -> None:
+    provider = PlausibleHistoricalWeatherProvider()
+    clear_provider = DeterministicDiurnalWeatherProvider()
+    observed_values = []
+    clear_values = []
+    for day in range(1, 8):
+        observed_at = datetime(2026, 4, day, 10, 30, tzinfo=UTC)
+        observed_values.append(
+            provider.observe(
+                observed_at=observed_at,
+                timezone="Europe/Berlin",
+                latitude=53.5511,
+                longitude=9.9937,
+                elevation_m=15,
+            ).irradiance_w_m2
+        )
+        clear_values.append(
+            clear_provider.observe(
+                observed_at=observed_at,
+                timezone="Europe/Berlin",
+                latitude=53.5511,
+                longitude=9.9937,
+                elevation_m=15,
+            ).irradiance_w_m2
+        )
+
+    assert len(set(observed_values)) >= 4
+    assert max(observed_values) < max(clear_values)
+    assert min(observed_values) < max(observed_values) * 0.7
+
+
 def test_open_meteo_forecast_provider_reduces_payload_to_internal_observation() -> None:
     provider = OpenMeteoForecastProvider(
         transport=httpx.MockTransport(
@@ -80,6 +113,80 @@ def test_open_meteo_forecast_provider_reduces_payload_to_internal_observation() 
     assert observation.ambient_temperature_c == 24.3
     assert observation.wind_speed_m_s == 4.8
     assert observation.local_time.isoformat() == "2026-06-21T12:00:00+02:00"
+
+
+def test_open_meteo_archive_provider_uses_historical_radiation_payload() -> None:
+    provider = OpenMeteoHistoricalArchiveProvider(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "timezone": "Europe/Berlin",
+                    "hourly": {
+                        "time": ["2026-04-21T11:00", "2026-04-21T12:00", "2026-04-21T13:00"],
+                        "temperature_2m": [16.0, 18.0, 19.0],
+                        "wind_speed_10m": [3.1, 3.4, 3.8],
+                        "shortwave_radiation": [480.0, 615.0, 530.0],
+                        "cloud_cover": [45.0, 35.0, 60.0],
+                    },
+                },
+            )
+        )
+    )
+
+    provider.prepare_range(
+        start_at=datetime(2026, 4, 21, 9, 0, tzinfo=UTC),
+        end_at=datetime(2026, 4, 21, 11, 0, tzinfo=UTC),
+        timezone="Europe/Berlin",
+        latitude=53.5511,
+        longitude=9.9937,
+        elevation_m=15,
+    )
+    observation = provider.observe(
+        observed_at=datetime(2026, 4, 21, 10, 0, tzinfo=UTC),
+        timezone="Europe/Berlin",
+        latitude=53.5511,
+        longitude=9.9937,
+        elevation_m=15,
+    )
+
+    assert observation.provider == "open_meteo_archive"
+    assert observation.quality == "good"
+    assert observation.irradiance_w_m2 == 615
+    assert observation.ambient_temperature_c == 18.0
+    assert observation.local_time.isoformat() == "2026-04-21T12:00:00+02:00"
+
+
+def test_open_meteo_archive_provider_estimates_irradiance_from_cloud_cover() -> None:
+    provider = OpenMeteoHistoricalArchiveProvider(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "timezone": "Europe/Berlin",
+                    "hourly": {
+                        "time": ["2026-04-21T12:00"],
+                        "temperature_2m": [18.0],
+                        "wind_speed_10m": [3.4],
+                        "shortwave_radiation": [None],
+                        "cloud_cover": [80.0],
+                    },
+                },
+            )
+        )
+    )
+
+    observation = provider.observe(
+        observed_at=datetime(2026, 4, 21, 10, 0, tzinfo=UTC),
+        timezone="Europe/Berlin",
+        latitude=53.5511,
+        longitude=9.9937,
+        elevation_m=15,
+    )
+
+    assert observation.provider == "open_meteo_archive"
+    assert observation.quality == "estimated"
+    assert 0 < observation.irradiance_w_m2 < 500
 
 
 def test_open_meteo_selects_nearest_hour_in_payload_timezone() -> None:

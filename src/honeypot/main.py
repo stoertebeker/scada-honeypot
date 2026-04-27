@@ -45,7 +45,9 @@ from honeypot.time_core import Clock, SystemClock
 from honeypot.weather_core import (
     DeterministicDiurnalWeatherProvider,
     OpenMeteoForecastProvider,
+    OpenMeteoHistoricalArchiveProvider,
     OpenMeteoSatelliteRadiationProvider,
+    PlausibleHistoricalWeatherProvider,
     WeatherObservationProvider,
 )
 
@@ -236,6 +238,7 @@ def build_local_runtime(
         weather_latitude=config.weather_latitude,
         weather_longitude=config.weather_longitude,
         weather_elevation_m=config.weather_elevation_m,
+        weather_provider=_build_history_weather_provider(config),
     )
     latest_history = event_store.fetch_plant_history(limit=1)
     if latest_history and weather_provider is not None:
@@ -410,6 +413,14 @@ def _build_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider
         timeout_seconds=float(config.weather_request_timeout_seconds),
         cache_ttl_seconds=config.weather_cache_ttl_seconds,
     )
+
+
+def _build_history_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider:
+    if config.weather_provider in {"open_meteo_forecast", "open_meteo_satellite"}:
+        return OpenMeteoHistoricalArchiveProvider(
+            timeout_seconds=float(config.weather_request_timeout_seconds),
+        )
+    return PlausibleHistoricalWeatherProvider()
 
 
 def _merged_trend_history(
