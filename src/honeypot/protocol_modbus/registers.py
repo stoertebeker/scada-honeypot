@@ -25,12 +25,13 @@ UNIT_1_ALARM_BLOCK = range(299, 305)
 UNIT_1_ACTIVE_POWER_LIMIT_OFFSET = 199
 UNIT_1_REACTIVE_POWER_TARGET_OFFSET = 200
 UNIT_1_PLANT_MODE_REQUEST_OFFSET = 201
-UNIT_11_13_STATUS_BLOCK = range(99, 111)
+UNIT_11_13_STATUS_BLOCK = range(99, 112)
 UNIT_11_13_SETPOINT_BLOCK = range(199, 249)
 UNIT_11_13_ALARM_BLOCK = range(299, 305)
 UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET = 199
 UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET = 200
 UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET = 201
+UNIT_11_13_DC_DISCONNECT_REQUEST_OFFSET = 202
 UNIT_21_STATUS_BLOCK = range(99, 107)
 UNIT_21_ALARM_BLOCK = range(299, 302)
 UNIT_31_STATUS_BLOCK = range(99, 110)
@@ -84,6 +85,7 @@ AVAILABILITY_STATE = {"available": 0, "partially_available": 1, "unavailable": 2
 COMMUNICATION_STATE = {"healthy": 0, "degraded": 1, "lost": 2}
 DATA_QUALITY = {"good": 0, "estimated": 1, "stale": 2, "invalid": 3}
 BREAKER_STATE = {"closed": 0, "open": 1, "transitioning": 2}
+DC_DISCONNECT_STATE = {"closed": 0, "open": 1, "transitioning": 2}
 GRID_ACCEPTANCE_STATE = {"accepted": 0, "limited": 1, "unavailable": 2}
 ALARM_STATE = {
     "inactive": 0,
@@ -646,6 +648,15 @@ class ReadOnlyRegisterMap:
                                 event_context=event_context,
                             )
                             continue
+
+                        if offset == UNIT_11_13_DC_DISCONNECT_REQUEST_OFFSET:
+                            working_snapshot = self._simulator.apply_block_dc_disconnect_state(
+                                working_snapshot,
+                                asset_id=asset_id,
+                                dc_disconnect_state="open" if value == 1 else "closed",
+                                event_context=event_context,
+                            )
+                            continue
                     except PlantSimulationError as exc:
                         raise ModbusRegisterError(ILLEGAL_DATA_VALUE, str(exc)) from exc
 
@@ -751,6 +762,8 @@ class ReadOnlyRegisterMap:
                 return block_power_limit_request_overrides.get(unit_id, 1000)
             if offset == UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET:
                 return 0
+            if offset == UNIT_11_13_DC_DISCONNECT_REQUEST_OFFSET:
+                return DC_DISCONNECT_STATE[block.dc_disconnect_state]
             raise ModbusRegisterError(ILLEGAL_DATA_ADDRESS, f"offset {offset} ist kein Inverter-Setpoint")
 
         if unit_id == 41 and offset in (
@@ -782,6 +795,7 @@ class ReadOnlyRegisterMap:
                     0 if _is_block_disabled(block) else 1,
                 ),
                 "block_power_limit_pct": self._block_power_limit_request_overrides.get(unit_id, 1000) / 10,
+                "dc_disconnect_request": DC_DISCONNECT_STATE[block.dc_disconnect_state],
                 "status": block.status,
                 "communication_state": block.communication_state,
                 "availability_pct": block.availability_pct,
@@ -1015,9 +1029,11 @@ def _build_unit_11_13_registers(
                 block_unavailable_state,
                 overtemp_state,
             ),
+            111: DC_DISCONNECT_STATE[block.dc_disconnect_state],
             199: block_enable_request,
             200: block_power_limit_request,
             201: 0,
+            202: DC_DISCONNECT_STATE[block.dc_disconnect_state],
             299: primary_alarm_code,
             300: primary_alarm_severity,
             301: comm_loss_state,
@@ -1268,10 +1284,10 @@ def _validate_unit_11_13_write_sequence(
 ) -> tuple[int, ...]:
     if allow_fc06 and len(offsets) != 1:
         raise ModbusRegisterError(ILLEGAL_DATA_VALUE, "FC06 erlaubt genau ein Register")
-    if not allow_fc06 and offsets[-1] > UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET:
+    if not allow_fc06 and offsets[-1] > UNIT_11_13_DC_DISCONNECT_REQUEST_OFFSET:
         raise ModbusRegisterError(
             ILLEGAL_DATA_ADDRESS,
-            "FC16 ist im aktuellen Inverter-Slice nur fuer 40200-40202 aktiv",
+            "FC16 ist im aktuellen Inverter-Slice nur fuer 40200-40203 aktiv",
         )
 
     for offset, value in zip(offsets, values):
@@ -1279,6 +1295,7 @@ def _validate_unit_11_13_write_sequence(
             UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET,
             UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET,
             UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET,
+            UNIT_11_13_DC_DISCONNECT_REQUEST_OFFSET,
         ):
             raise ModbusRegisterError(
                 ILLEGAL_DATA_ADDRESS,
@@ -1286,10 +1303,14 @@ def _validate_unit_11_13_write_sequence(
             )
         if value < 0 or value > 0xFFFF:
             raise ModbusRegisterError(ILLEGAL_DATA_VALUE, "Registerwerte muessen als u16 uebertragen werden")
-        if offset in (UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET, UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET) and value not in (0, 1):
+        if offset in (
+            UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET,
+            UNIT_11_13_BLOCK_RESET_REQUEST_OFFSET,
+            UNIT_11_13_DC_DISCONNECT_REQUEST_OFFSET,
+        ) and value not in (0, 1):
             raise ModbusRegisterError(
                 ILLEGAL_DATA_VALUE,
-                "block_enable_request und block_reset_request muessen 0 oder 1 sein",
+                "block_enable_request, block_reset_request und dc_disconnect_request muessen 0 oder 1 sein",
             )
         if offset == UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET and value > 1000:
             raise ModbusRegisterError(

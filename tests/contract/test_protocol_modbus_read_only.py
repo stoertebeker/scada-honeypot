@@ -423,6 +423,80 @@ def test_unit_12_fc06_can_disable_and_reenable_block(running_service) -> None:
     assert enable_process_event.resulting_state["status"] == "online"
 
 
+def test_unit_12_fc06_can_open_and_close_dc_disconnect(running_service) -> None:
+    service, store = running_service
+
+    open_response = send_request(
+        service.address,
+        transaction_id=47,
+        unit_id=12,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 202, 1),
+    )
+    isolated_setpoint_response = send_request(
+        service.address,
+        transaction_id=48,
+        unit_id=12,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 199, 4),
+    )
+    isolated_status_response = send_request(
+        service.address,
+        transaction_id=49,
+        unit_id=12,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 99, 13),
+    )
+    close_response = send_request(
+        service.address,
+        transaction_id=50,
+        unit_id=12,
+        function_code=WRITE_SINGLE_REGISTER,
+        body=pack(">HH", 202, 0),
+    )
+    restored_setpoint_response = send_request(
+        service.address,
+        transaction_id=51,
+        unit_id=12,
+        function_code=READ_HOLDING_REGISTERS,
+        body=pack(">HH", 199, 4),
+    )
+
+    _, _, _, open_pdu = parse_response(open_response)
+    _, _, _, isolated_setpoint_pdu = parse_response(isolated_setpoint_response)
+    _, _, _, isolated_status_pdu = parse_response(isolated_status_response)
+    _, _, _, close_pdu = parse_response(close_response)
+    _, _, _, restored_setpoint_pdu = parse_response(restored_setpoint_response)
+    events = store.fetch_events()
+    open_protocol_event = next(
+        event
+        for event in events
+        if event.event_type == "protocol.modbus.single_register_write"
+        and event.asset_id == "invb-02"
+        and event.requested_value["register_start"] == 40203
+        and event.requested_value["register_value"] == 1
+    )
+    open_process_event = next(
+        event
+        for event in events
+        if event.event_type == "process.control.block_dc_disconnect_changed"
+        and event.asset_id == "invb-02"
+        and event.requested_value == "open"
+    )
+
+    assert unpack(">BHH", open_pdu) == (WRITE_SINGLE_REGISTER, 202, 1)
+    assert unpack(">4H", isolated_setpoint_pdu[2:]) == (1, 1000, 0, 1)
+    assert unpack(">13H", isolated_status_pdu[2:]) == (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1)
+    assert unpack(">BHH", close_pdu) == (WRITE_SINGLE_REGISTER, 202, 0)
+    assert unpack(">4H", restored_setpoint_pdu[2:]) == (1, 1000, 0, 0)
+    assert open_protocol_event.previous_value == 0
+    assert open_protocol_event.resulting_value == 1
+    assert open_protocol_event.correlation_id == open_process_event.correlation_id
+    assert open_process_event.protocol == "modbus-tcp"
+    assert open_process_event.resulting_state["dc_disconnect_state"] == "open"
+    assert open_process_event.resulting_state["block_power_kw"] == pytest.approx(0.0)
+
+
 def test_unit_12_fc16_updates_block_limit_and_reset_clears_comm_loss(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     comm_loss_snapshot = PlantSimulator.from_snapshot(snapshot).lose_block_communications(snapshot, asset_id="invb-02")

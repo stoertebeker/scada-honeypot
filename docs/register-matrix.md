@@ -164,7 +164,15 @@ Wo kein Suffix genannt ist, gilt:
 | `1` | open |
 | `2` | transitioning |
 
-### 5.8 `alarm_state`
+### 5.8 `dc_disconnect_state`
+
+| Wert | Bedeutung |
+| --- | --- |
+| `0` | closed |
+| `1` | open |
+| `2` | transitioning |
+
+### 5.9 `alarm_state`
 
 | Wert | Bedeutung |
 | --- | --- |
@@ -173,7 +181,7 @@ Wo kein Suffix genannt ist, gilt:
 | `2` | active_acknowledged |
 | `3` | cleared |
 
-### 5.9 `severity_code`
+### 5.10 `severity_code`
 
 | Wert | Bedeutung |
 | --- | --- |
@@ -183,7 +191,7 @@ Wo kein Suffix genannt ist, gilt:
 | `3` | high |
 | `4` | critical |
 
-### 5.10 `control_authority`
+### 5.11 `control_authority`
 
 | Wert | Bedeutung |
 | --- | --- |
@@ -191,7 +199,7 @@ Wo kein Suffix genannt ist, gilt:
 | `1` | remote_scada |
 | `2` | schedule |
 
-### 5.11 `grid_acceptance_state`
+### 5.12 `grid_acceptance_state`
 
 | Wert | Bedeutung |
 | --- | --- |
@@ -199,7 +207,7 @@ Wo kein Suffix genannt ist, gilt:
 | `1` | limited |
 | `2` | unavailable |
 
-### 5.12 `tracking_mode`
+### 5.13 `tracking_mode`
 
 | Wert | Bedeutung |
 | --- | --- |
@@ -207,14 +215,14 @@ Wo kein Suffix genannt ist, gilt:
 | `1` | fixed |
 | `2` | stow |
 
-### 5.13 `boolean_flag`
+### 5.14 `boolean_flag`
 
 | Wert | Bedeutung |
 | --- | --- |
 | `0` | false |
 | `1` | true |
 
-### 5.14 `command_request`
+### 5.15 `command_request`
 
 | Wert | Bedeutung |
 | --- | --- |
@@ -315,6 +323,7 @@ Die drei Inverter-Units nutzen dieselbe Matrix. Unterschiede liegen nur in:
 | `40109` | `block_ac_current_a_x10` | `u16` | `ro` | `A x10` | `block_ac_current_a` |
 | `40110` | `internal_temperature_c_x10` | `s16` | `ro` | `C x10` | `internal_temperature_c` |
 | `40111` | `local_alarm_count` | `u16` | `ro` | count | lokale Alarmanzahl |
+| `40112` | `dc_disconnect_state` | `u16` | `ro` | `dc_disconnect_state` | `dc_disconnect_state` |
 
 ### 9.2 Setpoints und Bedienhandlungen
 
@@ -323,11 +332,12 @@ Die drei Inverter-Units nutzen dieselbe Matrix. Unterschiede liegen nur in:
 | `40200` | `block_enable_request` | `u16` | `rw-latched` | `0..1` | `0=disable`, `1=enable` |
 | `40201` | `block_power_limit_pct_x10` | `u16` | `rw-latched` | `0..1000` | `block_power_limit_pct` |
 | `40202` | `block_reset_request` | `u16` | `rw-pulse` | `0..1` | `1` loest simulierten Reset aus |
+| `40203` | `dc_disconnect_request` | `u16` | `rw-latched` | `0..1` | `0=closed`, `1=open` |
 
 Regeln:
-- Schreiben anderer Werte als `0` oder `1` auf `40200` oder `40202` fuehrt zu
-  `03 Illegal Data Value`
-- Bereich `40203-40249` ist `reserved`
+- Schreiben anderer Werte als `0` oder `1` auf `40200`, `40202` oder `40203`
+  fuehrt zu `03 Illegal Data Value`
+- Bereich `40204-40249` ist `reserved`
 
 ### 9.3 Alarme und Diagnose
 

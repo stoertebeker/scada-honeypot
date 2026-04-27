@@ -571,7 +571,8 @@ Beispiele:
 - `overview.plant_power` <-> `Unit 1 / 40104-40105`
 - `overview.breaker_state` <-> `Unit 1 / 40109`
 - `inverters.block_power` <-> `Unit 11-13 / 40104-40105`
-- `inverters.pv_isolator` <-> gemeinsamer `PlantSnapshot.inverter_blocks[*].dc_disconnect_state`
+- `inverters.pv_isolator` <-> `Unit 11-13 / 40112` und gemeinsamer
+  `PlantSnapshot.inverter_blocks[*].dc_disconnect_state`
 - `weather.irradiance` <-> `Unit 21 / 40103`
 - `meter.export_power` <-> `Unit 31 / 40103-40104`
 - `single-line.breaker_state` <-> `Unit 41 / 40102`

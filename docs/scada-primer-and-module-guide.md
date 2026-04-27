@@ -209,7 +209,7 @@ Wichtige aktive Units in V1:
 | Unit `41`, `40200/40201` oder HMI `breaker` | Breaker oeffnen oder schliessen | Exportpfad trennt oder verbindet den Park | `/single-line`, `/meter`, `/alarms` |
 | Unit `11-13`, `40200` oder HMI Block Enable | Block deaktivieren oder aktivieren | Block faellt aus oder kommt wieder | `/inverters`, `/overview`, `/alarms` |
 | Unit `11-13`, `40201` oder HMI Block Limit | Blockleistung begrenzen | Minderleistung pro Block | `/inverters`, `/trends`, Folge-Alerts moeglich |
-| HMI PV Disconnect | PV-/DC-Isolator eines Blocks oeffnen oder schliessen | DC-Eingang des Blocks wird simuliert getrennt, Inverter bleibt kommunikativ sichtbar | `/service/panel`, `/inverters`, `/overview`, `/trends` |
+| Unit `11-13`, `40203` oder HMI PV Disconnect | PV-/DC-Isolator eines Blocks oeffnen oder schliessen | DC-Eingang des Blocks wird simuliert getrennt, Inverter bleibt kommunikativ sichtbar | `/service/panel`, `/inverters`, `/overview`, `/trends`, Modbus |
 | Unit `11-13`, `40202` oder HMI Block Reset | simulierten Block-Reset ausloesen | Comm-Loss kann in den Normalzustand zurueckgefuehrt werden | `/inverters`, `/alarms` |
 
 ## 8. Wichtige Folge-Alerts in V1

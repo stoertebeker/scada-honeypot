@@ -357,6 +357,8 @@ Pflichttests:
 
 - erfolgreicher Read
 - erfolgreicher Write mit Prozesswirkung
+- `Unit 11-13 / 40203` setzt den PV-/DC-Disconnect und spiegelt `40112`
+  sowie die reduzierte Blockleistung zurueck
 - ungueltige Adresse
 - ungueltiger Wert
 

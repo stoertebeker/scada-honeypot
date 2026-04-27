@@ -252,6 +252,9 @@ Nicht als Standardpfad aktiv:
   - Beispiel `655` = `65.5 %`
 - `40202 block_reset_request`
   - `1` loest den self-clearing Reset-Puls aus
+- `40203 dc_disconnect_request`
+  - `0=closed`
+  - `1=open`
 
 ### Unit `41` / Grid Interconnect
 
@@ -303,11 +306,13 @@ Schreibversuche dort fuehren zu:
 2. HMI oder Modbus:
    - Unit `12`, `40200 = 0`
    - optional zusaetzlich `40201 = 500`
+   - optional alternativ `40203 = 1`, um nur die PV-/DC-Seite zu isolieren
 3. Wirkung pruefen:
    - Block wirkt `Offline by request`, `Stale telemetry`, `PV isolated` oder leistungsgedrosselt
    - Parkleistung kann sinken
 4. Rueckbau:
    - Unit `12`, `40200 = 1`
+   - wenn `40203 = 1` gesetzt wurde, Unit `12`, `40203 = 0`
    - wenn noetig `40202 = 1` fuer Reset
 
 ## 7. Wo du die Wirkung deiner Aktionen nachverfolgst

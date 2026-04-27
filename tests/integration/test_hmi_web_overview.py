@@ -1221,7 +1221,9 @@ async def test_service_panel_dc_disconnect_switch_reduces_output_and_logs_events
     assert isolated_block.communication_state == "healthy"
     assert isolated_block.block_power_kw == 0.0
     assert register_map.snapshot.site.plant_power_mw == pytest.approx(3.88)
-    assert register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12).values[0:6] == (
+    assert register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=4).values == (1, 1000, 0, 1)
+    visible_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=13).values
+    assert visible_status[0:6] == (
         0,
         0,
         0,
@@ -1229,6 +1231,7 @@ async def test_service_panel_dc_disconnect_switch_reduces_output_and_logs_events
         0,
         0,
     )
+    assert visible_status[12] == 1
     assert control_event.result == "accepted"
     assert control_event.requested_value["asset_id"] == "invb-02"
     assert control_event.requested_value["dc_disconnect_state"] == "open"

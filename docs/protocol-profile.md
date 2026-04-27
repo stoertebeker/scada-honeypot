@@ -311,6 +311,7 @@ Typische schreibbare Punkte:
 - `block_enable_request`
 - `block_power_limit_pct`
 - `block_reset_request`
+- `dc_disconnect_request`
 
 ### 11.3 `weather_station`
 

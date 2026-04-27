@@ -253,24 +253,56 @@ def test_service_dc_disconnect_control_updates_shared_snapshot_and_visible_regis
     register_map = ReadOnlyRegisterMap(build_snapshot())
 
     open_result = register_map.set_block_dc_disconnect_state(asset_id="invb-02", dc_disconnect_state="open")
-    isolated_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=3)
-    isolated_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    isolated_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=4)
+    isolated_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=13)
     close_result = register_map.set_block_dc_disconnect_state(asset_id="invb-02", dc_disconnect_state="closed")
-    restored_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=12)
+    restored_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=13)
 
     assert open_result.previous_value == "closed"
     assert open_result.resulting_value == "open"
     assert open_result.resulting_state["dc_disconnect_state"] == "open"
     assert open_result.resulting_state["status"] == "online"
     assert open_result.resulting_state["block_power_kw"] == pytest.approx(0.0)
-    assert isolated_setpoints.values == (1, 1000, 0)
+    assert isolated_setpoints.values == (1, 1000, 0, 1)
     assert isolated_status.values[0:4] == (0, 0, 0, 0)
     assert isolated_status.values[5] == 0
     assert isolated_status.values[11] == 1
+    assert isolated_status.values[12] == 1
     assert close_result.previous_value == "open"
     assert close_result.resulting_value == "closed"
     assert restored_status.values[0:4] == (0, 0, 0, 1000)
     assert restored_status.values[5] == 1920
+    assert restored_status.values[12] == 0
+
+
+def test_unit_12_fc06_dc_disconnect_request_updates_block_state() -> None:
+    register_map = ReadOnlyRegisterMap(build_snapshot())
+
+    open_result = register_map.write_single_register(unit_id=12, start_offset=202, value=1)
+    isolated_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=4)
+    isolated_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=13)
+    close_result = register_map.write_single_register(unit_id=12, start_offset=202, value=0)
+    restored_setpoints = register_map.read_holding_registers(unit_id=12, start_offset=199, quantity=4)
+    restored_status = register_map.read_holding_registers(unit_id=12, start_offset=99, quantity=13)
+
+    assert open_result.register_address == 40203
+    assert open_result.previous_value == 0
+    assert open_result.resulting_value == 1
+    assert open_result.resulting_state["dc_disconnect_request"] == 1
+    assert open_result.resulting_state["dc_disconnect_state"] == "open"
+    assert open_result.resulting_state["status"] == "online"
+    assert open_result.resulting_state["block_power_kw"] == pytest.approx(0.0)
+    assert isolated_setpoints.values == (1, 1000, 0, 1)
+    assert isolated_status.values[0:4] == (0, 0, 0, 0)
+    assert isolated_status.values[5] == 0
+    assert isolated_status.values[12] == 1
+    assert close_result.previous_value == 1
+    assert close_result.resulting_value == 0
+    assert close_result.resulting_state["dc_disconnect_state"] == "closed"
+    assert restored_setpoints.values == (1, 1000, 0, 0)
+    assert restored_status.values[0:4] == (0, 0, 0, 1000)
+    assert restored_status.values[5] == 1920
+    assert restored_status.values[12] == 0
 
 
 def test_unit_12_fc16_updates_power_limit_and_reset_clears_comm_loss() -> None:
@@ -311,10 +343,13 @@ def test_unit_12_rejects_invalid_inverter_write_values() -> None:
         register_map.write_single_register(unit_id=12, start_offset=200, value=1001)
     with pytest.raises(ModbusRegisterError) as reset_exc:
         register_map.write_multiple_registers(unit_id=12, start_offset=201, values=(2,))
+    with pytest.raises(ModbusRegisterError) as dc_disconnect_exc:
+        register_map.write_single_register(unit_id=12, start_offset=202, value=2)
 
     assert enable_exc.value.exception_code == ILLEGAL_DATA_VALUE
     assert limit_exc.value.exception_code == ILLEGAL_DATA_VALUE
     assert reset_exc.value.exception_code == ILLEGAL_DATA_VALUE
+    assert dc_disconnect_exc.value.exception_code == ILLEGAL_DATA_VALUE
 
 
 def test_unit_21_rejects_any_write_in_read_only_slice() -> None:
