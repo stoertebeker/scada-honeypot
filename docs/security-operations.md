@@ -63,6 +63,9 @@ Eigenschaften:
   Remote-Zugriff nur ueber Tunnel/VPN oder vergleichbare Zugriffsschicht
 - operative Ops-Backend-Settings liegen persistent im lokalen Eventstore;
   Aenderungen erzeugen `ops.settings.updated`-Events
+- das Ops-Backend zeigt unter `/versions` einen statischen Feature-/Fix-Verlauf
+  aus `resources/backend_versions.json`; dieser Verlauf ist Betriebsmetadata
+  und gehoert nicht auf die oeffentliche Honeypot-Oberflaeche
 - Service-Login-Bruteforce wird nach ersten Stichproben pro Kampagne
   aggregiert; Klartext-Passwortlisten liegen nur im geschuetzten Ops-Backend
   und duerfen nicht ueber den oeffentlichen Honeypot-Port erreichbar sein

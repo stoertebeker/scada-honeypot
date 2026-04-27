@@ -222,6 +222,8 @@ uv run python -m playwright install chromium
     Settings-Aenderungen
   - geschuetzte Credential-Analyse fuer Service-Login-Kampagnen mit
     All-Time-/Kampagnen-Toplisten und CSV-Export
+  - Backend-Version-Log unter `/versions` mit nachvollziehbaren Feature- und
+    Fix-Staenden
   - Wartungsaktion zum Loeschen der Anlagenhistorie, auditierbar ueber
     `ops.history.deleted`
 - `runtime_evolution`

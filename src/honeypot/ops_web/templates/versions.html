@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Ops Versions{% endblock %}
+{% block heading %}Versions{% endblock %}
+{% block content %}
+{% if latest_version %}
+<div class="stats">
+  <div class="stat">
+    <span class="muted">Current backend version</span>
+    <strong>{{ latest_version.version }}</strong>
+  </div>
+  <div class="stat">
+    <span class="muted">Released</span>
+    <strong>{{ latest_version.released_at }}</strong>
+  </div>
+  <div class="stat">
+    <span class="muted">Category</span>
+    <strong>{{ latest_version.category }}</strong>
+  </div>
+</div>
+{% endif %}
+
+{% for version in versions %}
+<section>
+  <h2>{{ version.version }} / {{ version.title }}</h2>
+  <p class="meta">{{ version.released_at }} / {{ version.category }}</p>
+  <p>{{ version.summary }}</p>
+
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        <tr>
+          <th>Areas</th>
+          <td class="mono">{{ version.areas | join(", ") }}</td>
+        </tr>
+        <tr>
+          <th>Changes</th>
+          <td>
+            <ul>
+              {% for change in version.changes %}
+              <li>{{ change }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>Security</th>
+          <td>
+            <ul>
+              {% for note in version.security_notes %}
+              <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

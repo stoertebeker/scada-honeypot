@@ -116,6 +116,27 @@ async def test_ops_basic_auth_rejects_missing_and_wrong_credentials(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-versions.db")
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        dashboard = await client.get("/")
+        versions = await client.get("/versions")
+
+    assert dashboard.status_code == 200
+    assert "Versions" in dashboard.text
+    assert versions.status_code == 200
+    assert "Current backend version" in versions.text
+    assert "v0.9.1" in versions.text
+    assert "Backend version log" in versions.text
+    assert "v0.9.0" in versions.text
+    assert "Credential campaign aggregation" in versions.text
+    assert "The version log is only reachable through the protected Ops backend surface." in versions.text
+
+
+@pytest.mark.asyncio
 async def test_ops_settings_enable_static_ip_enrichment_and_audit_change(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops-settings.db")
     seed_ops_store(store)

@@ -1,0 +1,116 @@
+[
+  {
+    "version": "v0.9.1",
+    "released_at": "2026-04-27",
+    "category": "Feature",
+    "title": "Backend version log",
+    "summary": "Adds a protected Ops backend page that lists implemented features and fixes by version.",
+    "areas": ["ops-web", "documentation"],
+    "changes": [
+      "Expose a readable version history in the Ops backend.",
+      "Use structured release entries with version, date, category, summary and affected areas.",
+      "Keep the first documented baseline below v1.0 while pre-exposure work is still active."
+    ],
+    "security_notes": [
+      "The version log is only reachable through the protected Ops backend surface."
+    ]
+  },
+  {
+    "version": "v0.9.0",
+    "released_at": "2026-04-27",
+    "category": "Feature",
+    "title": "Credential campaign aggregation",
+    "summary": "Aggregates service-login brute-force campaigns and stores All-Time and per-campaign credential counters.",
+    "areas": ["hmi-web", "ops-web", "storage"],
+    "changes": [
+      "Sample the first service-login failures and aggregate later attempts into campaign summaries.",
+      "Store All-Time Top 100 usernames and cleartext passwords in the protected backend.",
+      "Support full CSV export for aggregated username and password counters.",
+      "Cap unique All-Time passwords at one million while continuing to count known values."
+    ],
+    "security_notes": [
+      "Cleartext attempted passwords are kept out of normal auth events and stored only in dedicated credential tables.",
+      "Credential export remains an Ops backend function and must not be exposed on the public honeypot port."
+    ]
+  },
+  {
+    "version": "v0.8.0",
+    "released_at": "2026-04-27",
+    "category": "Feature",
+    "title": "Interactive inverter disconnects",
+    "summary": "Adds visible QDC and QAC controls for inverter and PV field disconnect workflows.",
+    "areas": ["hmi-web", "plant-sim", "modbus"],
+    "changes": [
+      "Expose disconnect switches in the single-line view.",
+      "Reflect disconnect state in simulated energy output.",
+      "Map related control functions through Modbus registers."
+    ],
+    "security_notes": [
+      "Unauthenticated switch clicks are logged and redirected to the service-login flow."
+    ]
+  },
+  {
+    "version": "v0.7.0",
+    "released_at": "2026-04-27",
+    "category": "Feature",
+    "title": "Single-line energy-flow view",
+    "summary": "Introduces a clearer interactive single-line diagram for park topology and energy flow.",
+    "areas": ["hmi-web"],
+    "changes": [
+      "Separate DC-side PV field paths from AC-side inverter output paths.",
+      "Use established electrical symbols for inverter, breaker and grid presentation.",
+      "Relax diagram layout to avoid crowded labels and oversized arrows."
+    ],
+    "security_notes": [
+      "Control affordances are visible to attackers, while real actions still require the service path."
+    ]
+  },
+  {
+    "version": "v0.6.0",
+    "released_at": "2026-04-26",
+    "category": "Feature",
+    "title": "Historical generation simulation",
+    "summary": "Seeds plausible 30-day generation history so a fresh honeypot looks operational.",
+    "areas": ["runtime-evolution", "weather-core", "hmi-web"],
+    "changes": [
+      "Generate minute-level plant output from solar position and weather inputs.",
+      "Use historical weather or plausible fallback cloud-cover patterns.",
+      "Expose production trends and daily energy bars in the HMI."
+    ],
+    "security_notes": [
+      "Historical data is synthetic and does not reveal real plant telemetry."
+    ]
+  },
+  {
+    "version": "v0.5.0",
+    "released_at": "2026-04-25",
+    "category": "Feature",
+    "title": "Ops settings and source enrichment",
+    "summary": "Moves backend runtime settings into the protected Ops UI and enriches source IP overview rows.",
+    "areas": ["ops-web", "storage"],
+    "changes": [
+      "Persist backend settings in SQLite instead of growing the environment file.",
+      "Add toggles for source IP country, rDNS and ISP enrichment.",
+      "Add a protected action for deleting synthetic plant history."
+    ],
+    "security_notes": [
+      "rDNS remains opt-in because it creates outbound DNS activity."
+    ]
+  },
+  {
+    "version": "v0.4.0",
+    "released_at": "2026-04-24",
+    "category": "Feature",
+    "title": "Dedicated Ops backend",
+    "summary": "Adds an internal backend surface for observing attacker activity separately from the honeypot UI.",
+    "areas": ["ops-web", "runtime"],
+    "changes": [
+      "Run the Ops backend on a separate port from the exposed HMI honeypot.",
+      "Show events, alerts, sources and runtime summary views.",
+      "Keep the backend suitable for VPN, tunnel or private-network access."
+    ],
+    "security_notes": [
+      "The Ops backend is a sensitive observer surface and should not share the public honeypot ingress."
+    ]
+  }
+]

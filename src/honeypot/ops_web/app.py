@@ -30,6 +30,8 @@ from honeypot.ops_web.settings import (
 from honeypot.storage import CredentialCountRecord, LoginCampaignRecord, SQLiteEventStore
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_VERSION_LOG_PATH = _REPO_ROOT / "resources" / "backend_versions.json"
 _OPS_SECURITY = HTTPBasic(auto_error=False)
 _OPS_FORM_MAX_BYTES = 16 * 1024
 
@@ -103,6 +105,18 @@ class CampaignRow:
     attempt_count: int
     first_seen: str
     last_seen: str
+
+
+@dataclass(frozen=True, slots=True)
+class BackendVersionRow:
+    version: str
+    released_at: str
+    category: str
+    title: str
+    summary: str
+    areas: tuple[str, ...]
+    changes: tuple[str, ...]
+    security_notes: tuple[str, ...]
 
 
 def create_ops_app(
@@ -287,6 +301,18 @@ def create_ops_app(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
+    @app.get("/versions", response_class=HTMLResponse, include_in_schema=False)
+    async def versions_page(request: Request, _: None = Depends(require_ops_auth)) -> HTMLResponse:
+        versions = _load_backend_versions()
+        context = _template_context(
+            request=request,
+            config=config,
+            current_path="/versions",
+            versions=versions,
+            latest_version=(versions[0] if versions else None),
+        )
+        return templates.TemplateResponse(request=request, name="versions.html", context=context)
+
     @app.get("/settings", response_class=HTMLResponse, include_in_schema=False)
     async def settings_page(request: Request, _: None = Depends(require_ops_auth)) -> HTMLResponse:
         context = _settings_context(
@@ -444,6 +470,7 @@ def _template_context(
             ("/alerts", "Alerts"),
             ("/sources", "Sources"),
             ("/credentials", "Credentials"),
+            ("/versions", "Versions"),
             ("/settings", "Settings"),
         ),
     }
@@ -735,6 +762,48 @@ def _credential_csv_stream(
         yield buffer.getvalue()
         buffer.seek(0)
         buffer.truncate(0)
+
+
+def _load_backend_versions(path: Path = _VERSION_LOG_PATH) -> tuple[BackendVersionRow, ...]:
+    try:
+        raw_versions = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RuntimeError(f"backend version log cannot be read: {path}") from exc
+    if not isinstance(raw_versions, list):
+        raise RuntimeError("backend version log must be a list")
+    return tuple(_backend_version_from_mapping(item) for item in raw_versions)
+
+
+def _backend_version_from_mapping(value: Any) -> BackendVersionRow:
+    if not isinstance(value, dict):
+        raise RuntimeError("backend version entries must be objects")
+    return BackendVersionRow(
+        version=_required_version_text(value, "version"),
+        released_at=_required_version_text(value, "released_at"),
+        category=_required_version_text(value, "category"),
+        title=_required_version_text(value, "title"),
+        summary=_required_version_text(value, "summary"),
+        areas=_required_version_tuple(value, "areas"),
+        changes=_required_version_tuple(value, "changes"),
+        security_notes=_required_version_tuple(value, "security_notes"),
+    )
+
+
+def _required_version_text(value: dict[str, Any], key: str) -> str:
+    raw = value.get(key)
+    if not isinstance(raw, str) or not raw.strip():
+        raise RuntimeError(f"backend version entry field {key} must be non-empty text")
+    return raw.strip()
+
+
+def _required_version_tuple(value: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw = value.get(key)
+    if not isinstance(raw, list):
+        raise RuntimeError(f"backend version entry field {key} must be a list")
+    entries = tuple(item.strip() for item in raw if isinstance(item, str) and item.strip())
+    if len(entries) != len(raw):
+        raise RuntimeError(f"backend version entry field {key} must only contain non-empty text")
+    return entries
 
 
 def _format_dt_iso(value: datetime) -> str:
