@@ -217,7 +217,6 @@ Anzuzeigende Inhalte:
 - Kommunikationszustand
 - Kurzstatus der drei Inverter-Bloecke
 - Wetter-Kurzwerte
-- sichtbare Service-Access-Kachel mit Link auf `/service/login`
 
 Empfohlene Darstellung:
 
@@ -227,7 +226,8 @@ Empfohlene Darstellung:
 
 Bedienung:
 - keine direkten Schreibaktionen auf dieser Seite
-- Navigation zu Detailseiten und zum Service-Login-Koederpfad
+- Navigation zu Detailseiten und zum Service-Login-Koederpfad ueber die
+  normale HMI-Navigationsleiste
 
 ### 7.2 `/single-line`
 

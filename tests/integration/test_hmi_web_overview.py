@@ -137,9 +137,9 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert "Meter" in overview_response.text
     assert "Alarms" in overview_response.text
     assert "Trends" in overview_response.text
-    assert "Service Access" in overview_response.text
-    assert "Restricted" in overview_response.text
+    assert "Service Login" in overview_response.text
     assert 'href="/service/login"' in overview_response.text
+    assert "Service Access" not in overview_response.text
     assert "5.80 MW" in overview_response.text
     assert "100.0 %" in overview_response.text
     assert "Closed" in overview_response.text
@@ -158,7 +158,7 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_overview_service_login_card_is_visible_when_service_login_is_disabled(tmp_path: Path) -> None:
+async def test_overview_service_login_nav_is_visible_when_service_login_is_disabled(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     config = build_config(tmp_path).model_copy(update={"enable_service_login": False})
     app = create_hmi_app(
@@ -173,8 +173,9 @@ async def test_overview_service_login_card_is_visible_when_service_login_is_disa
         login_response = await client.get("/service/login")
 
     assert overview_response.status_code == 200
-    assert "Service Access" in overview_response.text
+    assert "Service Login" in overview_response.text
     assert 'href="/service/login"' in overview_response.text
+    assert "Service Access" not in overview_response.text
     assert login_response.status_code == 403
 
 

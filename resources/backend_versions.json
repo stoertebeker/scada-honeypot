@@ -1,5 +1,21 @@
 [
   {
+    "version": "v0.9.3",
+    "released_at": "2026-04-27",
+    "category": "Fix",
+    "title": "Service-login navigation placement",
+    "summary": "Moves the service-login lure into the normal HMI navigation button group and removes the prominent overview card.",
+    "areas": ["hmi-web", "documentation"],
+    "changes": [
+      "Add Service Login to the same navigation group as Overview, Weather, Meter, Alarms and Trends.",
+      "Remove the Service Access metric card from /overview.",
+      "Keep the service-login link visible even when the service-login endpoint returns the quiet disabled page."
+    ],
+    "security_notes": [
+      "The navigation item points only at the honeypot HMI login path and does not expose the protected Ops backend."
+    ]
+  },
+  {
     "version": "v0.9.2",
     "released_at": "2026-04-27",
     "category": "Feature",

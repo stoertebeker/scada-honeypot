@@ -3127,6 +3127,7 @@ def _nav_items(current_path: str) -> tuple[NavItem, ...]:
         NavItem(href="/meter", label_key="nav.meter", is_current=current == "/meter"),
         NavItem(href="/alarms", label_key="nav.alarms", is_current=current == "/alarms"),
         NavItem(href="/trends", label_key="nav.trends", is_current=current == "/trends"),
+        NavItem(href="/service/login", label_key="page.service_login.title", is_current=current == "/service/login"),
     )
 
 
