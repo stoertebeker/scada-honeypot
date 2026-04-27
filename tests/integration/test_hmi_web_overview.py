@@ -46,6 +46,7 @@ def _trend_sample(
     plant_power_mw: float,
     irradiance_w_m2: float,
     export_power_mw: float,
+    export_energy_mwh_total: float | None = None,
 ) -> TrendSample:
     return TrendSample(
         observed_at=observed_at,
@@ -53,6 +54,7 @@ def _trend_sample(
         active_power_limit_pct=snapshot.power_plant_controller.active_power_limit_pct,
         irradiance_w_m2=irradiance_w_m2,
         export_power_mw=export_power_mw,
+        export_energy_mwh_total=export_energy_mwh_total,
         block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
     )
 
@@ -472,12 +474,14 @@ async def test_trends_page_renders_snapshot_derived_traces_and_logs_hmi_events(t
     assert "Export Power" in response.text
     assert "Export Energy" in response.text
     assert "History Window" in response.text
+    assert "Daily Energy" in response.text
     assert "invb-01" in response.text
     assert "5.80 MW" in response.text
     assert "100.0 %" in response.text
     assert trends_event.event_type == "hmi.page.trends_viewed"
     assert trends_event.resulting_state["series_count"] == 8
     assert trends_event.resulting_state["trend_window"] == "30d"
+    assert trends_event.resulting_state["daily_energy_days"] == 0
     assert trends_event.resulting_state["plant_power_mw"] == 5.8
 
 
@@ -521,6 +525,55 @@ async def test_trends_page_uses_live_history_without_location_leak(tmp_path: Pat
     assert "Current values stay aligned with the baseline operating trace." not in response.text
     assert "52.52" not in response.text
     assert "13.405" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_trends_page_renders_daily_energy_bars_from_history(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    history = (
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time,
+            plant_power_mw=4.8,
+            irradiance_w_m2=690,
+            export_power_mw=4.75,
+            export_energy_mwh_total=100.0,
+        ),
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time + timedelta(hours=12),
+            plant_power_mw=5.4,
+            irradiance_w_m2=800,
+            export_power_mw=5.32,
+            export_energy_mwh_total=124.0,
+        ),
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time + timedelta(days=1, hours=12),
+            plant_power_mw=5.1,
+            irradiance_w_m2=760,
+            export_power_mw=5.04,
+            export_energy_mwh_total=164.0,
+        ),
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot.model_copy(update={"observed_at": history[-1].observed_at}),
+        trend_history_provider=lambda: history,
+        config=build_config(tmp_path),
+        event_recorder=None,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/trends?window=7d")
+
+    assert response.status_code == 200
+    assert "Daily Energy" in response.text
+    assert "MWh per day" in response.text
+    assert "04-02 / 24.000 MWh" in response.text
+    assert "04-03 / 40.000 MWh" in response.text
+    assert "height: 60%" in response.text
+    assert "height: 100%" in response.text
 
 
 @pytest.mark.asyncio

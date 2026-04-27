@@ -193,6 +193,62 @@
       color: var(--muted);
     }
 
+    .daily-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: end;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .daily-head p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .daily-bars {
+      display: flex;
+      gap: 6px;
+      min-height: 184px;
+      padding-top: 8px;
+      overflow-x: auto;
+      align-items: end;
+    }
+
+    .daily-bar {
+      display: grid;
+      grid-template-rows: 1fr auto auto;
+      gap: 4px;
+      min-width: 34px;
+      align-items: end;
+      text-align: center;
+    }
+
+    .daily-track {
+      display: flex;
+      height: 132px;
+      align-items: end;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .daily-fill {
+      width: 100%;
+      background: var(--accent);
+    }
+
+    .daily-fill.good { background: var(--good); }
+    .daily-fill.warn { background: var(--warn); }
+    .daily-fill.alarm { background: var(--alarm); }
+
+    .daily-value,
+    .daily-label {
+      font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
     .tone-good { color: var(--good); }
     .tone-warn { color: var(--warn); }
     .tone-alarm { color: var(--alarm); }
@@ -291,6 +347,24 @@
       <h2>{{ t("section.trends.context") }}</h2>
       <div class="context {{ page.context_tone }}">
         <p class="mono tone-{{ page.context_tone }}">{{ page.context_label }}</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="daily-head">
+        <h2>{{ t("section.trends.daily_energy") }}</h2>
+        <p class="mono">{{ t("label.daily_energy_mwh") }}</p>
+      </div>
+      <div class="daily-bars" aria-label="{{ t('section.trends.daily_energy') }}">
+        {% for bar in page.daily_energy_bars %}
+        <div class="daily-bar" title="{{ bar.title_label }}" aria-label="{{ bar.title_label }}">
+          <span class="daily-value">{{ bar.value_label }}</span>
+          <div class="daily-track">
+            <div class="daily-fill {{ bar.tone }}" style="height: {{ bar.height_pct }}%"></div>
+          </div>
+          <span class="daily-label">{{ bar.day_label }}</span>
+        </div>
+        {% endfor %}
       </div>
     </section>
 

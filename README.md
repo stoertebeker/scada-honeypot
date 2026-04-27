@@ -224,7 +224,8 @@ uv run python -m playwright install chromium
     `ops.history.deleted`
 - `runtime_evolution`
   - tickende `observed_at`-Zeit, wettergetriebene Anlagenleistung und
-    persistente 30-Tage-Erzeugungshistorie fuer `/trends`
+    persistente 30-Tage-Erzeugungshistorie fuer `/trends`, inklusive
+    Tagesenergie-Balken aus dem Export-Energy-Zaehler
 - `weather_core`
   - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
 - `exporter_sdk`

@@ -355,6 +355,7 @@ Anzuzeigende Standardtrends:
 - Irradiance
 - Export power
 - Export energy
+- Daily energy bars in MWh/day
 - Block power je Inverter-Block
 
 Wichtige Regel:
@@ -362,6 +363,8 @@ Wichtige Regel:
 - die sichtbare Anlagenhistorie ist auf 30 Tage begrenzt
 - ein glaubhafter Verlauf der Erzeugungswerte ist wichtiger als
   historische Wetterdetails
+- Tagesenergie wird aus dem kumulativen Export-Energy-Zaehler abgeleitet und
+  nach lokalem Kalendertag gruppiert
 - auswaehlbare Zeitfenster fuer V1: `1h`, `6h`, `24h`, `7d`, `30d`
 - die sichtbare Snapshot-Zeit muss aus dem gemeinsamen `observed_at` kommen
 - die Trendkarten sollen aus persistierter Runtime-Historie statt aus einer

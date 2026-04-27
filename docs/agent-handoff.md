@@ -97,7 +97,7 @@ docker compose --profile verify run --rm honeypot-sweep
 - `monitoring`
   - Heartbeat nach `RUNTIME_STATUS_PATH`
 - `runtime_evolution`
-  - tickende Snapshot-Zeit plus wettergetriebene Leistungs-/Meterfortschreibung und persistente 30-Tage-Erzeugungshistorie fuer `/trends`
+  - tickende Snapshot-Zeit plus wettergetriebene Leistungs-/Meterfortschreibung und persistente 30-Tage-Erzeugungshistorie fuer `/trends`, inklusive Tagesenergie-Balken
 - `weather_core`
   - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
 - `exporter_sdk`

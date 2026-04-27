@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import secrets
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Protocol
 from urllib.parse import parse_qs, urlencode
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -266,6 +268,15 @@ class TrendWindowLink:
 
 
 @dataclass(frozen=True, slots=True)
+class DailyEnergyBar:
+    day_label: str
+    value_label: str
+    title_label: str
+    height_pct: int
+    tone: str
+
+
+@dataclass(frozen=True, slots=True)
 class TrendsViewModel:
     page_title: str
     page_subtitle: str
@@ -280,6 +291,7 @@ class TrendsViewModel:
     window_links: tuple[TrendWindowLink, ...]
     sample_count: int
     window_energy_label: str
+    daily_energy_bars: tuple[DailyEnergyBar, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -881,6 +893,7 @@ def create_hmi_app(
                 "trend_window": trend_window,
                 "history_points": view_model.sample_count,
                 "window_energy": view_model.window_energy_label,
+                "daily_energy_days": len(view_model.daily_energy_bars),
                 "plant_power_mw": snapshot.site.plant_power_mw,
                 "active_power_limit_pct": snapshot.power_plant_controller.active_power_limit_pct,
                 "export_power_kw": snapshot.revenue_meter.export_power_kw,
@@ -2385,7 +2398,9 @@ def build_trends_view_model(
         trend_history=trend_history,
         trend_window=resolved_window,
     )
+    render_history = _decimate_trend_history(history, max_points=MAX_TREND_RENDER_POINTS)
     window_energy_mwh = _window_energy_mwh(history)
+    daily_energy_bars = _daily_energy_bars(history, timezone=config.timezone)
     context_label, context_tone = _trends_context(snapshot, history, texts)
     metrics = (
         OverviewMetric("label.plant_power", _format_power_mw(snapshot.site.plant_power_mw), _tone_for_power(snapshot)),
@@ -2414,35 +2429,35 @@ def build_trends_view_model(
         _trend_series_view(
             asset_id="site",
             title=texts["trend.plant_power"],
-            values=tuple(sample.plant_power_mw for sample in history),
+            values=tuple(sample.plant_power_mw for sample in render_history),
             value_formatter=_format_power_mw,
             tone=_tone_for_power(snapshot),
         ),
         _trend_series_view(
             asset_id=snapshot.power_plant_controller.asset_id,
             title=texts["trend.power_limit"],
-            values=tuple(sample.active_power_limit_pct for sample in history),
+            values=tuple(sample.active_power_limit_pct for sample in render_history),
             value_formatter=lambda value: f"{value:.1f} %",
             tone=_tone_for_limit(snapshot),
         ),
         _trend_series_view(
             asset_id=snapshot.weather_station.asset_id,
             title=texts["trend.irradiance"],
-            values=tuple(sample.irradiance_w_m2 for sample in history),
+            values=tuple(sample.irradiance_w_m2 for sample in render_history),
             value_formatter=lambda value: f"{value:.0f} W/m2",
             tone="good" if snapshot.weather_station.irradiance_w_m2 >= 700 else "warn",
         ),
         _trend_series_view(
             asset_id=snapshot.revenue_meter.asset_id,
             title=texts["trend.export_power"],
-            values=tuple(sample.export_power_mw for sample in history),
+            values=tuple(sample.export_power_mw for sample in render_history),
             value_formatter=lambda value: f"{value:.2f} MW",
             tone="good" if snapshot.revenue_meter.export_power_kw > 0 else "alarm",
         ),
         _trend_series_view(
             asset_id=snapshot.revenue_meter.asset_id,
             title=texts["trend.export_energy"],
-            values=_export_energy_series(history),
+            values=_export_energy_series(render_history),
             value_formatter=_format_energy_mwh,
             tone="good" if window_energy_mwh > 0 else "warn",
         ),
@@ -2450,7 +2465,7 @@ def build_trends_view_model(
             _trend_series_view(
                 asset_id=current_block.asset_id,
                 title=f"{texts['trend.block_power']} {current_block.asset_id.upper()}",
-                values=_block_series(history, current_block.asset_id),
+                values=_block_series(render_history, current_block.asset_id),
                 value_formatter=lambda value: f"{value:.1f} kW",
                 tone=_tone_for_block(current_block.status, current_block.communication_state),
             )
@@ -2472,6 +2487,7 @@ def build_trends_view_model(
         window_links=_trend_window_links(resolved_window),
         sample_count=len(history),
         window_energy_label=_format_energy_mwh(window_energy_mwh),
+        daily_energy_bars=daily_energy_bars,
     )
 
 
@@ -3485,7 +3501,7 @@ def _trend_history_for_window(
     filtered = tuple(sample for sample in history if ensure_utc_datetime(sample.observed_at) >= cutoff)
     if not filtered:
         filtered = (history[-1],)
-    return _decimate_trend_history(filtered, max_points=MAX_TREND_RENDER_POINTS)
+    return filtered
 
 
 def _decimate_trend_history(history: tuple[TrendSample, ...], *, max_points: int) -> tuple[TrendSample, ...]:
@@ -3511,6 +3527,64 @@ def _window_energy_mwh(history: tuple[TrendSample, ...]) -> float:
     if len(totals) < 2:
         return 0.0
     return round(max(totals[-1] - totals[0], 0.0), 3)
+
+
+def _daily_energy_bars(history: tuple[TrendSample, ...], *, timezone: str) -> tuple[DailyEnergyBar, ...]:
+    totals = _daily_energy_totals(history, timezone=timezone)
+    if not totals:
+        return ()
+
+    max_value = max(totals.values())
+    bars: list[DailyEnergyBar] = []
+    for day, value in totals.items():
+        height_pct = 0 if value <= 0 or max_value <= 0 else max(3, round((value / max_value) * 100))
+        value_label = f"{value:.1f}"
+        day_label = day.strftime("%m-%d")
+        bars.append(
+            DailyEnergyBar(
+                day_label=day_label,
+                value_label=value_label,
+                title_label=f"{day_label} / {_format_energy_mwh(value)}",
+                height_pct=height_pct,
+                tone="good" if value > 0 else "warn",
+            )
+        )
+    return tuple(bars)
+
+
+def _daily_energy_totals(history: tuple[TrendSample, ...], *, timezone: str):
+    samples = tuple(
+        sample for sample in sorted(history, key=lambda item: item.observed_at)
+        if sample.export_energy_mwh_total is not None
+    )
+    if len(samples) < 2:
+        return {}
+
+    zone = _trend_zoneinfo(timezone)
+    first_day = ensure_utc_datetime(samples[0].observed_at).astimezone(zone).date()
+    last_day = ensure_utc_datetime(samples[-1].observed_at).astimezone(zone).date()
+    totals = defaultdict(float)
+    current_day = first_day
+    while current_day <= last_day:
+        totals[current_day] = 0.0
+        current_day = current_day + timedelta(days=1)
+
+    previous = samples[0]
+    for sample in samples[1:]:
+        delta = max((sample.export_energy_mwh_total or 0.0) - (previous.export_energy_mwh_total or 0.0), 0.0)
+        day = ensure_utc_datetime(sample.observed_at).astimezone(zone).date()
+        totals[day] += delta
+        previous = sample
+
+    ordered_days = tuple(sorted(totals))[-31:]
+    return {day: round(totals[day], 3) for day in ordered_days}
+
+
+def _trend_zoneinfo(timezone: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
 
 
 def _normalize_trend_window(value: str | None) -> str:
