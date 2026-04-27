@@ -3,6 +3,9 @@
     <thead>
       <tr>
         <th>Source IP</th>
+        <th>Country</th>
+        <th>rDNS</th>
+        <th>ISP</th>
         <th>Events</th>
         <th>Rejected</th>
         <th>Sessions</th>
@@ -16,6 +19,9 @@
       {% for source in sources %}
       <tr>
         <td class="mono cell-source">{{ source.source_ip }}</td>
+        <td class="mono cell-country">{{ source.country_code }}</td>
+        <td class="mono cell-rdns">{{ source.rdns }}</td>
+        <td class="mono cell-isp">{{ source.isp }}</td>
         <td class="mono">{{ source.event_count }}</td>
         <td class="mono">{{ source.rejected_count }}</td>
         <td class="mono">{{ source.session_count }}</td>
@@ -25,7 +31,7 @@
         <td class="mono">{{ source.top_endpoint }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="muted">No sources recorded.</td></tr>
+      <tr><td colspan="11" class="muted">No sources recorded.</td></tr>
       {% endfor %}
     </tbody>
   </table>

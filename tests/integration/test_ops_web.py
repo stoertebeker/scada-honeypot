@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 from pathlib import Path
+import re
 
 import httpx
 import pytest
@@ -85,6 +87,7 @@ async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -
     assert summary.json()["summary"]["active_alerts"] == 1
     assert summary.json()["summary"]["last_event_at"] == "2026-04-26T20:00:00Z"
     assert summary.json()["sources"][0]["rejected_count"] == 1
+    assert summary.json()["sources"][0]["country_code"] == "-"
 
 
 @pytest.mark.asyncio
@@ -109,3 +112,61 @@ async def test_ops_basic_auth_rejects_missing_and_wrong_credentials(tmp_path: Pa
     assert missing.status_code == 401
     assert wrong.status_code == 401
     assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ops_settings_enable_static_ip_enrichment_and_audit_change(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-settings.db")
+    seed_ops_store(store)
+    static_map_path = tmp_path / "ip-map.json"
+    static_map_path.write_text(
+        json.dumps(
+            {
+                "203.0.113.44": {
+                    "country_code": "DE",
+                    "rdns": "scan.example.test",
+                    "isp": "Example Transit",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        settings_page = await client.get("/settings")
+        csrf_token = _extract_csrf_token(settings_page.text)
+        update = await client.post(
+            "/settings",
+            data={
+                "csrf_token": csrf_token,
+                "ip_enrichment_enabled": "on",
+                "ip_enrichment_static_map_path": str(static_map_path),
+                "ip_enrichment_country_mmdb_path": "",
+                "ip_enrichment_asn_mmdb_path": "",
+                "ip_enrichment_rdns_timeout_ms": "300",
+                "events_default_limit": "25",
+                "alerts_default_limit": "25",
+                "sources_default_limit": "25",
+            },
+            follow_redirects=False,
+        )
+        sources = await client.get("/sources")
+        summary = await client.get("/api/summary")
+
+    assert update.status_code == 303
+    assert "GER" in sources.text
+    assert "scan.example.test" in sources.text
+    assert "Example Transit" in sources.text
+    enriched_sources = summary.json()["sources"]
+    assert any(source["country_code"] == "GER" for source in enriched_sources)
+    assert any(source["rdns"] == "scan.example.test" for source in enriched_sources)
+    assert store.fetch_ops_settings()["ip_enrichment_enabled"] is True
+    assert any(event.event_type == "ops.settings.updated" for event in store.fetch_events())
+
+
+def _extract_csrf_token(rendered_html: str) -> str:
+    match = re.search(r'name="csrf_token" value="([^"]+)"', rendered_html)
+    assert match is not None
+    return match.group(1)

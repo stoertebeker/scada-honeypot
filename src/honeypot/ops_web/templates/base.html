@@ -169,6 +169,17 @@
       min-width: 21ch;
     }
 
+    .cell-country {
+      min-width: 5ch;
+      white-space: nowrap;
+    }
+
+    .cell-rdns,
+    .cell-isp {
+      min-width: 16ch;
+      max-width: 34ch;
+    }
+
     .result-rejected,
     .state-active_unacknowledged,
     .state-active_acknowledged,
@@ -192,6 +203,40 @@
       margin-bottom: 12px;
     }
 
+    form.settings {
+      display: grid;
+      gap: 16px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    label.checkbox {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--ink);
+      font-size: 0.9rem;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
     input,
     button {
       width: 100%;
@@ -200,12 +245,29 @@
       font: inherit;
     }
 
+    input[type="checkbox"] {
+      width: auto;
+    }
+
     button {
       border-color: var(--accent);
       color: #f8fbfc;
       background: var(--accent);
       font-weight: 700;
       cursor: pointer;
+    }
+
+    .status {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      color: var(--good);
+      background: #f5faf7;
+      font-weight: 700;
+    }
+
+    .status.error {
+      color: var(--alarm);
+      background: #fff7f6;
     }
 
     @media (max-width: 820px) {

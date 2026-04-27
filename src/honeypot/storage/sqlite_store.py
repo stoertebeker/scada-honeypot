@@ -110,6 +110,12 @@ class SQLiteEventStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS ops_settings (
+                    setting_key TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_outbox_status_next_attempt
                 ON outbox(status, next_attempt_at);
                 """
@@ -253,11 +259,45 @@ class SQLiteEventStore:
             )
 
     def count_rows(self, table_name: str) -> int:
-        if table_name not in {"current_state", "event_log", "alert_log", "outbox"}:
+        if table_name not in {"current_state", "event_log", "alert_log", "outbox", "ops_settings"}:
             raise ValueError(f"ungueltiger Tabellenname: {table_name}")
         with self._connect() as connection:
             row = connection.execute(f"SELECT COUNT(*) AS row_count FROM {table_name}").fetchone()
         return int(row["row_count"])
+
+    def fetch_ops_settings(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT setting_key, value_json
+                FROM ops_settings
+                ORDER BY setting_key
+                """
+            ).fetchall()
+
+        return {str(row["setting_key"]): json.loads(str(row["value_json"])) for row in rows}
+
+    def upsert_ops_settings(self, settings: dict[str, Any], *, updated_at: datetime) -> None:
+        if not settings:
+            return
+        timestamp = _iso_timestamp(updated_at)
+        with self._connect() as connection:
+            for setting_key, value in settings.items():
+                normalized_setting_key = _normalize_required_text(setting_key, field_name="setting_key")
+                connection.execute(
+                    """
+                    INSERT INTO ops_settings (setting_key, value_json, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(setting_key) DO UPDATE SET
+                        value_json = excluded.value_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        normalized_setting_key,
+                        _json_blob(value),
+                        timestamp,
+                    ),
+                )
 
     def fetch_events(self) -> tuple[EventRecord, ...]:
         with self._connect() as connection:

@@ -28,6 +28,11 @@ Standardpfade im lokalen Designbetrieb:
 - Ops-Backend: `http://127.0.0.1:9090/`
 - Modbus/TCP: `127.0.0.1:1502`
 
+Das Ops-Backend fuehrt eigene persistente Einstellungen unter `/settings`.
+IP-Anreicherung fuer die Source-Uebersicht wird dort aktiviert; rDNS bleibt
+standardmaessig aus, weil es aktiven DNS-Egress erzeugt. Laender werden in der
+Tabelle als kurze Codes wie `GER` angezeigt.
+
 ### Lokaler Reset
 
 ```bash
@@ -212,6 +217,8 @@ uv run python -m playwright install chromium
 - `ops_web`
   - internes read-only Backend fuer Events, Alerts und Source-Aktivitaet auf
     separatem Port
+  - persistente Backend-Settings, Source-IP-Anreicherung und Audit-Events fuer
+    Settings-Aenderungen
 - `runtime_evolution`
   - tickende `observed_at`-Zeit, wettergetriebene Anlagenleistung und kleine In-Memory-Trendhistorie fuer `/trends`
 - `weather_core`

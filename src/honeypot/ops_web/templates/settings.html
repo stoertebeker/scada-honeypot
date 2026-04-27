@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Ops Settings{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block content %}
+{% if saved %}
+<p class="status">Settings saved.</p>
+{% endif %}
+{% if error %}
+<p class="status error">{{ error }}</p>
+{% endif %}
+<form class="settings" method="post" action="/settings">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <section>
+    <h2>IP Enrichment</h2>
+    <div class="settings-grid">
+      <label class="checkbox">
+        <input type="checkbox" name="ip_enrichment_enabled" {% if settings.ip_enrichment_enabled %}checked{% endif %}>
+        Enable IP enrichment
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="ip_enrichment_rdns_enabled" {% if settings.ip_enrichment_rdns_enabled %}checked{% endif %}>
+        Enable rDNS lookup
+      </label>
+      <div class="field">
+        <label for="ip_enrichment_static_map_path">Static map path</label>
+        <input id="ip_enrichment_static_map_path" name="ip_enrichment_static_map_path" value="{{ settings.ip_enrichment_static_map_path }}">
+      </div>
+      <div class="field">
+        <label for="ip_enrichment_country_mmdb_path">Country MMDB path</label>
+        <input id="ip_enrichment_country_mmdb_path" name="ip_enrichment_country_mmdb_path" value="{{ settings.ip_enrichment_country_mmdb_path }}">
+      </div>
+      <div class="field">
+        <label for="ip_enrichment_asn_mmdb_path">ASN MMDB path</label>
+        <input id="ip_enrichment_asn_mmdb_path" name="ip_enrichment_asn_mmdb_path" value="{{ settings.ip_enrichment_asn_mmdb_path }}">
+      </div>
+      <div class="field">
+        <label for="ip_enrichment_rdns_timeout_ms">rDNS timeout ms</label>
+        <input id="ip_enrichment_rdns_timeout_ms" name="ip_enrichment_rdns_timeout_ms" type="number" min="50" max="5000" value="{{ settings.ip_enrichment_rdns_timeout_ms }}">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Table Limits</h2>
+    <div class="settings-grid">
+      <div class="field">
+        <label for="events_default_limit">Events</label>
+        <input id="events_default_limit" name="events_default_limit" type="number" min="1" max="500" value="{{ settings.events_default_limit }}">
+      </div>
+      <div class="field">
+        <label for="alerts_default_limit">Alerts</label>
+        <input id="alerts_default_limit" name="alerts_default_limit" type="number" min="1" max="500" value="{{ settings.alerts_default_limit }}">
+      </div>
+      <div class="field">
+        <label for="sources_default_limit">Sources</label>
+        <input id="sources_default_limit" name="sources_default_limit" type="number" min="1" max="500" value="{{ settings.sources_default_limit }}">
+      </div>
+    </div>
+  </section>
+
+  <button type="submit">Save</button>
+</form>
+{% endblock %}

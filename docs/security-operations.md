@@ -61,6 +61,10 @@ Eigenschaften:
   `RUNTIME_STATUS_PATH` bereit, ohne neue Netzwerkflaeche zu oeffnen
 - internes Ops-Backend laeuft getrennt von der Angreifer-HMI auf eigenem Port;
   Remote-Zugriff nur ueber Tunnel/VPN oder vergleichbare Zugriffsschicht
+- operative Ops-Backend-Settings liegen persistent im lokalen Eventstore;
+  Aenderungen erzeugen `ops.settings.updated`-Events
+- Source-IP-Anreicherung nutzt lokale Mapping-/GeoIP-Daten; rDNS ist
+  standardmaessig deaktiviert, weil es aktiven DNS-Egress erzeugt
 - ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
   Reset und Fresh-Start ist jetzt im Testharness belegt
 - Stand 23. April 2026: formales `GO` fuer `pre-exposure`, siehe
@@ -210,6 +214,7 @@ Nur kontrolliert aktivieren:
 - `JSONL`-Archiv
 - `PCAP`
 - HTTP-Rohtranskripte
+- rDNS fuer Source-IP-Anreicherung im Ops-Backend
 
 ### 7.3 Warum das wichtig ist
 

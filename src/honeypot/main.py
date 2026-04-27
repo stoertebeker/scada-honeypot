@@ -256,7 +256,11 @@ def build_local_runtime(
         port=effective_hmi_port,
         log_level=config.log_level,
     )
-    ops_app = create_ops_app(event_store=event_store, config=config) if config.ops_enabled else None
+    ops_app = (
+        create_ops_app(event_store=event_store, config=config, event_recorder=event_recorder)
+        if config.ops_enabled
+        else None
+    )
     ops_service = (
         LocalHmiHttpService(
             app=ops_app,

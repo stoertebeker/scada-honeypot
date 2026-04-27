@@ -4,6 +4,10 @@
 {% block content %}
 <section>
   <h2>Source Activity</h2>
+  <form class="filters" method="get" action="/sources">
+    <input name="limit" type="number" min="1" max="500" value="{{ limit }}" placeholder="limit">
+    <button type="submit">Apply</button>
+  </form>
   {% include "partials/sources_table.html" %}
 </section>
 {% endblock %}
