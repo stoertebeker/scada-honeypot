@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from honeypot.asset_domain import PlantSnapshot
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
+from honeypot.ops_web.settings import OpsBackendSettings, load_ops_settings
 from honeypot.plant_sim import SimulationEventContext
 from honeypot.runtime_evolution import TrendSample
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
@@ -484,59 +485,175 @@ class HmiFormRequestError(ValueError):
 
 
 @dataclass(slots=True)
-class ServiceLoginThrottle:
+class ServiceLoginCampaignState:
+    campaign_id: str
+    source_ip: str
+    user_agent: str
+    endpoint: str
+    first_seen: Any
+    last_seen: Any
+    next_summary_at: Any
+    total_attempts: int = 0
+    window_attempts: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ServiceLoginCaptureDecision:
+    campaign_id: str
+    emit_attempt_event: bool
+    summary_event: Any | None = None
+
+
+@dataclass(slots=True)
+class ServiceLoginCampaignTracker:
     clock: Clock
-    failure_limit: int = SERVICE_LOGIN_FAILURE_LIMIT
-    failure_window: timedelta = SERVICE_LOGIN_FAILURE_WINDOW
-    backoff: timedelta = SERVICE_LOGIN_BACKOFF
+    event_recorder: EventRecorder | None
     max_sources: int = SERVICE_LOGIN_THROTTLE_MAX_SOURCES
-    _failures_by_source: dict[str, tuple[Any, ...]] = field(default_factory=dict, init=False, repr=False)
-    _blocked_until_by_source: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+    _campaigns_by_key: dict[tuple[str, str, str], ServiceLoginCampaignState] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
-    def is_limited(self, source_ip: str) -> bool:
+    def record_failure(
+        self,
+        *,
+        request: Request,
+        username: str,
+        password: str | None,
+    ) -> ServiceLoginCaptureDecision:
         now = ensure_utc_datetime(self.clock.now())
-        self._prune(now)
-        blocked_until = self._blocked_until_by_source.get(source_ip)
-        return blocked_until is not None and now < ensure_utc_datetime(blocked_until)
+        settings = self._settings()
+        state = self._state_for_request(request=request, now=now, settings=settings)
+        state.total_attempts += 1
+        state.window_attempts += 1
+        state.last_seen = now
 
-    def register_failure(self, source_ip: str) -> None:
-        now = ensure_utc_datetime(self.clock.now())
-        self._prune(now)
-        cutoff = now - self.failure_window
-        failures = tuple(
-            failure_at
-            for failure_at in self._failures_by_source.get(source_ip, ())
-            if ensure_utc_datetime(failure_at) >= cutoff
-        ) + (now,)
-        self._failures_by_source[source_ip] = failures
-        if len(failures) >= self.failure_limit:
-            self._blocked_until_by_source[source_ip] = now + self.backoff
-        self._trim_sources()
-
-    def register_success(self, source_ip: str) -> None:
-        self._failures_by_source.pop(source_ip, None)
-        self._blocked_until_by_source.pop(source_ip, None)
-
-    def _prune(self, now: Any) -> None:
-        normalized_now = ensure_utc_datetime(now)
-        cutoff = normalized_now - self.failure_window
-        for source_ip, failures in list(self._failures_by_source.items()):
-            retained = tuple(
-                failure_at for failure_at in failures if ensure_utc_datetime(failure_at) >= cutoff
+        if settings.login_credential_capture_enabled and self.event_recorder is not None:
+            self.event_recorder.store.record_login_credential_attempt(
+                campaign_id=state.campaign_id,
+                source_ip=state.source_ip,
+                user_agent=state.user_agent,
+                endpoint=state.endpoint,
+                username=username,
+                password=password,
+                observed_at=now,
+                max_unique_passwords=settings.login_capture_max_unique_passwords,
+                max_credential_length=settings.login_capture_max_credential_length,
+                capture_password=settings.login_password_capture_enabled,
             )
-            if retained:
-                self._failures_by_source[source_ip] = retained
-            else:
-                self._failures_by_source.pop(source_ip, None)
-        for source_ip, blocked_until in list(self._blocked_until_by_source.items()):
-            if normalized_now >= ensure_utc_datetime(blocked_until):
-                self._blocked_until_by_source.pop(source_ip, None)
+
+        if not settings.login_campaign_aggregation_enabled:
+            self._trim_sources()
+            return ServiceLoginCaptureDecision(campaign_id=state.campaign_id, emit_attempt_event=True)
+
+        emit_attempt_event = state.total_attempts <= settings.login_capture_sample_attempts
+        summary_event = None
+        if state.total_attempts > settings.login_capture_sample_attempts and now >= ensure_utc_datetime(
+            state.next_summary_at
+        ):
+            summary_event = self._build_summary_event(
+                request=request,
+                state=state,
+                settings=settings,
+            )
+            state.window_attempts = 0
+            state.next_summary_at = now + timedelta(seconds=settings.login_capture_summary_interval_seconds)
+        self._trim_sources()
+        return ServiceLoginCaptureDecision(
+            campaign_id=state.campaign_id,
+            emit_attempt_event=emit_attempt_event,
+            summary_event=summary_event,
+        )
+
+    def register_success(self, request: Request) -> None:
+        self._campaigns_by_key.pop(self._request_key(request), None)
+
+    def _settings(self) -> OpsBackendSettings:
+        if self.event_recorder is None:
+            return OpsBackendSettings()
+        return load_ops_settings(self.event_recorder.store)
+
+    def _state_for_request(
+        self,
+        *,
+        request: Request,
+        now: Any,
+        settings: OpsBackendSettings,
+    ) -> ServiceLoginCampaignState:
+        normalized_now = ensure_utc_datetime(now)
+        key = self._request_key(request)
+        existing = self._campaigns_by_key.get(key)
+        idle_timeout = timedelta(minutes=settings.login_campaign_idle_timeout_minutes)
+        if existing is not None and normalized_now - ensure_utc_datetime(existing.last_seen) <= idle_timeout:
+            return existing
+
+        source_ip, user_agent, endpoint = key
+        state = ServiceLoginCampaignState(
+            campaign_id=f"camp_{uuid4().hex}",
+            source_ip=source_ip,
+            user_agent=user_agent,
+            endpoint=endpoint,
+            first_seen=normalized_now,
+            last_seen=normalized_now,
+            next_summary_at=normalized_now + timedelta(seconds=settings.login_capture_summary_interval_seconds),
+        )
+        self._campaigns_by_key[key] = state
+        return state
+
+    def _request_key(self, request: Request) -> tuple[str, str, str]:
+        return (_request_source_ip(request), _request_user_agent(request), request.url.path)
+
+    def _build_summary_event(
+        self,
+        *,
+        request: Request,
+        state: ServiceLoginCampaignState,
+        settings: OpsBackendSettings,
+    ):
+        if self.event_recorder is None:
+            return None
+        top_usernames = [
+            {"username": row.credential_value, "count": row.count}
+            for row in self.event_recorder.store.fetch_login_credential_top(
+                value_type="username",
+                scope_type="campaign",
+                scope_id=state.campaign_id,
+                limit=5,
+            )
+        ]
+        return self.event_recorder.build_event(
+            event_type="hmi.auth.bruteforce_campaign_summary",
+            category="auth",
+            severity="medium",
+            source_ip=state.source_ip,
+            actor_type="remote_client",
+            component=HMI_COMPONENT,
+            asset_id=HMI_COMPONENT,
+            action="login_campaign_summary",
+            result="observed",
+            protocol=HMI_PROTOCOL,
+            service=HMI_SERVICE,
+            endpoint_or_register=request.url.path,
+            requested_value={
+                "campaign_id": state.campaign_id,
+                "sampled_attempts": min(state.total_attempts, settings.login_capture_sample_attempts),
+                "top_usernames": top_usernames,
+            },
+            resulting_value={
+                "attempt_count_total": state.total_attempts,
+                "attempt_count_window": state.window_attempts,
+                "first_seen": ensure_utc_datetime(state.first_seen).isoformat().replace("+00:00", "Z"),
+                "last_seen": ensure_utc_datetime(state.last_seen).isoformat().replace("+00:00", "Z"),
+            },
+            message="Aggregated service login brute-force campaign",
+            tags=("auth", "service", "web", "bruteforce", "summary"),
+        )
 
     def _trim_sources(self) -> None:
-        while len(self._failures_by_source) > self.max_sources:
-            oldest_source = next(iter(self._failures_by_source))
-            self._failures_by_source.pop(oldest_source, None)
-            self._blocked_until_by_source.pop(oldest_source, None)
+        while len(self._campaigns_by_key) > self.max_sources:
+            oldest_key = next(iter(self._campaigns_by_key))
+            self._campaigns_by_key.pop(oldest_key, None)
 
 
 def create_hmi_app(
@@ -553,7 +670,7 @@ def create_hmi_app(
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
     hmi_clock = _hmi_clock(event_recorder)
     service_sessions = ServiceSessionStore(clock=hmi_clock)
-    service_login_throttle = ServiceLoginThrottle(clock=hmi_clock)
+    service_login_tracker = ServiceLoginCampaignTracker(clock=hmi_clock, event_recorder=event_recorder)
     app = FastAPI(
         title=config.hmi_title,
         docs_url=None,
@@ -1069,29 +1186,26 @@ def create_hmi_app(
         if not config.enable_service_login:
             raise StarletteHTTPException(status_code=403)
         session_id, set_cookie = _session_state(request)
-        source_ip = _request_source_ip(request)
-        if service_login_throttle.is_limited(source_ip):
-            return _service_login_failure_response(
-                request=request,
-                templates=templates,
-                config=config,
-                texts=texts,
-                session_id=session_id,
-                set_cookie=set_cookie,
-            )
         try:
             form = await _read_urlencoded_form(request)
         except HmiFormRequestError:
-            service_login_throttle.register_failure(source_ip)
+            capture_decision = service_login_tracker.record_failure(
+                request=request,
+                username="unknown",
+                password=None,
+            )
             auth_event = _build_service_auth_event(
                 request=request,
                 event_recorder=event_recorder,
                 session_id=session_id,
                 username="unknown",
                 result="failure",
+                campaign_id=capture_decision.campaign_id,
             )
-            if auth_event is not None:
+            if auth_event is not None and capture_decision.emit_attempt_event:
                 event_recorder.record(auth_event)
+            if capture_decision.summary_event is not None:
+                event_recorder.record(capture_decision.summary_event)
             return _service_login_failure_response(
                 request=request,
                 templates=templates,
@@ -1103,18 +1217,25 @@ def create_hmi_app(
         username = (form.get("username", [""])[0]).strip()
         password = form.get("password", [""])[0]
         login_success = username == SERVICE_LOGIN_USERNAME and password == SERVICE_LOGIN_PASSWORD
-        auth_event = _build_service_auth_event(
-            request=request,
-            event_recorder=event_recorder,
-            session_id=session_id,
-            username=username,
-            result="success" if login_success else "failure",
-        )
-        if auth_event is not None:
-            event_recorder.record(auth_event)
 
         if not login_success:
-            service_login_throttle.register_failure(source_ip)
+            capture_decision = service_login_tracker.record_failure(
+                request=request,
+                username=username,
+                password=password,
+            )
+            auth_event = _build_service_auth_event(
+                request=request,
+                event_recorder=event_recorder,
+                session_id=session_id,
+                username=username,
+                result="failure",
+                campaign_id=capture_decision.campaign_id,
+            )
+            if auth_event is not None and capture_decision.emit_attempt_event:
+                event_recorder.record(auth_event)
+            if capture_decision.summary_event is not None:
+                event_recorder.record(capture_decision.summary_event)
             return _service_login_failure_response(
                 request=request,
                 templates=templates,
@@ -1124,7 +1245,17 @@ def create_hmi_app(
                 set_cookie=set_cookie,
             )
 
-        service_login_throttle.register_success(source_ip)
+        service_login_tracker.register_success(request)
+        auth_event = _build_service_auth_event(
+            request=request,
+            event_recorder=event_recorder,
+            session_id=session_id,
+            username=username,
+            result="success",
+            campaign_id=None,
+        )
+        if auth_event is not None:
+            event_recorder.record(auth_event)
         service_session = service_sessions.create(username=username)
         response = RedirectResponse(url="/service/panel", status_code=303)
         if set_cookie:
@@ -3049,6 +3180,10 @@ def _request_source_ip(request: Request) -> str:
     return request.client.host if request.client is not None else "127.0.0.1"
 
 
+def _request_user_agent(request: Request) -> str:
+    return request.headers.get("user-agent", "")
+
+
 def _validate_service_csrf_token(form: dict[str, list[str]], service_session: ServiceSession) -> None:
     submitted_token = form.get(SERVICE_CSRF_FIELD_NAME, [""])[0]
     if not submitted_token or not secrets.compare_digest(submitted_token, service_session.csrf_token):
@@ -3307,9 +3442,13 @@ def _build_service_auth_event(
     session_id: str,
     username: str,
     result: str,
+    campaign_id: str | None,
 ):
     if event_recorder is None:
         return None
+    requested_value = {"username": username, "http_path": request.url.path}
+    if campaign_id is not None:
+        requested_value["campaign_id"] = campaign_id
     return event_recorder.build_event(
         event_type="hmi.auth.service_login_attempt",
         category="auth",
@@ -3324,7 +3463,7 @@ def _build_service_auth_event(
         protocol=HMI_PROTOCOL,
         service=HMI_SERVICE,
         endpoint_or_register=request.url.path,
-        requested_value={"username": username, "http_path": request.url.path},
+        requested_value=requested_value,
         resulting_value={"http_status": 303 if result == "success" else 200},
         message=f"Service login attempt {result}",
         tags=("auth", "service", "web"),

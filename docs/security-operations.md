@@ -63,6 +63,9 @@ Eigenschaften:
   Remote-Zugriff nur ueber Tunnel/VPN oder vergleichbare Zugriffsschicht
 - operative Ops-Backend-Settings liegen persistent im lokalen Eventstore;
   Aenderungen erzeugen `ops.settings.updated`-Events
+- Service-Login-Bruteforce wird nach ersten Stichproben pro Kampagne
+  aggregiert; Klartext-Passwortlisten liegen nur im geschuetzten Ops-Backend
+  und duerfen nicht ueber den oeffentlichen Honeypot-Port erreichbar sein
 - Anlagenhistorie fuer HMI-Trends liegt als `plant_history` im lokalen
   SQLite-Store, ist auf 30 Tage begrenzt und kann im Ops-Backend gezielt
   geloescht werden; diese Wartungsaktion erzeugt `ops.history.deleted`
@@ -277,6 +280,9 @@ Aktueller lokaler V1-Pfad:
   `RUNTIME_STATUS_PATH` und `PCAP_CAPTURE_PATH`
 - der Ops-Settings-Knopf loescht nur `plant_history`; Event- und Alertspuren
   bleiben fuer Forensik erhalten
+- Login-Credential-Tabellen gehoeren zum lokalen Eventstore und werden durch
+  den Runtime-Reset entfernt; CSV-Exporte muessen wie sensible
+  Untersuchungsartefakte behandelt werden
 - verweigert Verzeichnis- oder Symlink-Artefaktpfade, um keine unsauberen
   Reset-Loeschpfade zu oeffnen
 

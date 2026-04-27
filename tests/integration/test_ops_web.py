@@ -218,6 +218,77 @@ async def test_ops_settings_delete_plant_history_and_audit_event(tmp_path: Path)
     assert history_event.resulting_value == {"deleted_rows": 2}
 
 
+@pytest.mark.asyncio
+async def test_ops_credentials_page_shows_all_time_and_campaign_passwords(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-credentials.db")
+    observed_at = datetime(2026, 4, 26, 21, 0, tzinfo=UTC)
+    for username, password in (
+        ("admin", "solar123"),
+        ("admin", "solar123"),
+        ("operator", "winter2026"),
+    ):
+        store.record_login_credential_attempt(
+            campaign_id="camp_test",
+            source_ip="198.51.100.23",
+            user_agent="curl/8.0",
+            endpoint="/service/login",
+            username=username,
+            password=password,
+            observed_at=observed_at,
+            max_unique_passwords=1_000_000,
+            max_credential_length=256,
+            capture_password=True,
+        )
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        credentials = await client.get("/credentials")
+        campaign = await client.get("/credentials/campaign/camp_test")
+        export = await client.get("/credentials/export/passwords.csv")
+
+    assert credentials.status_code == 200
+    assert "All-Time Top Passwords" in credentials.text
+    assert "solar123" in credentials.text
+    assert "winter2026" in credentials.text
+    assert "camp_test" in credentials.text
+    assert campaign.status_code == 200
+    assert "Credential Campaign" in campaign.text
+    assert "solar123" in campaign.text
+    assert export.status_code == 200
+    assert "credential_value,count" in export.text
+    assert "solar123,2" in export.text
+    assert "winter2026,1" in export.text
+
+
+def test_login_credential_store_caps_unique_passwords_but_counts_existing(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "credential-limit.db")
+    observed_at = datetime(2026, 4, 26, 21, 0, tzinfo=UTC)
+
+    for password in ("first", "second", "first"):
+        store.record_login_credential_attempt(
+            campaign_id="camp_limit",
+            source_ip="198.51.100.24",
+            user_agent="curl/8.0",
+            endpoint="/service/login",
+            username="admin",
+            password=password,
+            observed_at=observed_at,
+            max_unique_passwords=1,
+            max_credential_length=256,
+            capture_password=True,
+        )
+
+    stats = store.login_credential_stats()
+    top_passwords = store.fetch_login_credential_top(value_type="password")
+
+    assert stats.all_time_unique_passwords == 1
+    assert stats.all_time_dropped_unique_passwords == 1
+    assert len(top_passwords) == 1
+    assert top_passwords[0].credential_value == "first"
+    assert top_passwords[0].count == 2
+
+
 def _extract_csrf_token(rendered_html: str) -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', rendered_html)
     assert match is not None

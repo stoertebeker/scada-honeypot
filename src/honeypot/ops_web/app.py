@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import secrets
 from collections import Counter, defaultdict
@@ -12,7 +14,7 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
@@ -25,7 +27,7 @@ from honeypot.ops_web.settings import (
     load_ops_settings,
     save_ops_settings,
 )
-from honeypot.storage import SQLiteEventStore
+from honeypot.storage import CredentialCountRecord, LoginCampaignRecord, SQLiteEventStore
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 _OPS_SECURITY = HTTPBasic(auto_error=False)
@@ -81,6 +83,26 @@ class SourceRow:
     last_seen: str
     top_event_type: str
     top_endpoint: str
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialRow:
+    value: str
+    count: int
+    first_seen: str
+    last_seen: str
+    fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignRow:
+    campaign_id: str
+    source_ip: str
+    user_agent: str
+    endpoint: str
+    attempt_count: int
+    first_seen: str
+    last_seen: str
 
 
 def create_ops_app(
@@ -187,6 +209,83 @@ def create_ops_app(
             limit=resolved_limit,
         )
         return templates.TemplateResponse(request=request, name="sources.html", context=context)
+
+    @app.get("/credentials", response_class=HTMLResponse, include_in_schema=False)
+    async def credentials_page(request: Request, _: None = Depends(require_ops_auth)) -> HTMLResponse:
+        settings = load_ops_settings(event_store)
+        context = _template_context(
+            request=request,
+            config=config,
+            current_path="/credentials",
+            settings=settings,
+            stats=event_store.login_credential_stats(),
+            top_usernames=_credential_rows(
+                event_store.fetch_login_credential_top(value_type="username", limit=100),
+            ),
+            top_passwords=_credential_rows(
+                event_store.fetch_login_credential_top(value_type="password", limit=100),
+                reveal_values=settings.login_password_display_enabled,
+            ),
+            campaigns=_campaign_rows(event_store.fetch_login_campaigns(limit=50)),
+        )
+        return templates.TemplateResponse(request=request, name="credentials.html", context=context)
+
+    @app.get("/credentials/campaign/{campaign_id}", response_class=HTMLResponse, include_in_schema=False)
+    async def credential_campaign_page(
+        request: Request,
+        campaign_id: str,
+        _: None = Depends(require_ops_auth),
+    ) -> HTMLResponse:
+        campaign = event_store.fetch_login_campaign(campaign_id)
+        if campaign is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
+        settings = load_ops_settings(event_store)
+        context = _template_context(
+            request=request,
+            config=config,
+            current_path="/credentials",
+            settings=settings,
+            campaign=_campaign_rows((campaign,))[0],
+            top_usernames=_credential_rows(
+                event_store.fetch_login_credential_top(
+                    value_type="username",
+                    scope_type="campaign",
+                    scope_id=campaign.campaign_id,
+                    limit=100,
+                ),
+            ),
+            top_passwords=_credential_rows(
+                event_store.fetch_login_credential_top(
+                    value_type="password",
+                    scope_type="campaign",
+                    scope_id=campaign.campaign_id,
+                    limit=100,
+                ),
+                reveal_values=settings.login_password_display_enabled,
+            ),
+        )
+        return templates.TemplateResponse(request=request, name="credential_campaign.html", context=context)
+
+    @app.get("/credentials/export/{value_type}.csv", include_in_schema=False)
+    async def credentials_export(
+        value_type: str,
+        _: None = Depends(require_ops_auth),
+    ) -> StreamingResponse:
+        if value_type not in {"usernames", "passwords"}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="credential export not found")
+        settings = load_ops_settings(event_store)
+        if not settings.login_credential_export_enabled:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="credential export disabled")
+        normalized_value_type = "password" if value_type == "passwords" else "username"
+        if normalized_value_type == "password" and not settings.login_password_display_enabled:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="password display disabled")
+
+        filename = f"all-time-{value_type}.csv"
+        return StreamingResponse(
+            _credential_csv_stream(event_store, value_type=normalized_value_type),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.get("/settings", response_class=HTMLResponse, include_in_schema=False)
     async def settings_page(request: Request, _: None = Depends(require_ops_auth)) -> HTMLResponse:
@@ -344,6 +443,7 @@ def _template_context(
             ("/events", "Events"),
             ("/alerts", "Alerts"),
             ("/sources", "Sources"),
+            ("/credentials", "Credentials"),
             ("/settings", "Settings"),
         ),
     }
@@ -568,6 +668,73 @@ def _source_rows(
             )
         )
     return tuple(row for _, row in sorted(rows, key=lambda item: item[0], reverse=True))
+
+
+def _campaign_rows(campaigns: tuple[LoginCampaignRecord, ...]) -> tuple[CampaignRow, ...]:
+    return tuple(
+        CampaignRow(
+            campaign_id=campaign.campaign_id,
+            source_ip=campaign.source_ip,
+            user_agent=campaign.user_agent,
+            endpoint=campaign.endpoint,
+            attempt_count=campaign.attempt_count,
+            first_seen=_format_dt_display(campaign.first_seen),
+            last_seen=_format_dt_display(campaign.last_seen),
+        )
+        for campaign in campaigns
+    )
+
+
+def _credential_rows(
+    rows: tuple[CredentialCountRecord, ...],
+    *,
+    reveal_values: bool = True,
+) -> tuple[CredentialRow, ...]:
+    return tuple(
+        CredentialRow(
+            value=_credential_display_value(row.credential_value, reveal=reveal_values),
+            count=row.count,
+            first_seen=_format_dt_display(row.first_seen),
+            last_seen=_format_dt_display(row.last_seen),
+            fingerprint=row.credential_fingerprint[:16],
+        )
+        for row in rows
+    )
+
+
+def _credential_display_value(value: str, *, reveal: bool) -> str:
+    if not reveal:
+        return "[hidden]"
+    if value == "":
+        return "(empty)"
+    return value
+
+
+def _credential_csv_stream(
+    event_store: SQLiteEventStore,
+    *,
+    value_type: str,
+):
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(("value_type", "credential_value", "count", "first_seen", "last_seen", "fingerprint"))
+    yield buffer.getvalue()
+    buffer.seek(0)
+    buffer.truncate(0)
+    for row in event_store.iter_login_credential_export(value_type=value_type):
+        writer.writerow(
+            (
+                row.value_type,
+                row.credential_value,
+                row.count,
+                _format_dt_iso(row.first_seen),
+                _format_dt_iso(row.last_seen),
+                row.credential_fingerprint,
+            )
+        )
+        yield buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
 
 
 def _format_dt_iso(value: datetime) -> str:

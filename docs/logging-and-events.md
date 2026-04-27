@@ -390,6 +390,25 @@ Wichtige Felder:
 - naechster Sendezeitpunkt
 - letzter Fehler
 
+### 11.5 `login_campaigns`
+
+Enthaelt aggregierte Service-Login-Kampagnen.
+
+Wichtige Regel:
+- Nach den ersten Stichproben wird nicht jeder Fehlversuch als Event
+  persistiert; Kampagnen erzeugen nur periodische Summary-Events.
+
+### 11.6 `login_credential_counts`
+
+Enthaelt gezaehlte Login-Credentials fuer Kampagnen und All-Time-Auswertung.
+
+Wichtige Regeln:
+- Klartext-Passwoerter werden ausschliesslich hier gespeichert, nicht in
+  normalen Auth-Events.
+- All-Time-Passwoerter sind auf eine konfigurierte Zahl eindeutiger Werte
+  begrenzt; bekannte Werte werden weiter hochgezaehlt.
+- CSV-Export ist nur im geschuetzten Ops-Backend vorgesehen.
+
 ## 12. Outbox-Muster
 
 Die Outbox ist der zentrale Puffer zwischen Kernsystem und Exportern.

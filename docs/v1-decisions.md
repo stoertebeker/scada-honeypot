@@ -117,7 +117,8 @@ Fuer V1 wird festgelegt:
 
 - der lokale Eventstore ist `SQLite`
 - die logischen Persistenzbereiche bleiben `current_state`, `event_log`,
-  `alert_log` und `outbox`
+  `alert_log`, `outbox` und dedizierte Login-Credential-Aggregate fuer das
+  geschuetzte Ops-Backend
 - erste aktive Alert-Regeln sind:
   - wiederholte Login-Fehler
   - erfolgreiche Setpoint-Aenderung

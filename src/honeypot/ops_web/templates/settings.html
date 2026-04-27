@@ -62,6 +62,52 @@
     </div>
   </section>
 
+  <section>
+    <h2>Login Credential Capture</h2>
+    <div class="settings-grid">
+      <label class="checkbox">
+        <input type="checkbox" name="login_campaign_aggregation_enabled" {% if settings.login_campaign_aggregation_enabled %}checked{% endif %}>
+        Aggregate login campaigns
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="login_credential_capture_enabled" {% if settings.login_credential_capture_enabled %}checked{% endif %}>
+        Capture credential counts
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="login_password_capture_enabled" {% if settings.login_password_capture_enabled %}checked{% endif %}>
+        Store attempted passwords in cleartext
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="login_password_display_enabled" {% if settings.login_password_display_enabled %}checked{% endif %}>
+        Display cleartext passwords
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="login_credential_export_enabled" {% if settings.login_credential_export_enabled %}checked{% endif %}>
+        Enable credential CSV export
+      </label>
+      <div class="field">
+        <label for="login_capture_sample_attempts">Sample attempts</label>
+        <input id="login_capture_sample_attempts" name="login_capture_sample_attempts" type="number" min="0" max="100" value="{{ settings.login_capture_sample_attempts }}">
+      </div>
+      <div class="field">
+        <label for="login_capture_summary_interval_seconds">Summary interval seconds</label>
+        <input id="login_capture_summary_interval_seconds" name="login_capture_summary_interval_seconds" type="number" min="10" max="3600" value="{{ settings.login_capture_summary_interval_seconds }}">
+      </div>
+      <div class="field">
+        <label for="login_campaign_idle_timeout_minutes">Campaign idle timeout minutes</label>
+        <input id="login_campaign_idle_timeout_minutes" name="login_campaign_idle_timeout_minutes" type="number" min="1" max="1440" value="{{ settings.login_campaign_idle_timeout_minutes }}">
+      </div>
+      <div class="field">
+        <label for="login_capture_max_unique_passwords">Max unique passwords</label>
+        <input id="login_capture_max_unique_passwords" name="login_capture_max_unique_passwords" type="number" min="0" max="1000000" value="{{ settings.login_capture_max_unique_passwords }}">
+      </div>
+      <div class="field">
+        <label for="login_capture_max_credential_length">Max credential length</label>
+        <input id="login_capture_max_credential_length" name="login_capture_max_credential_length" type="number" min="1" max="1024" value="{{ settings.login_capture_max_credential_length }}">
+      </div>
+    </div>
+  </section>
+
   <button type="submit">Save</button>
 </form>
 

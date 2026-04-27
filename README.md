@@ -220,6 +220,8 @@ uv run python -m playwright install chromium
     separatem Port
   - persistente Backend-Settings, Source-IP-Anreicherung und Audit-Events fuer
     Settings-Aenderungen
+  - geschuetzte Credential-Analyse fuer Service-Login-Kampagnen mit
+    All-Time-/Kampagnen-Toplisten und CSV-Export
   - Wartungsaktion zum Loeschen der Anlagenhistorie, auditierbar ueber
     `ops.history.deleted`
 - `runtime_evolution`

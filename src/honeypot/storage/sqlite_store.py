@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
@@ -30,6 +33,37 @@ def _parse_timestamp(value: str) -> datetime:
 
 def _json_blob(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True)
+
+
+@dataclass(frozen=True, slots=True)
+class LoginCampaignRecord:
+    campaign_id: str
+    source_ip: str
+    user_agent: str
+    endpoint: str
+    first_seen: datetime
+    last_seen: datetime
+    attempt_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CredentialCountRecord:
+    scope_type: str
+    scope_id: str
+    value_type: str
+    credential_value: str
+    credential_fingerprint: str
+    count: int
+    first_seen: datetime
+    last_seen: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class LoginCredentialStats:
+    campaign_count: int
+    all_time_unique_usernames: int
+    all_time_unique_passwords: int
+    all_time_dropped_unique_passwords: int
 
 
 class SQLiteEventStore:
@@ -127,11 +161,45 @@ class SQLiteEventStore:
                     block_power_json TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS login_campaigns (
+                    campaign_id TEXT PRIMARY KEY,
+                    source_ip TEXT NOT NULL,
+                    user_agent TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS login_credential_counts (
+                    scope_type TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    value_type TEXT NOT NULL,
+                    credential_value TEXT NOT NULL,
+                    credential_fingerprint TEXT NOT NULL,
+                    count INTEGER NOT NULL,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    PRIMARY KEY (scope_type, scope_id, value_type, credential_value)
+                );
+
+                CREATE TABLE IF NOT EXISTS login_capture_stats (
+                    stat_key TEXT PRIMARY KEY,
+                    stat_value INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_outbox_status_next_attempt
                 ON outbox(status, next_attempt_at);
 
                 CREATE INDEX IF NOT EXISTS idx_plant_history_observed_at
                 ON plant_history(observed_at);
+
+                CREATE INDEX IF NOT EXISTS idx_login_campaigns_last_seen
+                ON login_campaigns(last_seen);
+
+                CREATE INDEX IF NOT EXISTS idx_login_credential_top
+                ON login_credential_counts(scope_type, scope_id, value_type, count DESC, last_seen DESC);
                 """
             )
 
@@ -273,11 +341,256 @@ class SQLiteEventStore:
             )
 
     def count_rows(self, table_name: str) -> int:
-        if table_name not in {"current_state", "event_log", "alert_log", "outbox", "ops_settings", "plant_history"}:
+        if table_name not in {
+            "current_state",
+            "event_log",
+            "alert_log",
+            "outbox",
+            "ops_settings",
+            "plant_history",
+            "login_campaigns",
+            "login_credential_counts",
+            "login_capture_stats",
+        }:
             raise ValueError(f"ungueltiger Tabellenname: {table_name}")
         with self._connect() as connection:
             row = connection.execute(f"SELECT COUNT(*) AS row_count FROM {table_name}").fetchone()
         return int(row["row_count"])
+
+    def record_login_credential_attempt(
+        self,
+        *,
+        campaign_id: str,
+        source_ip: str,
+        user_agent: str,
+        endpoint: str,
+        username: str,
+        password: str | None,
+        observed_at: datetime,
+        max_unique_passwords: int,
+        max_credential_length: int,
+        capture_password: bool,
+    ) -> None:
+        normalized_campaign_id = _normalize_required_text(campaign_id, field_name="campaign_id")
+        normalized_source_ip = _normalize_required_text(source_ip, field_name="source_ip")
+        normalized_endpoint = _normalize_required_text(endpoint, field_name="endpoint")
+        normalized_user_agent = _sanitize_credential_value(user_agent, max_length=max_credential_length)
+        normalized_username = _sanitize_credential_value(username, max_length=max_credential_length)
+        normalized_password = (
+            None
+            if password is None
+            else _sanitize_credential_value(password, max_length=max_credential_length)
+        )
+        if max_unique_passwords < 0:
+            raise ValueError("max_unique_passwords muss groesser oder gleich 0 sein")
+        timestamp = _iso_timestamp(observed_at)
+
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO login_campaigns (
+                    campaign_id, source_ip, user_agent, endpoint, first_seen, last_seen, attempt_count
+                ) VALUES (?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(campaign_id) DO UPDATE SET
+                    source_ip = excluded.source_ip,
+                    user_agent = excluded.user_agent,
+                    endpoint = excluded.endpoint,
+                    first_seen = CASE
+                        WHEN excluded.first_seen < first_seen THEN excluded.first_seen
+                        ELSE first_seen
+                    END,
+                    last_seen = CASE
+                        WHEN excluded.last_seen > last_seen THEN excluded.last_seen
+                        ELSE last_seen
+                    END,
+                    attempt_count = attempt_count + 1
+                """,
+                (
+                    normalized_campaign_id,
+                    normalized_source_ip,
+                    normalized_user_agent,
+                    normalized_endpoint,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            _upsert_credential_count(
+                connection,
+                scope_type="all_time",
+                scope_id="all",
+                value_type="username",
+                credential_value=normalized_username,
+                observed_at=timestamp,
+            )
+            _upsert_credential_count(
+                connection,
+                scope_type="campaign",
+                scope_id=normalized_campaign_id,
+                value_type="username",
+                credential_value=normalized_username,
+                observed_at=timestamp,
+            )
+            if capture_password and normalized_password is not None:
+                global_password_exists = _credential_exists(
+                    connection,
+                    scope_type="all_time",
+                    scope_id="all",
+                    value_type="password",
+                    credential_value=normalized_password,
+                )
+                unique_password_count = _all_time_unique_password_count(connection)
+                if global_password_exists or unique_password_count < max_unique_passwords:
+                    _upsert_credential_count(
+                        connection,
+                        scope_type="all_time",
+                        scope_id="all",
+                        value_type="password",
+                        credential_value=normalized_password,
+                        observed_at=timestamp,
+                    )
+                    if not global_password_exists:
+                        _set_login_capture_stat(
+                            connection,
+                            stat_key="all_time_unique_passwords",
+                            stat_value=unique_password_count + 1,
+                            updated_at=timestamp,
+                        )
+                    _upsert_credential_count(
+                        connection,
+                        scope_type="campaign",
+                        scope_id=normalized_campaign_id,
+                        value_type="password",
+                        credential_value=normalized_password,
+                        observed_at=timestamp,
+                    )
+                else:
+                    _increment_login_capture_stat(
+                        connection,
+                        stat_key="all_time_dropped_unique_passwords",
+                        delta=1,
+                        updated_at=timestamp,
+                    )
+
+    def fetch_login_campaigns(self, *, limit: int = 100) -> tuple[LoginCampaignRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT campaign_id, source_ip, user_agent, endpoint, first_seen, last_seen, attempt_count
+                FROM login_campaigns
+                ORDER BY last_seen DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return tuple(_login_campaign_from_row(row) for row in rows)
+
+    def fetch_login_campaign(self, campaign_id: str) -> LoginCampaignRecord | None:
+        normalized_campaign_id = _normalize_required_text(campaign_id, field_name="campaign_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT campaign_id, source_ip, user_agent, endpoint, first_seen, last_seen, attempt_count
+                FROM login_campaigns
+                WHERE campaign_id = ?
+                """,
+                (normalized_campaign_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return _login_campaign_from_row(row)
+
+    def fetch_login_credential_top(
+        self,
+        *,
+        value_type: str,
+        scope_type: str = "all_time",
+        scope_id: str = "all",
+        limit: int = 100,
+    ) -> tuple[CredentialCountRecord, ...]:
+        if value_type not in {"username", "password"}:
+            raise ValueError("value_type muss username oder password sein")
+        if scope_type not in {"all_time", "campaign"}:
+            raise ValueError("scope_type muss all_time oder campaign sein")
+        if limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT scope_type, scope_id, value_type, credential_value, credential_fingerprint,
+                       count, first_seen, last_seen
+                FROM login_credential_counts
+                WHERE scope_type = ?
+                  AND scope_id = ?
+                  AND value_type = ?
+                ORDER BY count DESC, last_seen DESC, credential_value ASC
+                LIMIT ?
+                """,
+                (scope_type, scope_id, value_type, limit),
+            ).fetchall()
+        return tuple(_credential_count_from_row(row) for row in rows)
+
+    def iter_login_credential_export(
+        self,
+        *,
+        value_type: str,
+        scope_type: str = "all_time",
+        scope_id: str = "all",
+    ) -> Iterator[CredentialCountRecord]:
+        if value_type not in {"username", "password"}:
+            raise ValueError("value_type muss username oder password sein")
+        if scope_type not in {"all_time", "campaign"}:
+            raise ValueError("scope_type muss all_time oder campaign sein")
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT scope_type, scope_id, value_type, credential_value, credential_fingerprint,
+                       count, first_seen, last_seen
+                FROM login_credential_counts
+                WHERE scope_type = ?
+                  AND scope_id = ?
+                  AND value_type = ?
+                ORDER BY count DESC, last_seen DESC, credential_value ASC
+                """,
+                (scope_type, scope_id, value_type),
+            )
+            for row in rows:
+                yield _credential_count_from_row(row)
+        finally:
+            connection.close()
+
+    def login_credential_stats(self) -> LoginCredentialStats:
+        with self._connect() as connection:
+            campaign_count = int(
+                connection.execute("SELECT COUNT(*) AS row_count FROM login_campaigns").fetchone()["row_count"]
+            )
+            username_count = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*) AS row_count
+                    FROM login_credential_counts
+                    WHERE scope_type = 'all_time'
+                      AND scope_id = 'all'
+                      AND value_type = 'username'
+                    """
+                ).fetchone()["row_count"]
+            )
+            password_count = _all_time_unique_password_count(connection)
+            row = connection.execute(
+                """
+                SELECT stat_value
+                FROM login_capture_stats
+                WHERE stat_key = 'all_time_dropped_unique_passwords'
+                """
+            ).fetchone()
+        return LoginCredentialStats(
+            campaign_count=campaign_count,
+            all_time_unique_usernames=username_count,
+            all_time_unique_passwords=password_count,
+            all_time_dropped_unique_passwords=0 if row is None else int(row["stat_value"]),
+        )
 
     def append_plant_history_sample(self, sample: PlantHistorySample) -> None:
         self.append_plant_history_samples((sample,))
@@ -639,6 +952,171 @@ def _plant_history_sample_from_row(row: sqlite3.Row) -> PlantHistorySample:
             None if row["export_energy_mwh_total"] is None else float(row["export_energy_mwh_total"])
         ),
         block_power_kw=tuple((str(asset_id), float(power_kw)) for asset_id, power_kw in block_power),
+    )
+
+
+def _login_campaign_from_row(row: sqlite3.Row) -> LoginCampaignRecord:
+    return LoginCampaignRecord(
+        campaign_id=str(row["campaign_id"]),
+        source_ip=str(row["source_ip"]),
+        user_agent=str(row["user_agent"]),
+        endpoint=str(row["endpoint"]),
+        first_seen=_parse_timestamp(str(row["first_seen"])),
+        last_seen=_parse_timestamp(str(row["last_seen"])),
+        attempt_count=int(row["attempt_count"]),
+    )
+
+
+def _credential_count_from_row(row: sqlite3.Row) -> CredentialCountRecord:
+    return CredentialCountRecord(
+        scope_type=str(row["scope_type"]),
+        scope_id=str(row["scope_id"]),
+        value_type=str(row["value_type"]),
+        credential_value=str(row["credential_value"]),
+        credential_fingerprint=str(row["credential_fingerprint"]),
+        count=int(row["count"]),
+        first_seen=_parse_timestamp(str(row["first_seen"])),
+        last_seen=_parse_timestamp(str(row["last_seen"])),
+    )
+
+
+def _sanitize_credential_value(value: str, *, max_length: int) -> str:
+    if max_length <= 0:
+        raise ValueError("max_credential_length muss groesser als 0 sein")
+    normalized = "".join(char if char.isprintable() and char not in "\r\n\t" else "?" for char in value)
+    return normalized[:max_length]
+
+
+def _credential_fingerprint(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _upsert_credential_count(
+    connection: sqlite3.Connection,
+    *,
+    scope_type: str,
+    scope_id: str,
+    value_type: str,
+    credential_value: str,
+    observed_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO login_credential_counts (
+            scope_type, scope_id, value_type, credential_value, credential_fingerprint,
+            count, first_seen, last_seen
+        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(scope_type, scope_id, value_type, credential_value) DO UPDATE SET
+            count = count + 1,
+            first_seen = CASE
+                WHEN excluded.first_seen < first_seen THEN excluded.first_seen
+                ELSE first_seen
+            END,
+            last_seen = CASE
+                WHEN excluded.last_seen > last_seen THEN excluded.last_seen
+                ELSE last_seen
+            END
+        """,
+        (
+            scope_type,
+            scope_id,
+            value_type,
+            credential_value,
+            _credential_fingerprint(credential_value),
+            observed_at,
+            observed_at,
+        ),
+    )
+
+
+def _credential_exists(
+    connection: sqlite3.Connection,
+    *,
+    scope_type: str,
+    scope_id: str,
+    value_type: str,
+    credential_value: str,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM login_credential_counts
+        WHERE scope_type = ?
+          AND scope_id = ?
+          AND value_type = ?
+          AND credential_value = ?
+        LIMIT 1
+        """,
+        (scope_type, scope_id, value_type, credential_value),
+    ).fetchone()
+    return row is not None
+
+
+def _all_time_unique_password_count(connection: sqlite3.Connection) -> int:
+    stat_value = _login_capture_stat(connection, stat_key="all_time_unique_passwords")
+    if stat_value is not None:
+        return stat_value
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS row_count
+        FROM login_credential_counts
+        WHERE scope_type = 'all_time'
+          AND scope_id = 'all'
+          AND value_type = 'password'
+        """
+    ).fetchone()
+    return int(row["row_count"])
+
+
+def _login_capture_stat(connection: sqlite3.Connection, *, stat_key: str) -> int | None:
+    row = connection.execute(
+        """
+        SELECT stat_value
+        FROM login_capture_stats
+        WHERE stat_key = ?
+        """,
+        (stat_key,),
+    ).fetchone()
+    if row is None:
+        return None
+    return int(row["stat_value"])
+
+
+def _set_login_capture_stat(
+    connection: sqlite3.Connection,
+    *,
+    stat_key: str,
+    stat_value: int,
+    updated_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO login_capture_stats (stat_key, stat_value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(stat_key) DO UPDATE SET
+            stat_value = excluded.stat_value,
+            updated_at = excluded.updated_at
+        """,
+        (stat_key, stat_value, updated_at),
+    )
+
+
+def _increment_login_capture_stat(
+    connection: sqlite3.Connection,
+    *,
+    stat_key: str,
+    delta: int,
+    updated_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO login_capture_stats (stat_key, stat_value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(stat_key) DO UPDATE SET
+            stat_value = stat_value + excluded.stat_value,
+            updated_at = excluded.updated_at
+        """,
+        (stat_key, delta, updated_at),
     )
 
 

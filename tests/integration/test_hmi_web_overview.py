@@ -852,7 +852,7 @@ async def test_service_login_rejects_oversized_form_body_without_session(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_service_login_rate_limits_repeated_failures_before_reading_next_body(tmp_path: Path) -> None:
+async def test_service_login_samples_repeated_failures_without_real_rate_limit(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-rate-limit.db")
     recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
@@ -871,6 +871,10 @@ async def test_service_login_rate_limits_repeated_failures_before_reading_next_b
             )
             assert response.status_code == 200
 
+        captured_response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": "still-wrong"},
+        )
         blocked_response = await client.post(
             "/service/login",
             content=b"username=" + (b"a" * (MAX_FORM_BODY_BYTES + 1)),
@@ -881,11 +885,97 @@ async def test_service_login_rate_limits_repeated_failures_before_reading_next_b
         event for event in store.fetch_events() if event.event_type == "hmi.auth.service_login_attempt"
     ]
 
+    campaigns = store.fetch_login_campaigns()
+    top_passwords = store.fetch_login_credential_top(value_type="password")
+
+    assert captured_response.status_code == 200
     assert blocked_response.status_code == 200
     assert "Authentication failed. Check credentials and retry." in blocked_response.text
     assert SERVICE_SESSION_COOKIE_NAME not in blocked_response.cookies
     assert len(auth_events) == SERVICE_LOGIN_FAILURE_LIMIT
     assert all(event.result == "failure" for event in auth_events)
+    assert campaigns[0].attempt_count == SERVICE_LOGIN_FAILURE_LIMIT + 2
+    assert any(row.credential_value == "still-wrong" and row.count == 1 for row in top_passwords)
+
+
+@pytest.mark.asyncio
+async def test_service_login_counts_all_time_and_campaign_credentials(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-credentials.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for index in range(7):
+            response = await client.post(
+                "/service/login",
+                data={"username": f"operator-{index % 2}", "password": f"guess-{index % 2}"},
+            )
+            assert response.status_code == 200
+
+    auth_events = [
+        event for event in store.fetch_events() if event.event_type == "hmi.auth.service_login_attempt"
+    ]
+    campaigns = store.fetch_login_campaigns()
+    top_usernames = store.fetch_login_credential_top(value_type="username")
+    top_passwords = store.fetch_login_credential_top(value_type="password")
+    campaign_passwords = store.fetch_login_credential_top(
+        value_type="password",
+        scope_type="campaign",
+        scope_id=campaigns[0].campaign_id,
+    )
+
+    assert len(auth_events) == 5
+    assert len(campaigns) == 1
+    assert campaigns[0].attempt_count == 7
+    assert top_usernames[0].credential_value == "operator-0"
+    assert top_usernames[0].count == 4
+    assert top_passwords[0].credential_value == "guess-0"
+    assert top_passwords[0].count == 4
+    assert campaign_passwords[0].credential_value == "guess-0"
+    assert campaign_passwords[0].count == 4
+
+
+@pytest.mark.asyncio
+async def test_service_login_emits_campaign_summary_after_interval(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    clock = FrozenClock(snapshot.start_time)
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-summary.db")
+    recorder = EventRecorder(store=store, clock=clock)
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for _ in range(5):
+            response = await client.post(
+                "/service/login",
+                data={"username": SERVICE_LOGIN_USERNAME, "password": "wrong"},
+            )
+            assert response.status_code == 200
+        clock.advance(timedelta(seconds=61))
+        summary_response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": "wrong"},
+        )
+
+    summary_events = [
+        event for event in store.fetch_events() if event.event_type == "hmi.auth.bruteforce_campaign_summary"
+    ]
+
+    assert summary_response.status_code == 200
+    assert len(summary_events) == 1
+    assert summary_events[0].resulting_value["attempt_count_total"] == 6
+    assert summary_events[0].resulting_value["attempt_count_window"] == 6
+    assert summary_events[0].requested_value["sampled_attempts"] == 5
 
 
 @pytest.mark.asyncio

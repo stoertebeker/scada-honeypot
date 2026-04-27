@@ -20,6 +20,16 @@ class OpsBackendSettings:
     events_default_limit: int = 100
     alerts_default_limit: int = 100
     sources_default_limit: int = 100
+    login_campaign_aggregation_enabled: bool = True
+    login_credential_capture_enabled: bool = True
+    login_password_capture_enabled: bool = True
+    login_password_display_enabled: bool = True
+    login_credential_export_enabled: bool = True
+    login_capture_sample_attempts: int = 5
+    login_capture_summary_interval_seconds: int = 60
+    login_campaign_idle_timeout_minutes: int = 10
+    login_capture_max_unique_passwords: int = 1_000_000
+    login_capture_max_credential_length: int = 256
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "OpsBackendSettings":
@@ -55,10 +65,46 @@ class OpsBackendSettings:
                 minimum=1,
                 maximum=500,
             ),
+            login_campaign_aggregation_enabled=_bool_value(merged["login_campaign_aggregation_enabled"]),
+            login_credential_capture_enabled=_bool_value(merged["login_credential_capture_enabled"]),
+            login_password_capture_enabled=_bool_value(merged["login_password_capture_enabled"]),
+            login_password_display_enabled=_bool_value(merged["login_password_display_enabled"]),
+            login_credential_export_enabled=_bool_value(merged["login_credential_export_enabled"]),
+            login_capture_sample_attempts=_int_value(
+                merged["login_capture_sample_attempts"],
+                field_name="login_capture_sample_attempts",
+                minimum=0,
+                maximum=100,
+            ),
+            login_capture_summary_interval_seconds=_int_value(
+                merged["login_capture_summary_interval_seconds"],
+                field_name="login_capture_summary_interval_seconds",
+                minimum=10,
+                maximum=3600,
+            ),
+            login_campaign_idle_timeout_minutes=_int_value(
+                merged["login_campaign_idle_timeout_minutes"],
+                field_name="login_campaign_idle_timeout_minutes",
+                minimum=1,
+                maximum=1440,
+            ),
+            login_capture_max_unique_passwords=_int_value(
+                merged["login_capture_max_unique_passwords"],
+                field_name="login_capture_max_unique_passwords",
+                minimum=0,
+                maximum=1_000_000,
+            ),
+            login_capture_max_credential_length=_int_value(
+                merged["login_capture_max_credential_length"],
+                field_name="login_capture_max_credential_length",
+                minimum=1,
+                maximum=1024,
+            ),
         )
 
     @classmethod
     def from_form(cls, values: Mapping[str, list[str]]) -> "OpsBackendSettings":
+        defaults = cls()
         raw = {
             "ip_enrichment_enabled": "ip_enrichment_enabled" in values,
             "ip_enrichment_rdns_enabled": "ip_enrichment_rdns_enabled" in values,
@@ -69,6 +115,36 @@ class OpsBackendSettings:
             "events_default_limit": _first_form_value(values, "events_default_limit"),
             "alerts_default_limit": _first_form_value(values, "alerts_default_limit"),
             "sources_default_limit": _first_form_value(values, "sources_default_limit"),
+            "login_campaign_aggregation_enabled": "login_campaign_aggregation_enabled" in values,
+            "login_credential_capture_enabled": "login_credential_capture_enabled" in values,
+            "login_password_capture_enabled": "login_password_capture_enabled" in values,
+            "login_password_display_enabled": "login_password_display_enabled" in values,
+            "login_credential_export_enabled": "login_credential_export_enabled" in values,
+            "login_capture_sample_attempts": _first_form_value(
+                values,
+                "login_capture_sample_attempts",
+                str(defaults.login_capture_sample_attempts),
+            ),
+            "login_capture_summary_interval_seconds": _first_form_value(
+                values,
+                "login_capture_summary_interval_seconds",
+                str(defaults.login_capture_summary_interval_seconds),
+            ),
+            "login_campaign_idle_timeout_minutes": _first_form_value(
+                values,
+                "login_campaign_idle_timeout_minutes",
+                str(defaults.login_campaign_idle_timeout_minutes),
+            ),
+            "login_capture_max_unique_passwords": _first_form_value(
+                values,
+                "login_capture_max_unique_passwords",
+                str(defaults.login_capture_max_unique_passwords),
+            ),
+            "login_capture_max_credential_length": _first_form_value(
+                values,
+                "login_capture_max_credential_length",
+                str(defaults.login_capture_max_credential_length),
+            ),
         }
         return cls.from_mapping(raw)
 
@@ -94,10 +170,10 @@ def changed_settings(before: OpsBackendSettings, after: OpsBackendSettings) -> d
     }
 
 
-def _first_form_value(values: Mapping[str, list[str]], key: str) -> str:
+def _first_form_value(values: Mapping[str, list[str]], key: str, default: str = "") -> str:
     collected = values.get(key)
     if not collected:
-        return ""
+        return default
     return collected[0]
 
 
