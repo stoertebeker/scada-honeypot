@@ -145,6 +145,7 @@ class BackgroundPlantEvolutionService:
             snapshot,
             observed_at=observed_at,
             weather_observation=observation,
+            block_control_states=self.register_map.get_block_control_states(),
         )
 
     def _run_loop(self) -> None:

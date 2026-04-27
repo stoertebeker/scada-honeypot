@@ -120,6 +120,7 @@ class PlantSimulator:
         *,
         observed_at,
         weather_observation: WeatherObservation,
+        block_control_states: dict[str, tuple[bool, float]] | None = None,
     ) -> PlantSnapshot:
         """Leitet Wetter, Leistung und Meterwerte fuer einen neuen Beobachtungszeitpunkt fort."""
 
@@ -137,9 +138,12 @@ class PlantSimulator:
                 "grid_interconnect": snapshot.grid_interconnect.model_copy(update={"last_update_ts": observed_at}),
             }
         )
+        effective_block_control_states = _weather_evolution_block_control_states(working_snapshot)
+        if block_control_states is not None:
+            effective_block_control_states.update(block_control_states)
         controlled_snapshot = self._apply_inverter_block_control_matrix(
             working_snapshot,
-            block_control_states={},
+            block_control_states=effective_block_control_states,
         )
         inverter_blocks = tuple(
             block.model_copy(update={"last_update_ts": observed_at}) for block in controlled_snapshot.inverter_blocks
@@ -1195,6 +1199,16 @@ def _current_block_control_states(
                 asset_id=block.asset_id,
                 baseline_block_power_kw=baseline_block_power_kw,
             ),
+        )
+        for block in snapshot.inverter_blocks
+    }
+
+
+def _weather_evolution_block_control_states(snapshot: PlantSnapshot) -> dict[str, tuple[bool, float]]:
+    return {
+        block.asset_id: (
+            not _is_block_disabled(block),
+            100.0,
         )
         for block in snapshot.inverter_blocks
     }

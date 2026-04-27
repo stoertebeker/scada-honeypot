@@ -336,6 +336,35 @@ class ReadOnlyRegisterMap:
             raise ValueError(str(exc)) from exc
         return raw_limit / 10
 
+    def get_block_control_states(self) -> dict[str, tuple[bool, float]]:
+        """Liefert die aktuell gelatchten Inverter-Enable- und Leistungslimit-Requests."""
+
+        with self._lock:
+            return {
+                block.asset_id: (
+                    bool(
+                        self._current_setpoint_value(
+                            unit_id,
+                            UNIT_11_13_BLOCK_ENABLE_REQUEST_OFFSET,
+                            snapshot=self._snapshot,
+                            plant_mode_request_override=self._plant_mode_request_override,
+                            block_enable_request_overrides=self._block_enable_request_overrides,
+                            block_power_limit_request_overrides=self._block_power_limit_request_overrides,
+                        )
+                    ),
+                    self._current_setpoint_value(
+                        unit_id,
+                        UNIT_11_13_BLOCK_POWER_LIMIT_OFFSET,
+                        snapshot=self._snapshot,
+                        plant_mode_request_override=self._plant_mode_request_override,
+                        block_enable_request_overrides=self._block_enable_request_overrides,
+                        block_power_limit_request_overrides=self._block_power_limit_request_overrides,
+                    )
+                    / 10,
+                )
+                for unit_id, block in zip((11, 12, 13), self._snapshot.inverter_blocks, strict=False)
+            }
+
     def set_block_control_state(
         self,
         *,

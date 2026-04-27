@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
+from honeypot.history_core import PlantHistorySample, apply_history_sample_to_snapshot
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ReadOnlyRegisterMap
 from honeypot.runtime_evolution import (
@@ -84,6 +85,72 @@ def test_background_evolution_service_drives_weather_and_power_from_provider() -
     assert night_snapshot.revenue_meter.export_energy_mwh_total > 0
     assert night_snapshot.revenue_meter.grid_voltage_v is not None
     assert night_snapshot.revenue_meter.grid_frequency_hz is not None
+
+
+def test_background_evolution_does_not_latch_history_power_as_inverter_limit() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+    restored_snapshot = apply_history_sample_to_snapshot(
+        snapshot,
+        PlantHistorySample(
+            observed_at=datetime(2026, 4, 27, 3, 0, tzinfo=UTC),
+            plant_power_mw=0.0,
+            active_power_limit_pct=100.0,
+            irradiance_w_m2=0.0,
+            export_power_mw=0.0,
+            block_power_kw=tuple((block.asset_id, 0.0) for block in snapshot.inverter_blocks),
+            export_energy_mwh_total=120.0,
+        ),
+    )
+    clock = FrozenClock(datetime(2026, 4, 27, 10, 30, tzinfo=UTC))
+    register_map = ReadOnlyRegisterMap(restored_snapshot, simulator=simulator)
+    service = BackgroundPlantEvolutionService(
+        register_map=register_map,
+        history=TrendHistoryBuffer(max_samples=8),
+        clock=clock,
+        simulator=simulator,
+        weather_provider=DeterministicDiurnalWeatherProvider(),
+        timezone="Europe/Berlin",
+        weather_latitude=53.5511,
+        weather_longitude=9.9937,
+        weather_elevation_m=15,
+    )
+
+    evolved_snapshot = service.evolve_once()
+
+    assert evolved_snapshot.weather_station.irradiance_w_m2 > 500
+    assert evolved_snapshot.site.plant_power_mw > 3.0
+    assert evolved_snapshot.revenue_meter.export_power_kw > 3000
+    assert all(block.block_power_kw > 0 for block in evolved_snapshot.inverter_blocks)
+
+
+def test_background_evolution_preserves_latched_inverter_block_controls() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+    register_map = ReadOnlyRegisterMap(snapshot, simulator=simulator)
+    register_map.set_block_control_state(
+        asset_id="invb-02",
+        block_enable_request=True,
+        block_power_limit_pct=40.0,
+    )
+    service = BackgroundPlantEvolutionService(
+        register_map=register_map,
+        history=TrendHistoryBuffer(max_samples=8),
+        clock=FrozenClock(datetime(2026, 4, 27, 10, 30, tzinfo=UTC)),
+        simulator=simulator,
+        weather_provider=DeterministicDiurnalWeatherProvider(),
+        timezone="Europe/Berlin",
+        weather_latitude=53.5511,
+        weather_longitude=9.9937,
+        weather_elevation_m=15,
+    )
+
+    evolved_snapshot = service.evolve_once()
+    limited_block = next(block for block in evolved_snapshot.inverter_blocks if block.asset_id == "invb-02")
+    unrestricted_block = next(block for block in evolved_snapshot.inverter_blocks if block.asset_id == "invb-01")
+
+    assert register_map.get_block_control_states()["invb-02"] == (True, 40.0)
+    assert limited_block.block_power_kw < unrestricted_block.block_power_kw * 0.5
 
 
 def test_seed_plant_history_creates_one_month_generation_history(tmp_path) -> None:
