@@ -146,6 +146,8 @@ Jede Hauptseite sollte dieselbe Grundstruktur besitzen:
 
 3. Seiteninhalt
    - tabellarische und kartenartige Betriebsdaten
+   - gleicher aeusserer Inhaltsrahmen auf allen HMI-Seiten, damit die
+     Navigation beim Seitenwechsel nicht seitlich springt
 
 4. Alarm-/Statusleiste
    - sichtbare Anzahl aktiver Alarme

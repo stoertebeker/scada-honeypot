@@ -1,5 +1,21 @@
 [
   {
+    "version": "v0.9.4",
+    "released_at": "2026-04-27",
+    "category": "Fix",
+    "title": "Consistent HMI page width",
+    "summary": "Aligns all attacker-facing HMI pages to the same outer shell width so the UI no longer changes width between pages.",
+    "areas": ["hmi-web", "documentation"],
+    "changes": [
+      "Use one shared 1440px shell width across overview, single-line, inverter, weather, meter, alarm, trend, service-login, service-panel and error pages.",
+      "Keep smaller page internals such as login forms constrained while the masthead and navigation stay aligned.",
+      "Add a regression test that renders all HMI page classes and checks the shared shell-width rule."
+    ],
+    "security_notes": [
+      "This is a presentation-only hardening fix; it does not expose new endpoints or alter authentication behavior."
+    ]
+  },
+  {
     "version": "v0.9.3",
     "released_at": "2026-04-27",
     "category": "Fix",

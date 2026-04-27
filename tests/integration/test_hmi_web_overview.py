@@ -110,6 +110,46 @@ def set_cookie_header(response: httpx.Response, cookie_name: str) -> str:
 
 
 @pytest.mark.asyncio
+async def test_hmi_pages_share_consistent_shell_width(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    app, _register_map = build_service_app(snapshot=snapshot, tmp_path=tmp_path)
+
+    transport = httpx.ASGITransport(app=app)
+    pages: list[tuple[str, str]] = []
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for path in (
+            "/overview",
+            "/single-line",
+            "/inverters",
+            "/weather",
+            "/meter",
+            "/alarms",
+            "/trends",
+            "/service/login",
+            "/missing-page",
+        ):
+            response = await client.get(path)
+            assert response.status_code in {200, 404}, path
+            pages.append((path, response.text))
+
+        await login_service_client(client)
+        panel_response = await client.get("/service/panel")
+        assert panel_response.status_code == 200
+        pages.append(("/service/panel", panel_response.text))
+
+    for path, body in pages:
+        assert "--hmi-shell-width: 1440px;" in body, path
+        assert "max-width: var(--hmi-shell-width);" in body, path
+        for stale_width in (
+            "max-width: 980px;",
+            "max-width: 1180px;",
+            "max-width: 1260px;",
+            "max-width: 1280px;",
+        ):
+            assert stale_width not in body, path
+
+
+@pytest.mark.asyncio
 async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-overview.db")

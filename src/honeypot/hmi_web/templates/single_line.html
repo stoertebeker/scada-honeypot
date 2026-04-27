@@ -18,6 +18,7 @@
       --accent: #345867;
       --accent-soft: #d9e5ea;
       --shadow: rgba(20, 34, 38, 0.08);
+      --hmi-shell-width: 1440px;
     }
 
     * {
@@ -35,7 +36,7 @@
     }
 
     .shell {
-      max-width: 1440px;
+      max-width: var(--hmi-shell-width);
       margin: 0 auto;
       padding: 24px;
     }
