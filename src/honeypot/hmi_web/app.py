@@ -2134,9 +2134,9 @@ def build_inverters_view_model(
             quality_label=_enum_text(texts, block.quality),
             power_label=_format_block_power_kw(block.block_power_kw),
             availability_label=f"{block.availability_pct} %",
-            dc_label=_format_bus_values(block.block_dc_voltage_v, block.block_dc_current_a, texts),
-            ac_label=_format_bus_values(block.block_ac_voltage_v, block.block_ac_current_a, texts),
-            temperature_label=_format_temperature(block.internal_temperature_c, texts),
+            dc_label=_format_block_bus_values(block, block.block_dc_voltage_v, block.block_dc_current_a, texts),
+            ac_label=_format_block_bus_values(block, block.block_ac_voltage_v, block.block_ac_current_a, texts),
+            temperature_label=_format_block_temperature(block, texts),
             local_alarm_count=_inverter_local_alarm_count(block),
             tone=_tone_for_block(block.status, block.communication_state),
         )
@@ -3192,20 +3192,30 @@ def _format_block_power_kw(value: float) -> str:
     return f"{value:.1f} kW"
 
 
-def _format_bus_values(voltage_v: float | None, current_a: float | None, texts: dict[str, str]) -> str:
+def _format_block_bus_values(block, voltage_v: float | None, current_a: float | None, texts: dict[str, str]) -> str:
     if voltage_v is None and current_a is None:
-        return texts["state.unavailable"]
+        return _missing_block_telemetry_label(block, texts, field="bus")
     if voltage_v is None:
-        return f"-- V / {current_a:.1f} A"
+        return f"{texts['telemetry.no_voltage']} / {current_a:.1f} A"
     if current_a is None:
-        return f"{voltage_v:.1f} V / -- A"
+        return f"{voltage_v:.1f} V / {texts['telemetry.no_current']}"
     return f"{voltage_v:.1f} V / {current_a:.1f} A"
 
 
-def _format_temperature(value_c: float | None, texts: dict[str, str]) -> str:
-    if value_c is None:
-        return texts["state.unavailable"]
-    return f"{value_c:.1f} C"
+def _format_block_temperature(block, texts: dict[str, str]) -> str:
+    if block.internal_temperature_c is None:
+        return _missing_block_telemetry_label(block, texts, field="temperature")
+    return f"{block.internal_temperature_c:.1f} C"
+
+
+def _missing_block_telemetry_label(block, texts: dict[str, str], *, field: str) -> str:
+    if block.communication_state == "lost" or block.quality in {"stale", "invalid"}:
+        return texts["telemetry.stale"]
+    if block.status == "offline" or block.availability_pct == 0:
+        return texts["telemetry.offline_by_request"]
+    if field == "temperature":
+        return texts["telemetry.no_thermal_sensor"]
+    return texts["telemetry.not_instrumented"]
 
 
 def _format_optional_measurement(value: float | None, unit: str, texts: dict[str, str]) -> str:

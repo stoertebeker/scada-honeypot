@@ -289,7 +289,9 @@ async def test_inverters_page_renders_block_values_and_logs_hmi_events(tmp_path:
     assert "invb-01" in response.text
     assert "1935.0 kW" in response.text
     assert "100 %" in response.text
-    assert "Unavailable" in response.text
+    assert "Not instrumented" in response.text
+    assert "No thermal sensor" in response.text
+    assert "table-scroll" in response.text
     assert inverters_event.event_type == "hmi.page.inverters_viewed"
     assert inverters_event.component == "hmi-web"
     assert inverters_event.service == "web-hmi"
@@ -1419,6 +1421,7 @@ async def test_inverters_page_marks_comm_loss_block_and_quality_context(tmp_path
     assert "Degraded" in response.text
     assert "Lost" in response.text
     assert "Stale" in response.text
+    assert "Stale telemetry" in response.text
     assert "COMM_LOSS_INVERTER_BLOCK" in response.text
 
 

@@ -77,7 +77,7 @@ nach `/service/login`, laesst den Anlagenzustand unveraendert und schreibt
 
 Hier suchst du:
 - Block mit Comm-Loss
-- Block mit `Unavailable`
+- Block mit `Offline by request` oder `Stale telemetry`
 - Block mit reduzierter Leistung
 - lokale Alarmanzahl
 
@@ -300,7 +300,7 @@ Schreibversuche dort fuehren zu:
    - Unit `12`, `40200 = 0`
    - optional zusaetzlich `40201 = 500`
 3. Wirkung pruefen:
-   - Block wirkt `Unavailable` oder leistungsgedrosselt
+   - Block wirkt `Offline by request`, `Stale telemetry` oder leistungsgedrosselt
    - Parkleistung kann sinken
 4. Rueckbau:
    - Unit `12`, `40200 = 1`

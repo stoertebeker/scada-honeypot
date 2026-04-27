@@ -868,7 +868,7 @@ def test_playwright_inverter_block_control_updates_inverters_view(runtime: Local
     expect(page.locator("body")).to_contain_text("invb-02")
     expect(page.locator("body")).to_contain_text("Offline")
     expect(page.locator("body")).to_contain_text("0.0 kW")
-    expect(page.locator("body")).to_contain_text("Unavailable")
+    expect(page.locator("body")).to_contain_text("Offline by request")
     expect(page.locator("body")).to_contain_text("No active alarms")
 
     events = runtime.event_store.fetch_events()
