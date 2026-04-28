@@ -1,5 +1,21 @@
 [
   {
+    "version": "v0.9.8",
+    "released_at": "2026-04-28",
+    "category": "Fix",
+    "title": "Readable inverter fleet layout",
+    "summary": "Relaxes the /inverters page layout so block status, telemetry and alarm context stay readable without clipped text.",
+    "areas": ["hmi-web", "tests", "documentation"],
+    "changes": [
+      "Move the inverter comparison table onto a full-width HMI panel instead of squeezing it beside the alarm panel.",
+      "Widen the operational columns and render state values as bounded chips so status text stays inside its cell.",
+      "Add Playwright coverage for desktop and mobile overflow behavior on the inverter fleet page."
+    ],
+    "security_notes": [
+      "Clear HMI telemetry reduces operator ambiguity during attacker testing and keeps honeypot observations easier to interpret."
+    ]
+  },
+  {
     "version": "v0.9.7",
     "released_at": "2026-04-28",
     "category": "Fix",

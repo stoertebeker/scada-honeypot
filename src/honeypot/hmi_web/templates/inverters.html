@@ -145,7 +145,7 @@
     .layout {
       display: grid;
       gap: 18px;
-      grid-template-columns: minmax(0, 2.3fr) minmax(300px, 1fr);
+      grid-template-columns: 1fr;
     }
 
     .panel {
@@ -164,6 +164,7 @@
       width: 100%;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
+      scrollbar-gutter: stable;
     }
 
     table {
@@ -172,7 +173,7 @@
     }
 
     .inverter-table {
-      min-width: 1040px;
+      min-width: 1360px;
       table-layout: fixed;
     }
 
@@ -182,7 +183,8 @@
       text-align: left;
       border-bottom: 1px solid rgba(184, 193, 186, 0.65);
       vertical-align: top;
-      overflow-wrap: anywhere;
+      overflow-wrap: normal;
+      word-break: normal;
       line-height: 1.3;
     }
 
@@ -196,22 +198,41 @@
     td.code {
       font-family: "IBM Plex Mono", "Cascadia Mono", monospace;
       font-weight: 700;
+      white-space: nowrap;
     }
 
     .mono {
       white-space: normal;
       font-size: 0.9rem;
+      overflow-wrap: anywhere;
     }
 
-    .col-block { width: 84px; }
-    .col-state { width: 92px; }
-    .col-quality { width: 86px; }
-    .col-power { width: 92px; }
-    .col-availability { width: 94px; }
-    .col-isolator { width: 104px; }
-    .col-bus { width: 126px; }
-    .col-temperature { width: 116px; }
-    .col-alarms { width: 76px; }
+    .state-chip {
+      display: inline-flex;
+      max-width: 100%;
+      align-items: center;
+      padding: 3px 8px;
+      border: 1px solid currentColor;
+      background: rgba(250, 251, 248, 0.72);
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: normal;
+    }
+
+    .col-block { width: 96px; }
+    .col-state { width: 112px; }
+    .col-comm { width: 118px; }
+    .col-quality { width: 108px; }
+    .col-power { width: 118px; }
+    .col-availability { width: 118px; }
+    .col-isolator { width: 132px; }
+    .col-bus { width: 160px; }
+    .col-temperature { width: 142px; }
+    .col-alarms { width: 106px; }
+
+    .secondary-heading {
+      margin-top: 18px;
+    }
 
     .tone-good { color: var(--good); }
     .tone-warn { color: var(--warn); }
@@ -262,7 +283,7 @@
       }
 
       .inverter-table {
-        min-width: 820px;
+        min-width: 920px;
       }
 
       th:nth-child(8),
@@ -312,7 +333,7 @@
           <colgroup>
             <col class="col-block">
             <col class="col-state">
-            <col class="col-state">
+            <col class="col-comm">
             <col class="col-quality">
             <col class="col-power">
             <col class="col-availability">
@@ -341,12 +362,12 @@
             {% for row in page.rows %}
             <tr class="tone-{{ row.tone }}">
               <td class="code">{{ row.asset_id }}</td>
-              <td>{{ row.status_label }}</td>
-              <td>{{ row.communication_label }}</td>
-              <td>{{ row.quality_label }}</td>
+              <td><span class="state-chip">{{ row.status_label }}</span></td>
+              <td><span class="state-chip">{{ row.communication_label }}</span></td>
+              <td><span class="state-chip">{{ row.quality_label }}</span></td>
               <td class="mono">{{ row.power_label }}</td>
               <td class="mono">{{ row.availability_label }}</td>
-              <td>{{ row.dc_disconnect_label }}</td>
+              <td><span class="state-chip">{{ row.dc_disconnect_label }}</span></td>
               <td class="mono">{{ row.dc_label }}</td>
               <td class="mono">{{ row.ac_label }}</td>
               <td class="mono">{{ row.temperature_label }}</td>
@@ -373,7 +394,7 @@
         <p class="empty">{{ t("alarm.none") }}</p>
         {% endif %}
 
-        <h2 style="margin-top: 18px;">{{ t("section.inverters.title") }}</h2>
+        <h2 class="secondary-heading">{{ t("section.inverters.title") }}</h2>
         <p class="copy">{{ t("page.inverters.subtitle") }}</p>
       </section>
     </main>

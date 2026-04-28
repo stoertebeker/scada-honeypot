@@ -644,6 +644,7 @@ async def test_inverters_page_renders_block_values_and_logs_hmi_events(tmp_path:
     assert "Not instrumented" in response.text
     assert "No thermal sensor" in response.text
     assert "table-scroll" in response.text
+    assert "state-chip" in response.text
     assert inverters_event.event_type == "hmi.page.inverters_viewed"
     assert inverters_event.component == "hmi-web"
     assert inverters_event.service == "web-hmi"

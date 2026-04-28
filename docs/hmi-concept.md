@@ -291,6 +291,13 @@ Anzuzeigende Inhalte je Block:
 - Temperatur
 - lokale Alarmanzahl
 
+Darstellung:
+
+- die Vergleichstabelle nutzt die volle HMI-Arbeitsbreite
+- Status-, Qualitaets- und Isolatorwerte bleiben in begrenzten Chips lesbar
+- auf kleinen Viewports darf nur der Tabellenbereich horizontal scrollen; Text
+  darf nicht aus Karten oder Panels herauslaufen
+
 Optionale Interaktion:
 
 - nur fuer berechtigte Service-Sicht:

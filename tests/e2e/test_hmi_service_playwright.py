@@ -925,6 +925,27 @@ def test_playwright_breaker_recovery_updates_meter_and_clears_alarm(runtime: Loc
     )
 
 
+def test_playwright_inverters_layout_keeps_operational_values_inside_panels(
+    runtime: LocalRuntime, page: Page
+) -> None:
+    hmi_host, hmi_port = runtime.hmi_service.address
+    base_url = f"http://{hmi_host}:{hmi_port}"
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(f"{base_url}/inverters", wait_until="networkidle")
+
+    expect(page).to_have_url(re.compile(r".*/inverters$"))
+    expect(page.get_by_role("heading", name="Inverter Fleet")).to_be_visible()
+    assert _hmi_horizontal_overflow_issues(page) == []
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{base_url}/inverters", wait_until="networkidle")
+
+    expect(page.get_by_role("heading", name="Inverter Fleet")).to_be_visible()
+    assert _hmi_horizontal_overflow_issues(page, skip_panel_containers=True) == []
+    assert page.locator(".table-scroll").first.evaluate("(element) => element.scrollWidth > element.clientWidth")
+
+
 def test_playwright_inverter_block_control_updates_inverters_view(runtime: LocalRuntime, page: Page) -> None:
     hmi_host, hmi_port = runtime.hmi_service.address
     base_url = f"http://{hmi_host}:{hmi_port}"
@@ -1280,6 +1301,42 @@ def _expect_quiet_error_page(page: Page, *, title: str, message: str) -> None:
     expect(page.locator("body")).not_to_contain_text("Traceback")
     expect(page.locator("body")).not_to_contain_text("FastAPI")
     expect(page.locator("body")).not_to_contain_text("Starlette")
+
+
+def _hmi_horizontal_overflow_issues(page: Page, *, skip_panel_containers: bool = False) -> list[str]:
+    selectors = (
+        ".masthead > div, .card, .panel, .alarm-item, .state-chip, td, th, "
+        ".card-value, .copy, .alarm-title, .alarm-meta"
+    )
+    skipped_classes = ["table-scroll"]
+    if skip_panel_containers:
+        skipped_classes.append("panel")
+    return page.evaluate(
+        """
+        ({ selectors, skippedClasses }) => Array.from(document.querySelectorAll(selectors))
+          .filter((element) => {
+            const style = window.getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden") {
+              return false;
+            }
+            if (skippedClasses.some((className) => element.classList.contains(className))) {
+              return false;
+            }
+            const rect = element.getBoundingClientRect();
+            if (rect.width < 1 || rect.height < 1) {
+              return false;
+            }
+            return element.scrollWidth > element.clientWidth + 1;
+          })
+          .slice(0, 10)
+          .map((element) => {
+            const className = typeof element.className === "string" ? element.className : "";
+            const text = (element.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 70);
+            return `${element.tagName.toLowerCase()}.${className}: ${text}`;
+          })
+        """,
+        {"selectors": selectors, "skippedClasses": skipped_classes},
+    )
 
 
 def _build_runtime_with_clock(*, env_file: Path, clock: FrozenClock) -> LocalRuntime:
