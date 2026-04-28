@@ -1,5 +1,21 @@
 [
   {
+    "version": "v1.1.1",
+    "released_at": "2026-04-29",
+    "category": "Fix",
+    "title": "Source ISP fallback",
+    "summary": "Keeps the protected source overview useful when no ASN database is configured by deriving a compact ISP hint from rDNS.",
+    "areas": ["ops-web", "tests", "documentation"],
+    "changes": [
+      "Use ASN-MMDB data as the authoritative ISP source when configured.",
+      "Fall back to the rDNS parent domain for public IPs when ASN data is unavailable.",
+      "Add regression coverage for rDNS-derived ISP values and timeout handling."
+    ],
+    "security_notes": [
+      "The fallback uses only already-enabled rDNS lookup data and does not add a new external HTTP enrichment service."
+    ]
+  },
+  {
     "version": "v1.1.0",
     "released_at": "2026-04-28",
     "category": "Feature",

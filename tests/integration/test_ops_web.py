@@ -161,6 +161,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.1.1" in versions.text
+    assert "Source ISP fallback" in versions.text
     assert "v1.1.0" in versions.text
     assert "Sortable source activity" in versions.text
     assert "v1.0.0" in versions.text

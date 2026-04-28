@@ -11,8 +11,8 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Caddy-/Docker-Compose-Pfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.1.0`
-- Gesamtteststand: `357 passed`
+- Release-Version: `v1.1.1`
+- Gesamtteststand: `359 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start

@@ -10,10 +10,10 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **v1.1.0**. Der lokale Release, `pre-exposure` und der
+Der aktuelle Stand ist **v1.1.1**. Der lokale Release, `pre-exposure` und der
 deployment-spezifische `exposed-research`-Kurs fuer die validierte
-Caddy-/Docker-Compose-Installation sind abgenommen; `v1.1.0` ergaenzt die
-geschuetzte Ops-Source-Sortierung.
+Caddy-/Docker-Compose-Installation sind abgenommen; `v1.1.1` korrigiert den
+ISP-Fallback der geschuetzten Ops-Source-Uebersicht.
 
 ## Betrieb
 
@@ -32,7 +32,8 @@ Standardpfade im lokalen Designbetrieb:
 Das Ops-Backend fuehrt eigene persistente Einstellungen unter `/settings`.
 IP-Anreicherung fuer die Source-Uebersicht wird dort aktiviert; rDNS bleibt
 standardmaessig aus, weil es aktiven DNS-Egress erzeugt. Laender werden in der
-Tabelle als kurze Codes wie `GER` angezeigt.
+Tabelle als kurze Codes wie `GER` angezeigt. Wenn keine ASN-MMDB konfiguriert
+ist, nutzt die ISP-Spalte bei aktivem rDNS einen kompakten Domain-Fallback.
 
 ### Lokaler Reset
 
@@ -306,5 +307,5 @@ Wichtige Runtime-Gates:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Caddy-/Docker-Compose-Pfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.1.0`
-- Gesamtteststand aktuell: `357 passed`
+- Release-Version: `v1.1.1`
+- Gesamtteststand aktuell: `359 passed`

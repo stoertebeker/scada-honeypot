@@ -106,6 +106,9 @@ class IpEnricher:
         elif settings.ip_enrichment_rdns_enabled and not rdns:
             rdns = self._lookup_rdns(source_ip=source_ip, timeout_ms=settings.ip_enrichment_rdns_timeout_ms)
 
+        if not isp:
+            isp = _isp_from_rdns(rdns)
+
         return SourceEnrichment(
             country_code=country_code or "UNK",
             rdns=_compact_text(rdns or "-"),
@@ -209,6 +212,32 @@ def _lookup_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
         return ""
     organization = getattr(response, "autonomous_system_organization", None)
     return _text_value(organization)
+
+
+def _isp_from_rdns(rdns: str) -> str:
+    hostname = _text_value(rdns).lower().rstrip(".")
+    if hostname in {"", "-", "timeout", "local", "reserved"}:
+        return ""
+    labels = [label for label in hostname.split(".") if label]
+    if len(labels) < 2:
+        return ""
+
+    suffix = ".".join(labels[-2:])
+    if len(labels) >= 3 and suffix in {
+        "ac.uk",
+        "co.jp",
+        "co.uk",
+        "com.au",
+        "com.br",
+        "com.tr",
+        "com.ua",
+        "gov.uk",
+        "net.au",
+        "net.br",
+        "org.uk",
+    }:
+        return ".".join(labels[-3:])
+    return suffix
 
 
 def _country_code(value: Any) -> str:
