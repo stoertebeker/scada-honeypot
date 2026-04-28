@@ -1,5 +1,21 @@
 [
   {
+    "version": "v0.9.5",
+    "released_at": "2026-04-28",
+    "category": "Fix",
+    "title": "Trusted proxy source IP handling",
+    "summary": "Adds guarded X-Forwarded-For handling so HMI and Ops events retain real client IPs behind a trusted Caddy proxy.",
+    "areas": ["config", "hmi-web", "ops-web", "documentation"],
+    "changes": [
+      "Add FORWARDED_HEADER_ENABLED and TRUSTED_PROXY_CIDRS runtime settings.",
+      "Resolve HMI, service-login and Ops audit event source IPs through X-Forwarded-For only when the direct peer is trusted.",
+      "Add regression coverage for trusted proxy use, spoofed header rejection and backend audit events."
+    ],
+    "security_notes": [
+      "Forwarded headers remain disabled by default and wildcard trusted-proxy CIDRs are rejected to prevent client-controlled source-IP spoofing."
+    ]
+  },
+  {
     "version": "v0.9.4",
     "released_at": "2026-04-27",
     "category": "Fix",

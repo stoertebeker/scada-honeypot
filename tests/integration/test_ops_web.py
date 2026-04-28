@@ -129,6 +129,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v0.9.5" in versions.text
+    assert "Trusted proxy source IP handling" in versions.text
     assert "v0.9.4" in versions.text
     assert "Consistent HMI page width" in versions.text
     assert "v0.9.3" in versions.text
@@ -192,6 +194,46 @@ async def test_ops_settings_enable_static_ip_enrichment_and_audit_change(tmp_pat
     assert any(source["rdns"] == "scan.example.test" for source in enriched_sources)
     assert store.fetch_ops_settings()["ip_enrichment_enabled"] is True
     assert any(event.event_type == "ops.settings.updated" for event in store.fetch_events())
+
+
+@pytest.mark.asyncio
+async def test_ops_audit_events_use_forwarded_source_ip_from_trusted_proxy(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-forwarded-source.db")
+    seed_ops_store(store)
+    app = create_ops_app(
+        event_store=store,
+        config=build_config(
+            tmp_path,
+            forwarded_header_enabled=True,
+            trusted_proxy_cidrs=("10.14.0.53/32",),
+        ),
+    )
+
+    transport = httpx.ASGITransport(app=app, client=("10.14.0.53", 45678))
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        settings_page = await client.get("/settings")
+        csrf_token = _extract_csrf_token(settings_page.text)
+        response = await client.post(
+            "/settings",
+            headers={"x-forwarded-for": "193.16.163.243"},
+            data={
+                "csrf_token": csrf_token,
+                "ip_enrichment_rdns_enabled": "on",
+                "ip_enrichment_static_map_path": "",
+                "ip_enrichment_country_mmdb_path": "",
+                "ip_enrichment_asn_mmdb_path": "",
+                "ip_enrichment_rdns_timeout_ms": "300",
+                "events_default_limit": "25",
+                "alerts_default_limit": "25",
+                "sources_default_limit": "25",
+            },
+            follow_redirects=False,
+        )
+
+    settings_event = next(event for event in reversed(store.fetch_events()) if event.event_type == "ops.settings.updated")
+
+    assert response.status_code == 303
+    assert settings_event.source_ip == "193.16.163.243"
 
 
 @pytest.mark.asyncio

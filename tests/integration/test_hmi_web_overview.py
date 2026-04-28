@@ -198,6 +198,62 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_hmi_events_use_forwarded_source_ip_from_trusted_proxy(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-forwarded-source.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    config = RuntimeConfig(
+        _env_file=None,
+        event_store_path=tmp_path / "events" / "placeholder.db",
+        jsonl_archive_enabled=False,
+        forwarded_header_enabled=True,
+        trusted_proxy_cidrs=("10.14.0.53/32",),
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app, client=("10.14.0.53", 45678))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/overview", headers={"x-forwarded-for": "193.16.163.243"})
+
+    overview_event = next(event for event in store.fetch_events() if event.endpoint_or_register == "/overview")
+
+    assert response.status_code == 200
+    assert overview_event.source_ip == "193.16.163.243"
+
+
+@pytest.mark.asyncio
+async def test_hmi_events_ignore_forwarded_source_ip_from_untrusted_peer(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-forwarded-spoof.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    config = RuntimeConfig(
+        _env_file=None,
+        event_store_path=tmp_path / "events" / "placeholder.db",
+        jsonl_archive_enabled=False,
+        forwarded_header_enabled=True,
+        trusted_proxy_cidrs=("10.14.0.53/32",),
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app, client=("203.0.113.44", 45678))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/overview", headers={"x-forwarded-for": "193.16.163.243"})
+
+    overview_event = next(event for event in store.fetch_events() if event.endpoint_or_register == "/overview")
+
+    assert response.status_code == 200
+    assert overview_event.source_ip == "203.0.113.44"
+
+
+@pytest.mark.asyncio
 async def test_overview_service_login_nav_is_visible_when_service_login_is_disabled(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     config = build_config(tmp_path).model_copy(update={"enable_service_login": False})

@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from honeypot.asset_domain import PlantSnapshot
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
+from honeypot.http_source import request_source_ip as resolve_request_source_ip
 from honeypot.ops_web.settings import OpsBackendSettings, load_ops_settings
 from honeypot.plant_sim import SimulationEventContext
 from honeypot.runtime_evolution import TrendSample
@@ -508,6 +509,7 @@ class ServiceLoginCaptureDecision:
 class ServiceLoginCampaignTracker:
     clock: Clock
     event_recorder: EventRecorder | None
+    config: RuntimeConfig
     max_sources: int = SERVICE_LOGIN_THROTTLE_MAX_SOURCES
     _campaigns_by_key: dict[tuple[str, str, str], ServiceLoginCampaignState] = field(
         default_factory=dict,
@@ -602,7 +604,7 @@ class ServiceLoginCampaignTracker:
         return state
 
     def _request_key(self, request: Request) -> tuple[str, str, str]:
-        return (_request_source_ip(request), _request_user_agent(request), request.url.path)
+        return (_request_source_ip(request, config=self.config), _request_user_agent(request), request.url.path)
 
     def _build_summary_event(
         self,
@@ -670,7 +672,7 @@ def create_hmi_app(
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
     hmi_clock = _hmi_clock(event_recorder)
     service_sessions = ServiceSessionStore(clock=hmi_clock)
-    service_login_tracker = ServiceLoginCampaignTracker(clock=hmi_clock, event_recorder=event_recorder)
+    service_login_tracker = ServiceLoginCampaignTracker(clock=hmi_clock, event_recorder=event_recorder, config=config)
     app = FastAPI(
         title=config.hmi_title,
         docs_url=None,
@@ -756,6 +758,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=session_id,
             event_recorder=event_recorder,
@@ -809,6 +812,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=(service_session.handle if service_session is not None else session_id),
             event_recorder=event_recorder,
@@ -841,6 +845,7 @@ def create_hmi_app(
         except ValueError:
             _record_unauthenticated_control_attempt(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=session_id,
                 asset_id=asset_id or "inverter-block",
@@ -890,6 +895,7 @@ def create_hmi_app(
 
         _record_unauthenticated_control_attempt(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=session_id,
             asset_id=block.asset_id,
@@ -912,6 +918,7 @@ def create_hmi_app(
 
         _record_unauthenticated_control_attempt(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=session_id,
             asset_id=snapshot.grid_interconnect.asset_id,
@@ -948,6 +955,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=session_id,
             event_recorder=event_recorder,
@@ -985,6 +993,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=session_id,
             event_recorder=event_recorder,
@@ -1022,6 +1031,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=session_id,
             event_recorder=event_recorder,
@@ -1073,6 +1083,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=session_id,
             event_recorder=event_recorder,
@@ -1117,6 +1128,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=session_id,
             event_recorder=event_recorder,
@@ -1169,6 +1181,7 @@ def create_hmi_app(
 
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot_provider(),
             session_id=session_id,
             event_recorder=event_recorder,
@@ -1196,6 +1209,7 @@ def create_hmi_app(
             )
             auth_event = _build_service_auth_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=session_id,
                 username="unknown",
@@ -1226,6 +1240,7 @@ def create_hmi_app(
             )
             auth_event = _build_service_auth_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=session_id,
                 username=username,
@@ -1248,6 +1263,7 @@ def create_hmi_app(
         service_login_tracker.register_success(request)
         auth_event = _build_service_auth_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=session_id,
             username=username,
@@ -1308,6 +1324,7 @@ def create_hmi_app(
         _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
         _record_page_view(
             request=request,
+            config=config,
             snapshot=snapshot,
             session_id=service_session.handle,
             event_recorder=event_recorder,
@@ -1332,13 +1349,14 @@ def create_hmi_app(
             service_sessions=service_sessions,
         )
         session_id, set_cookie = _session_state(request)
-        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        source_ip = _request_source_ip(request, config=config)
         before_snapshot = snapshot_provider()
         correlation_id = uuid4().hex
 
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1368,6 +1386,7 @@ def create_hmi_app(
         except (HmiFormRequestError, ValueError):
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1405,6 +1424,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1429,6 +1449,7 @@ def create_hmi_app(
         after_snapshot = snapshot_provider()
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -1458,13 +1479,14 @@ def create_hmi_app(
             service_sessions=service_sessions,
         )
         session_id, set_cookie = _session_state(request)
-        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        source_ip = _request_source_ip(request, config=config)
         before_snapshot = snapshot_provider()
         correlation_id = uuid4().hex
 
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1494,6 +1516,7 @@ def create_hmi_app(
         except (HmiFormRequestError, ValueError):
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1533,6 +1556,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1559,6 +1583,7 @@ def create_hmi_app(
         after_snapshot = snapshot_provider()
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -1588,7 +1613,7 @@ def create_hmi_app(
             service_sessions=service_sessions,
         )
         session_id, set_cookie = _session_state(request)
-        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        source_ip = _request_source_ip(request, config=config)
         before_snapshot = snapshot_provider()
         current_mode_request = (
             service_controls.get_plant_mode_request()
@@ -1600,6 +1625,7 @@ def create_hmi_app(
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1629,6 +1655,7 @@ def create_hmi_app(
         except (HmiFormRequestError, ValueError):
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1666,6 +1693,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1689,6 +1717,7 @@ def create_hmi_app(
 
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -1718,13 +1747,14 @@ def create_hmi_app(
             service_sessions=service_sessions,
         )
         session_id, set_cookie = _session_state(request)
-        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        source_ip = _request_source_ip(request, config=config)
         before_snapshot = snapshot_provider()
         correlation_id = uuid4().hex
 
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1756,6 +1786,7 @@ def create_hmi_app(
         except HmiFormRequestError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1789,6 +1820,7 @@ def create_hmi_app(
         except ValueError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1824,6 +1856,7 @@ def create_hmi_app(
         except ValueError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1876,6 +1909,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1913,6 +1947,7 @@ def create_hmi_app(
 
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -1954,13 +1989,14 @@ def create_hmi_app(
             service_sessions=service_sessions,
         )
         session_id, set_cookie = _session_state(request)
-        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        source_ip = _request_source_ip(request, config=config)
         before_snapshot = snapshot_provider()
         correlation_id = uuid4().hex
 
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -1988,6 +2024,7 @@ def create_hmi_app(
         except HmiFormRequestError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2017,6 +2054,7 @@ def create_hmi_app(
         except ValueError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2041,6 +2079,7 @@ def create_hmi_app(
         if raw_disconnect_open not in {"0", "1"}:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2086,6 +2125,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2115,6 +2155,7 @@ def create_hmi_app(
 
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -2145,13 +2186,14 @@ def create_hmi_app(
             service_sessions=service_sessions,
         )
         session_id, set_cookie = _session_state(request)
-        source_ip = request.client.host if request.client is not None else "127.0.0.1"
+        source_ip = _request_source_ip(request, config=config)
         before_snapshot = snapshot_provider()
         correlation_id = uuid4().hex
 
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2178,6 +2220,7 @@ def create_hmi_app(
         except HmiFormRequestError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2206,6 +2249,7 @@ def create_hmi_app(
         except ValueError:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2242,6 +2286,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2275,6 +2320,7 @@ def create_hmi_app(
 
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -2314,6 +2360,7 @@ def create_hmi_app(
         if service_controls is None:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2343,6 +2390,7 @@ def create_hmi_app(
         if breaker_action not in {"open", "close"}:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2365,7 +2413,7 @@ def create_hmi_app(
             )
 
         event_context = SimulationEventContext(
-            source_ip=request.client.host if request.client is not None else "127.0.0.1",
+            source_ip=_request_source_ip(request, config=config),
             actor_type="remote_client",
             correlation_id=correlation_id,
             session_id=service_session.handle,
@@ -2381,6 +2429,7 @@ def create_hmi_app(
         except ValueError as exc:
             _record_service_control_event(
                 request=request,
+                config=config,
                 event_recorder=event_recorder,
                 session_id=service_session.handle,
                 correlation_id=correlation_id,
@@ -2405,6 +2454,7 @@ def create_hmi_app(
         after_snapshot = snapshot_provider()
         _record_service_control_event(
             request=request,
+            config=config,
             event_recorder=event_recorder,
             session_id=service_session.handle,
             correlation_id=correlation_id,
@@ -3177,8 +3227,8 @@ async def _read_urlencoded_form(request: Request) -> dict[str, list[str]]:
         raise HmiFormRequestError("invalid form body") from exc
 
 
-def _request_source_ip(request: Request) -> str:
-    return request.client.host if request.client is not None else "127.0.0.1"
+def _request_source_ip(request: Request, *, config: RuntimeConfig) -> str:
+    return resolve_request_source_ip(request, config)
 
 
 def _request_user_agent(request: Request) -> str:
@@ -3351,6 +3401,7 @@ def _render_error_page(
     )
     _record_error_page(
         request=request,
+        config=config,
         event_recorder=event_recorder,
         status_code=status_code,
         event_type=event_type,
@@ -3362,6 +3413,7 @@ def _render_error_page(
 def _record_page_view(
     *,
     request: Request,
+    config: RuntimeConfig,
     snapshot: PlantSnapshot,
     session_id: str,
     event_recorder: EventRecorder | None,
@@ -3380,7 +3432,7 @@ def _record_page_view(
         event_type=event_type,
         category="hmi",
         severity="info",
-        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        source_ip=_request_source_ip(request, config=config),
         actor_type="remote_client",
         component=HMI_COMPONENT,
         asset_id=asset_id,
@@ -3405,6 +3457,7 @@ def _record_page_view(
 def _record_error_page(
     *,
     request: Request,
+    config: RuntimeConfig,
     event_recorder: EventRecorder | None,
     status_code: int,
     event_type: str,
@@ -3418,7 +3471,7 @@ def _record_error_page(
         event_type=event_type,
         category="hmi",
         severity="medium" if status_code == 404 else "high",
-        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        source_ip=_request_source_ip(request, config=config),
         actor_type="remote_client",
         component=HMI_COMPONENT,
         asset_id=HMI_COMPONENT,
@@ -3439,6 +3492,7 @@ def _record_error_page(
 def _build_service_auth_event(
     *,
     request: Request,
+    config: RuntimeConfig,
     event_recorder: EventRecorder | None,
     session_id: str,
     username: str,
@@ -3454,7 +3508,7 @@ def _build_service_auth_event(
         event_type="hmi.auth.service_login_attempt",
         category="auth",
         severity="low" if result == "success" else "medium",
-        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        source_ip=_request_source_ip(request, config=config),
         actor_type="remote_client",
         component=HMI_COMPONENT,
         asset_id=HMI_COMPONENT,
@@ -3474,6 +3528,7 @@ def _build_service_auth_event(
 def _record_service_control_event(
     *,
     request: Request,
+    config: RuntimeConfig,
     event_recorder: EventRecorder | None,
     session_id: str,
     correlation_id: str,
@@ -3495,7 +3550,7 @@ def _record_service_control_event(
         event_type="hmi.action.service_control_submitted",
         category="hmi",
         severity="low" if result == "accepted" else "medium",
-        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        source_ip=_request_source_ip(request, config=config),
         actor_type="remote_client",
         component=HMI_COMPONENT,
         asset_id=asset_id,
@@ -3524,6 +3579,7 @@ def _record_service_control_event(
 def _record_unauthenticated_control_attempt(
     *,
     request: Request,
+    config: RuntimeConfig,
     event_recorder: EventRecorder | None,
     session_id: str,
     asset_id: str,
@@ -3541,7 +3597,7 @@ def _record_unauthenticated_control_attempt(
         event_type="hmi.action.unauthenticated_control_attempt",
         category="hmi",
         severity="medium",
-        source_ip=request.client.host if request.client is not None else "127.0.0.1",
+        source_ip=_request_source_ip(request, config=config),
         actor_type="remote_client",
         component=HMI_COMPONENT,
         asset_id=asset_id,

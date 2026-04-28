@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 
 from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecord, EventRecorder
+from honeypot.http_source import request_source_ip as resolve_request_source_ip
 from honeypot.ops_web.ip_enrichment import IpEnricher
 from honeypot.ops_web.settings import (
     OpsBackendSettings,
@@ -357,6 +358,7 @@ def create_ops_app(
         if changed:
             _record_settings_change(
                 request=request,
+                config=config,
                 event_recorder=ops_event_recorder,
                 changed=changed,
                 settings=after,
@@ -373,6 +375,7 @@ def create_ops_app(
         deleted_count = event_store.delete_plant_history()
         _record_history_delete(
             request=request,
+            config=config,
             event_recorder=ops_event_recorder,
             before_count=before_count,
             deleted_count=deleted_count,
@@ -532,6 +535,7 @@ def _first_form_value(values: dict[str, list[str]], key: str) -> str:
 def _record_settings_change(
     *,
     request: Request,
+    config: RuntimeConfig,
     event_recorder: EventRecorder,
     changed: dict[str, dict[str, Any]],
     settings: OpsBackendSettings,
@@ -540,7 +544,7 @@ def _record_settings_change(
         event_type="ops.settings.updated",
         category="system",
         severity="info",
-        source_ip=_request_source_ip(request),
+        source_ip=_request_source_ip(request, config=config),
         actor_type="ops_user",
         component="ops-web",
         asset_id="ops-backend",
@@ -560,6 +564,7 @@ def _record_settings_change(
 def _record_history_delete(
     *,
     request: Request,
+    config: RuntimeConfig,
     event_recorder: EventRecorder,
     before_count: int,
     deleted_count: int,
@@ -569,7 +574,7 @@ def _record_history_delete(
         event_type="ops.history.deleted",
         category="system",
         severity="medium",
-        source_ip=_request_source_ip(request),
+        source_ip=_request_source_ip(request, config=config),
         actor_type="ops_user",
         component="ops-web",
         asset_id="ops-backend",
@@ -587,8 +592,8 @@ def _record_history_delete(
     event_recorder.record(event)
 
 
-def _request_source_ip(request: Request) -> str:
-    return request.client.host if request.client is not None else "127.0.0.1"
+def _request_source_ip(request: Request, *, config: RuntimeConfig) -> str:
+    return resolve_request_source_ip(request, config)
 
 
 def _build_summary(

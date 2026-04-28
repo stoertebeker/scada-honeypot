@@ -173,6 +173,11 @@ Vor Exponierung definieren:
   erreichbar ist, muessen `HMI_COOKIE_SECURE=1` und
   `SERVICE_COOKIE_SECURE=1` gesetzt werden; bei direktem HTTP-Labbetrieb
   bleiben beide Werte `0`, sonst senden Browser die Cookies nicht zurueck
+- wenn HMI oder Ops hinter einem Reverse Proxy laufen, darf
+  `FORWARDED_HEADER_ENABLED=1` nur zusammen mit engen
+  `TRUSTED_PROXY_CIDRS` fuer die konkrete Proxy-IP genutzt werden; direkte
+  Clients duerfen `X-Forwarded-For` nie selbst zur Source-IP-Bestimmung
+  durchreichen
 - der interne HTTP-Port der App darf bei TLS-Proxy-Betrieb nicht parallel
   oeffentlich erreichbar sein, weil Proxy-Header sonst keine Sicherheitsgrenze
   bilden

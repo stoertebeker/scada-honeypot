@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ipaddress import ip_network
 import re
 from pathlib import Path
 from typing import Annotated
@@ -101,6 +102,8 @@ class RuntimeConfig(BaseSettings):
     enable_service_login: bool = True
     hmi_cookie_secure: bool = False
     service_cookie_secure: bool = False
+    forwarded_header_enabled: bool = False
+    trusted_proxy_cidrs: Annotated[tuple[str, ...], NoDecode] = ()
 
     event_store_backend: Literal["sqlite"] = "sqlite"
     event_store_path: Path = Path("./tmp/honeypot-events.db")
@@ -188,6 +191,7 @@ class RuntimeConfig(BaseSettings):
         "approved_ingress_bindings",
         "approved_egress_recipients",
         "public_ingress_mappings",
+        "trusted_proxy_cidrs",
         mode="before",
     )
     @classmethod
@@ -214,6 +218,19 @@ class RuntimeConfig(BaseSettings):
             raise ValueError(
                 "ATTACKER_UI_LOCALE muss ueber ll-RR -> ll -> ATTACKER_UI_FALLBACK_LOCALE aufloesbar sein"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_trusted_proxy_settings(self) -> "RuntimeConfig":
+        for raw_cidr in self.trusted_proxy_cidrs:
+            try:
+                network = ip_network(raw_cidr, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"TRUSTED_PROXY_CIDRS enthaelt ein ungueltiges CIDR: {raw_cidr}") from exc
+            if network.prefixlen == 0:
+                raise ValueError("TRUSTED_PROXY_CIDRS darf keine Wildcard-Netze wie 0.0.0.0/0 oder ::/0 enthalten")
+        if self.forwarded_header_enabled and not self.trusted_proxy_cidrs:
+            raise ValueError("TRUSTED_PROXY_CIDRS ist erforderlich, wenn FORWARDED_HEADER_ENABLED aktiv ist")
         return self
 
     @model_validator(mode="after")

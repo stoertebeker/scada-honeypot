@@ -38,6 +38,8 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.exposed_research_enabled is False
     assert config.hmi_cookie_secure is False
     assert config.service_cookie_secure is False
+    assert config.forwarded_header_enabled is False
+    assert config.trusted_proxy_cidrs == ()
     assert config.approved_egress_recipients == ()
     assert config.public_ingress_mappings == ()
     assert config.watch_officer_name is None
@@ -226,6 +228,36 @@ def test_runtime_config_reads_cookie_secure_flags(monkeypatch, tmp_path: Path) -
 
     assert config.hmi_cookie_secure is True
     assert config.service_cookie_secure is True
+
+
+def test_runtime_config_normalizes_trusted_proxy_cidrs(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    config = RuntimeConfig(
+        _env_file=None,
+        forwarded_header_enabled=True,
+        trusted_proxy_cidrs="10.14.0.53/32, 127.0.0.1/32, 10.14.0.53/32",
+    )
+
+    assert config.forwarded_header_enabled is True
+    assert config.trusted_proxy_cidrs == ("10.14.0.53/32", "127.0.0.1/32")
+
+
+def test_runtime_config_rejects_forwarded_headers_without_trusted_proxies(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, forwarded_header_enabled=True)
+
+
+def test_runtime_config_rejects_wildcard_trusted_proxy_cidr(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, trusted_proxy_cidrs="0.0.0.0/0")
 
 
 def test_weather_coordinates_require_valid_ranges(monkeypatch, tmp_path: Path) -> None:
