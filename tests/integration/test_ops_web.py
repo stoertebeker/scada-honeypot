@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 import re
@@ -61,6 +61,38 @@ def seed_ops_store(store: SQLiteEventStore) -> None:
         created_at=clock.now(),
     )
     recorder.record(event, alert=alert)
+
+
+def seed_source_sort_store(store: SQLiteEventStore) -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 20, 0, tzinfo=UTC))
+    recorder = EventRecorder(store=store, clock=clock)
+    for source_ip, count in (
+        ("203.0.113.44", 1),
+        ("198.51.100.10", 3),
+        ("192.0.2.9", 2),
+    ):
+        for index in range(count):
+            event = recorder.build_event(
+                event_type="hmi.page.overview_viewed",
+                category="hmi",
+                severity="low",
+                source_ip=source_ip,
+                actor_type="remote_client",
+                component="hmi-web",
+                asset_id="hmi-web",
+                action="view_overview",
+                result="served",
+                session_id=f"session_{source_ip}_{index}",
+                protocol="http",
+                service="web-hmi",
+                endpoint_or_register="/overview",
+                requested_value={"http_method": "GET", "http_path": "/overview"},
+                resulting_value={"http_status": 200},
+                message="Overview viewed",
+                tags=("read-only", "overview"),
+            )
+            recorder.record(event)
+            clock.advance(timedelta(minutes=1))
 
 
 @pytest.mark.asyncio
@@ -129,6 +161,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.1.0" in versions.text
+    assert "Sortable source activity" in versions.text
     assert "v1.0.0" in versions.text
     assert "Initial exposed-research release" in versions.text
     assert "v0.9.8" in versions.text
@@ -202,6 +236,33 @@ async def test_ops_settings_enable_static_ip_enrichment_and_audit_change(tmp_pat
     assert any(source["rdns"] == "scan.example.test" for source in enriched_sources)
     assert store.fetch_ops_settings()["ip_enrichment_enabled"] is True
     assert any(event.event_type == "ops.settings.updated" for event in store.fetch_events())
+
+
+@pytest.mark.asyncio
+async def test_ops_sources_page_sorts_columns_with_allowlisted_parameters(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-source-sort.db")
+    seed_source_sort_store(store)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        by_events_desc = await client.get("/sources?sort=request_count&direction=desc&limit=10")
+        by_events_asc = await client.get("/sources?sort=events&direction=asc&limit=10")
+        invalid_sort = await client.get("/sources?sort=events;drop&direction=sideways&limit=10")
+
+    assert by_events_desc.status_code == 200
+    assert _source_ips(by_events_desc.text) == ["198.51.100.10", "192.0.2.9", "203.0.113.44"]
+    assert 'href="/sources?limit=10&amp;sort=events&amp;direction=asc"' in by_events_desc.text
+    assert 'name="sort" value="events"' in by_events_desc.text
+    assert 'name="direction" value="desc"' in by_events_desc.text
+
+    assert by_events_asc.status_code == 200
+    assert _source_ips(by_events_asc.text) == ["203.0.113.44", "192.0.2.9", "198.51.100.10"]
+
+    assert invalid_sort.status_code == 200
+    assert _source_ips(invalid_sort.text) == ["192.0.2.9", "198.51.100.10", "203.0.113.44"]
+    assert 'name="sort" value="last_seen"' in invalid_sort.text
+    assert 'name="direction" value="desc"' in invalid_sort.text
 
 
 @pytest.mark.asyncio
@@ -370,3 +431,7 @@ def _extract_csrf_token(rendered_html: str) -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', rendered_html)
     assert match is not None
     return match.group(1)
+
+
+def _source_ips(rendered_html: str) -> list[str]:
+    return re.findall(r'<td class="mono cell-source">([^<]+)</td>', rendered_html)

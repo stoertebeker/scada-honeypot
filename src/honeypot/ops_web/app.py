@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -35,6 +35,40 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _VERSION_LOG_PATH = _REPO_ROOT / "resources" / "backend_versions.json"
 _OPS_SECURITY = HTTPBasic(auto_error=False)
 _OPS_FORM_MAX_BYTES = 16 * 1024
+_SOURCE_SORT_DEFAULT = "last_seen"
+_SOURCE_SORT_DIRECTIONS = {"asc", "desc"}
+_SOURCE_SORT_ALIASES = {
+    "event_count": "events",
+    "request_count": "events",
+    "rejected_count": "rejected",
+    "session_count": "sessions",
+}
+_SOURCE_SORT_DEFAULT_DIRECTIONS = {
+    "source_ip": "asc",
+    "country": "asc",
+    "rdns": "asc",
+    "isp": "asc",
+    "events": "desc",
+    "rejected": "desc",
+    "sessions": "desc",
+    "first_seen": "desc",
+    "last_seen": "desc",
+    "top_type": "asc",
+    "top_endpoint": "asc",
+}
+_SOURCE_SORT_COLUMNS = (
+    ("source_ip", "Source IP"),
+    ("country", "Country"),
+    ("rdns", "rDNS"),
+    ("isp", "ISP"),
+    ("events", "Events"),
+    ("rejected", "Rejected"),
+    ("sessions", "Sessions"),
+    ("first_seen", "First Seen"),
+    ("last_seen", "Last Seen"),
+    ("top_type", "Top Type"),
+    ("top_endpoint", "Top Endpoint"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +120,16 @@ class SourceRow:
     last_seen: str
     top_event_type: str
     top_endpoint: str
+
+
+@dataclass(frozen=True, slots=True)
+class SourceSortLink:
+    key: str
+    label: str
+    href: str
+    is_active: bool
+    indicator: str
+    next_direction: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,10 +252,14 @@ def create_ops_app(
     async def sources_page(
         request: Request,
         limit: int | None = Query(default=None, ge=1, le=500),
+        sort: str | None = None,
+        direction: str | None = None,
         _: None = Depends(require_ops_auth),
     ) -> HTMLResponse:
         settings = load_ops_settings(event_store)
         resolved_limit = settings.sources_default_limit if limit is None else limit
+        source_sort = _normalize_source_sort(sort)
+        source_direction = _normalize_source_direction(direction, sort_key=source_sort)
         context = _template_context(
             request=request,
             config=config,
@@ -220,8 +268,17 @@ def create_ops_app(
                 event_store.fetch_events(),
                 settings=settings,
                 ip_enricher=ip_enricher,
+                sort=source_sort,
+                direction=source_direction,
             )[:resolved_limit],
             limit=resolved_limit,
+            source_sort=source_sort,
+            source_direction=source_direction,
+            source_sort_links=_source_sort_links(
+                active_sort=source_sort,
+                active_direction=source_direction,
+                limit=resolved_limit,
+            ),
         )
         return templates.TemplateResponse(request=request, name="sources.html", context=context)
 
@@ -669,21 +726,23 @@ def _source_rows(
     *,
     settings: OpsBackendSettings,
     ip_enricher: IpEnricher,
+    sort: str = _SOURCE_SORT_DEFAULT,
+    direction: str = "desc",
 ) -> tuple[SourceRow, ...]:
     grouped: dict[str, list[EventRecord]] = defaultdict(list)
     for event in events:
         grouped[event.source_ip].append(event)
 
-    rows: list[tuple[datetime, SourceRow]] = []
+    rows: list[tuple[SourceRow, datetime, datetime]] = []
     for source_ip, source_events in grouped.items():
         event_type_counts = Counter(event.event_type for event in source_events)
         endpoint_counts = Counter(event.endpoint_or_register or "" for event in source_events)
         sessions = {event.session_id for event in source_events if event.session_id}
-        last_seen = source_events[-1].timestamp
+        first_seen = min(event.timestamp for event in source_events)
+        last_seen = max(event.timestamp for event in source_events)
         enrichment = ip_enricher.enrich(source_ip, settings)
         rows.append(
             (
-                last_seen,
                 SourceRow(
                     source_ip=source_ip,
                     country_code=enrichment.country_code,
@@ -692,14 +751,98 @@ def _source_rows(
                     event_count=len(source_events),
                     rejected_count=sum(1 for event in source_events if event.result == "rejected"),
                     session_count=len(sessions),
-                    first_seen=_format_dt_display(source_events[0].timestamp),
+                    first_seen=_format_dt_display(first_seen),
                     last_seen=_format_dt_display(last_seen),
                     top_event_type=event_type_counts.most_common(1)[0][0] if event_type_counts else "",
                     top_endpoint=endpoint_counts.most_common(1)[0][0] if endpoint_counts else "",
                 ),
+                first_seen,
+                last_seen,
             )
         )
-    return tuple(row for _, row in sorted(rows, key=lambda item: item[0], reverse=True))
+    normalized_sort = _normalize_source_sort(sort)
+    normalized_direction = _normalize_source_direction(direction, sort_key=normalized_sort)
+    rows.sort(key=lambda item: item[0].source_ip)
+    rows.sort(
+        key=lambda item: _source_sort_value(item, normalized_sort),
+        reverse=normalized_direction == "desc",
+    )
+    return tuple(row for row, _, _ in rows)
+
+
+def _normalize_source_sort(value: str | None) -> str:
+    if value is None:
+        return _SOURCE_SORT_DEFAULT
+    normalized = value.strip().lower().replace("-", "_")
+    normalized = _SOURCE_SORT_ALIASES.get(normalized, normalized)
+    if normalized in _SOURCE_SORT_DEFAULT_DIRECTIONS:
+        return normalized
+    return _SOURCE_SORT_DEFAULT
+
+
+def _normalize_source_direction(value: str | None, *, sort_key: str) -> str:
+    if value is None:
+        return _SOURCE_SORT_DEFAULT_DIRECTIONS[sort_key]
+    normalized = value.strip().lower()
+    if normalized in _SOURCE_SORT_DIRECTIONS:
+        return normalized
+    return _SOURCE_SORT_DEFAULT_DIRECTIONS[sort_key]
+
+
+def _source_sort_links(
+    *,
+    active_sort: str,
+    active_direction: str,
+    limit: int,
+) -> tuple[SourceSortLink, ...]:
+    links: list[SourceSortLink] = []
+    for key, label in _SOURCE_SORT_COLUMNS:
+        is_active = key == active_sort
+        next_direction = (
+            "asc"
+            if is_active and active_direction == "desc"
+            else "desc"
+            if is_active
+            else _SOURCE_SORT_DEFAULT_DIRECTIONS[key]
+        )
+        links.append(
+            SourceSortLink(
+                key=key,
+                label=label,
+                href="/sources?" + urlencode({"limit": str(limit), "sort": key, "direction": next_direction}),
+                is_active=is_active,
+                indicator=active_direction if is_active else "",
+                next_direction=next_direction,
+            )
+        )
+    return tuple(links)
+
+
+def _source_sort_value(item: tuple[SourceRow, datetime, datetime], sort_key: str) -> Any:
+    row, first_seen, last_seen = item
+    if sort_key == "source_ip":
+        return row.source_ip
+    if sort_key == "country":
+        return row.country_code.lower()
+    if sort_key == "rdns":
+        return row.rdns.lower()
+    if sort_key == "isp":
+        return row.isp.lower()
+    if sort_key == "events":
+        return row.event_count
+    if sort_key == "rejected":
+        return row.rejected_count
+    if sort_key == "sessions":
+        return row.session_count
+    if sort_key == "first_seen":
+        return first_seen
+    if sort_key == "last_seen":
+        return last_seen
+    if sort_key == "top_type":
+        return row.top_event_type.lower()
+    if sort_key == "top_endpoint":
+        return row.top_endpoint.lower()
+    return last_seen
 
 
 def _campaign_rows(campaigns: tuple[LoginCampaignRecord, ...]) -> tuple[CampaignRow, ...]:

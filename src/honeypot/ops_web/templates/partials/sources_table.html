@@ -2,6 +2,15 @@
   <table>
     <thead>
       <tr>
+        {% if source_sort_links %}
+        {% for link in source_sort_links %}
+        <th>
+          <a class="sort-link {% if link.is_active %}active{% endif %}" href="{{ link.href }}" aria-label="Sort {{ link.label }} {{ link.next_direction }}">
+            {{ link.label }}{% if link.is_active %} <span class="sort-dir">{{ link.indicator }}</span>{% endif %}
+          </a>
+        </th>
+        {% endfor %}
+        {% else %}
         <th>Source IP</th>
         <th>Country</th>
         <th>rDNS</th>
@@ -13,6 +22,7 @@
         <th>Last Seen</th>
         <th>Top Type</th>
         <th>Top Endpoint</th>
+        {% endif %}
       </tr>
     </thead>
     <tbody>

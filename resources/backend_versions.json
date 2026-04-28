@@ -1,5 +1,21 @@
 [
   {
+    "version": "v1.1.0",
+    "released_at": "2026-04-28",
+    "category": "Feature",
+    "title": "Sortable source activity",
+    "summary": "Adds protected Ops source-table sorting so operators can quickly find the busiest or most recently active IPs.",
+    "areas": ["ops-web", "tests", "documentation"],
+    "changes": [
+      "Add allowlisted sort and direction parameters to the protected /sources page.",
+      "Make source table headers clickable while preserving the selected row limit.",
+      "Add regression coverage for event-count sorting and invalid sort-parameter fallback."
+    ],
+    "security_notes": [
+      "Sort parameters are normalized through a fixed allowlist and never used as raw SQL or unchecked field names."
+    ]
+  },
+  {
     "version": "v1.0.0",
     "released_at": "2026-04-28",
     "category": "Release",
