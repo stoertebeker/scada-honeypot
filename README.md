@@ -148,8 +148,8 @@ HONEYPOT_ENV_FILE=.env docker compose --profile exposed up --build -d honeypot-e
   `restart: unless-stopped` und `no-new-privileges`
 - das interne Ops-Backend laeuft auf eigenem Port und wird im Compose-Betrieb
   nur auf Host-Loopback veroeffentlicht: `127.0.0.1:${OPS_PUBLISHED_PORT:-9090}`
-- der Healthcheck prueft den echten HMI-Read auf `/overview` plus einen
-  Modbus-Socket auf dem internen Runtime-Pfad
+- der Healthcheck prueft den nicht-loggenden HMI-Endpunkt `/healthz` plus
+  einen Modbus-Socket auf dem internen Runtime-Pfad
 - fuer den Exposure-Sweep gibt es einen getrennten Profil-Dienst:
 
 ```bash

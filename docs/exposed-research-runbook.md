@@ -74,8 +74,8 @@ Dabei gilt weiter:
 - fuer Containerbetrieb zieht der Entry-Point die bind-relevanten Werte
   bewusst auf den extern erreichbaren Runtime-Pfad, auch wenn eine lokale
   `.env` fuer Direktlauf weiter `127.0.0.1` nutzt
-- der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem und
-  echtem HMI-/Modbus-Healthcheck gehaertet
+- der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem,
+  nicht-loggendem HMI-Healthcheck und Modbus-Socket-Check gehaertet
 - die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress
 
 ### 3.3 Noch keine oeffentliche Freigabe

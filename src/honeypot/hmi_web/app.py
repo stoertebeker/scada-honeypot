@@ -737,6 +737,10 @@ def create_hmi_app(
             error_code="hmi_500",
         )
 
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/overview", response_class=HTMLResponse, include_in_schema=False)
     async def overview(request: Request) -> HTMLResponse:

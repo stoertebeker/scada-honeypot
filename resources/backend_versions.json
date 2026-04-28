@@ -1,5 +1,21 @@
 [
   {
+    "version": "v0.9.6",
+    "released_at": "2026-04-28",
+    "category": "Fix",
+    "title": "Quiet HMI healthcheck endpoint",
+    "summary": "Moves the container HMI healthcheck away from /overview so local probes no longer pollute attacker source statistics.",
+    "areas": ["hmi-web", "container", "documentation"],
+    "changes": [
+      "Add a minimal /healthz endpoint on the HMI surface that returns status without creating sessions or events.",
+      "Update the Docker healthcheck to use /healthz while keeping the Modbus socket probe.",
+      "Add regression coverage that /healthz does not write page-view events."
+    ],
+    "security_notes": [
+      "The public health endpoint intentionally exposes only a generic ok status and avoids leaking plant telemetry or observer state."
+    ]
+  },
+  {
     "version": "v0.9.5",
     "released_at": "2026-04-28",
     "category": "Fix",

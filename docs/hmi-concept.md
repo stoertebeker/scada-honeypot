@@ -408,6 +408,14 @@ Nicht sichtbar:
 - echte Support-Links
 - Framework-Standardformulare
 
+### 7.9 `/healthz`
+
+Zweck:
+- nicht-loggender Container-Healthcheck fuer die HMI
+
+Die Route liefert nur einen generischen `ok`-Status und darf keine
+Session-Cookies oder HMI-Pageview-Events erzeugen.
+
 ## 8. Berechtigungsmodell fuer V1
 
 V1 braucht kein komplexes Rollenmodell, aber eine glaubhafte Trennung.

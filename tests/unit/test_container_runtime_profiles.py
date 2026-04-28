@@ -23,6 +23,7 @@ def test_example_env_files_load_with_inline_comments() -> None:
 def test_compose_profiles_split_normal_and_exposed_runtime() -> None:
     compose_yaml = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
     entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    healthcheck = (REPO_ROOT / "docker" / "healthcheck.sh").read_text(encoding="utf-8")
 
     assert "honeypot-exposed:" in compose_yaml
     assert 'HONEYPOT_FORCE_CONTAINER_BINDS: "1"' in compose_yaml
@@ -36,3 +37,5 @@ def test_compose_profiles_split_normal_and_exposed_runtime() -> None:
     assert "127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}" in compose_yaml
     assert "export EXPOSED_RESEARCH_ENABLED=0" in entrypoint
     assert "export EXPOSED_RESEARCH_ENABLED=1" in entrypoint
+    assert "/healthz" in healthcheck
+    assert "/overview" not in healthcheck

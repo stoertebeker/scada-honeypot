@@ -129,6 +129,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v0.9.6" in versions.text
+    assert "Quiet HMI healthcheck endpoint" in versions.text
     assert "v0.9.5" in versions.text
     assert "Trusted proxy source IP handling" in versions.text
     assert "v0.9.4" in versions.text
