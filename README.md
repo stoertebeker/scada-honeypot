@@ -10,9 +10,9 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **lokal release-faehig**, `pre-exposure` ist
-abgenommen, und `exposed-research` ist technisch vorbereitet, bleibt aber ein
-bewusst freizugebender Sicherheitskurs.
+Der aktuelle Stand ist **v1.0.0**. Der lokale Release, `pre-exposure` und der
+deployment-spezifische `exposed-research`-Kurs fuer die validierte
+Caddy-/Docker-Compose-Installation sind abgenommen.
 
 ## Betrieb
 
@@ -303,6 +303,7 @@ Wichtige Runtime-Gates:
 
 - lokaler V1-Release: `GO`
 - `pre-exposure`: `GO`
-- `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
-  freizugeben
-- Gesamtteststand aktuell: `285 passed`
+- `exposed-research`: `GO` fuer den validierten Caddy-/Docker-Compose-Pfad
+  auf `scada.stoerte.net` und `scada-admin.stoerte.net`
+- Release-Version: `v1.0.0`
+- Gesamtteststand aktuell: `356 passed`

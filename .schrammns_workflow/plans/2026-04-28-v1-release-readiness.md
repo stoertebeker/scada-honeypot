@@ -3,6 +3,11 @@
 **Date:** 2026-04-28
 **Source:** External deployment retest on `scada.stoerte.net` / `scada-admin.stoerte.net`, `docs/release-checklist.md`, `bd status`
 
+**Completion:** Completed on 2026-04-28 with `v1.0.0`. `HEAD` handling,
+`/inverters` layout, external Caddy/HMI/Ops/Modbus validation, Beads closeout
+and release documentation are done. Historical baseline notes below describe
+the state before the final release fixes.
+
 ## Context
 
 Der aktuelle Stand ist funktional nahe an V1.0: HMI, Ops-Backend, Trusted-Proxy-Source-IP, Credential-Capture, historische Erzeugungsdaten und Container-Healthcheck laufen im externen Deployment. Der letzte verifizierte Stand zeigt `v0.9.6` im Backend-Version-Log.

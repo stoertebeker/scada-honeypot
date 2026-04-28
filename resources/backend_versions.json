@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.0.0",
+    "released_at": "2026-04-28",
+    "category": "Release",
+    "title": "Initial exposed-research release",
+    "summary": "Marks the first V1 release after external HMI, Ops, Caddy and Modbus validation passed on the deployed target.",
+    "areas": ["release", "hmi-web", "ops-web", "modbus", "documentation"],
+    "changes": [
+      "Promote the project package and protected Ops version log to V1.0.0.",
+      "Record the deployed acceptance state for HMI pages, Ops backend authentication, Caddy security headers and public Modbus read access.",
+      "Carry forward the quiet HEAD probes, readable inverter layout and trusted-proxy source-IP handling as release gates."
+    ],
+    "security_notes": [
+      "Public HMI and Modbus exposure are intentional honeypot surfaces; the Ops backend must remain protected by reverse-proxy authentication or a private access path.",
+      "The deployment uses HTTPS security headers at Caddy and forwards source IPs only through configured trusted proxies."
+    ]
+  },
+  {
     "version": "v0.9.8",
     "released_at": "2026-04-28",
     "category": "Fix",

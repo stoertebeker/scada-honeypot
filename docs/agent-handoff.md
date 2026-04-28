@@ -9,9 +9,10 @@ Aktueller Kurs:
 
 - lokaler V1-Release: `GO`
 - `pre-exposure`: `GO`
-- `exposed-research`: technisch vorbereitet, aber deployment-spezifisch
-  freizugeben
-- Gesamtteststand: `295 passed`
+- `exposed-research`: `GO` fuer den validierten Caddy-/Docker-Compose-Pfad
+  auf `scada.stoerte.net` und `scada-admin.stoerte.net`
+- Release-Version: `v1.0.0`
+- Gesamtteststand: `356 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
@@ -201,13 +202,15 @@ Wichtige Regel:
 
 ## Offene Luecken
 
-Repo-seitig ist der Grundbau weitgehend geschlossen. Die groessten offenen
-Punkte liegen jetzt nicht mehr im Kern, sondern im echten Einsatz:
+Repo-seitig ist der Grundbau fuer `v1.0.0` geschlossen. Der validierte
+Einsatzpfad umfasst Caddy vor HMI und Ops, public Modbus `1502`,
+Trusted-Proxy-Source-IP, leise `HEAD`-Probes und die geschuetzte Ops-Oberflaeche.
 
-1. deployment-spezifische `.env` fuer den Zielhost
-2. reale Firewall-/NAT-Validierung
-3. reale Egress-Empfaenger statt Doku-Ziele
-4. echter Zielhost-Lauf von `--verify-exposed-research-target-host`
+Offen fuer Produktpflege nach `v1.0.0`:
+
+1. Admin-Passwort nach Release-Rollout rotieren
+2. Egress-Empfaenger je Deployment regelmaessig pruefen
+3. weitere HMI-/Modbus-Slices nur mit passender Testabdeckung ergaenzen
 
 ## Naechster sinnvoller Schritt
 
@@ -216,9 +219,8 @@ Wenn lokal weitergearbeitet wird:
 1. keine neue Grundmechanik vorziehen
 2. nur gezielte Härtung, Test- oder Doku-Schlaege
 
-Wenn echte Exponierung vorbereitet wird:
+Wenn der Release neu ausgerollt wird:
 
-1. Zielhost-`.env` setzen
-2. `uv run python -m honeypot.main --verify-exposed-research-target-host` auf dem Zielhost fahren
-3. Findings, Runtime-Status und Eventspur gegenlesen
-4. erst danach Ingress wirklich nach aussen oeffnen
+1. Zielhost per `git pull` aktualisieren
+2. Compose-Image neu bauen und `honeypot-exposed` starten
+3. HMI, Ops, Caddy-Header, Source-IP und Modbus kurz extern gegenpruefen

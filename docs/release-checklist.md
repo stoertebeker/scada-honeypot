@@ -90,13 +90,18 @@ Nach diesem lokalen V1-Release sind zwei Richtungen sauber getrennt:
    - Egress-Kontrolle ueber `APPROVED_EGRESS_TARGETS` pruefen
    - letzte bewusste Sicherheitsfreigabe
 
-## Stand nach lokaler V1-Abnahme
+## Stand nach V1.0.0-Abnahme
 
-Seit dem 23. April 2026 ist die formale Entscheidung fuer den naechsten
-Betriebsmodus dokumentiert:
+Seit dem 28. April 2026 ist `v1.0.0` fuer den validierten
+Caddy-/Docker-Compose-Pfad abgenommen:
 
+- lokaler V1-Release -> `GO`
 - `pre-exposure` -> `GO`
-- `exposed-research` -> weiter `NO-GO`
+- `exposed-research` -> `GO` fuer `scada.stoerte.net`,
+  `scada-admin.stoerte.net` und den oeffentlichen Modbus-Port `1502`
+- letzter Gesamtteststand -> `356 passed`
+- externer Sweep -> HMI, Ops, Caddy-Security-Header, leise `HEAD`-Probes,
+  Trusted-Proxy-Source-IP und Modbus-Read erfolgreich
 
 Verbindliche Lagekarte:
 

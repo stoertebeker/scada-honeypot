@@ -8,6 +8,11 @@ Diese Karte dokumentiert die formale Entscheidung fuer den Betriebsmodus
 Sie ist **keine** Freigabe fuer `exposed-research` oder fuer eine echte
 Internet-Exponierung.
 
+Update vom 28. April 2026: Die spaetere, deployment-spezifische Freigabe fuer
+`v1.0.0` und den validierten `exposed-research`-Pfad ist in
+[release-checklist.md](release-checklist.md) dokumentiert. Diese Karte bleibt
+als historische Pre-Exposure-Entscheidung bestehen.
+
 ## Entscheidung
 
 **Urteil:** `GO` fuer `pre-exposure`
