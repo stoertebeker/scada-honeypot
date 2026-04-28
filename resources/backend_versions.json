@@ -1,5 +1,21 @@
 [
   {
+    "version": "v0.9.7",
+    "released_at": "2026-04-28",
+    "category": "Fix",
+    "title": "Quiet HMI HEAD probes",
+    "summary": "Handles normal HEAD probes on HMI read-only routes without creating internal-error events or session cookies.",
+    "areas": ["hmi-web", "documentation"],
+    "changes": [
+      "Add explicit HEAD handlers for the HMI healthcheck, overview, single-line, inverter, weather, meter, alarm, trend and service-login routes.",
+      "Keep HEAD probes quiet so they do not create page-view sessions or high-severity internal-error events.",
+      "Add regression coverage for HEAD /healthz, read-only HMI HEAD routes and disabled service-login behavior."
+    ],
+    "security_notes": [
+      "Scanner and monitor HEAD probes now receive minimal status-only responses instead of triggering framework-style error paths."
+    ]
+  },
+  {
     "version": "v0.9.6",
     "released_at": "2026-04-28",
     "category": "Fix",

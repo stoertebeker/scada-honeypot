@@ -416,6 +416,9 @@ Zweck:
 Die Route liefert nur einen generischen `ok`-Status und darf keine
 Session-Cookies oder HMI-Pageview-Events erzeugen.
 
+`HEAD`-Probes auf HMI-Read-only-Routen muessen status-only bleiben: keine
+Session-Cookies, keine Pageview-Events und keine internen Fehlerseiten.
+
 ## 8. Berechtigungsmodell fuer V1
 
 V1 braucht kein komplexes Rollenmodell, aber eine glaubhafte Trennung.

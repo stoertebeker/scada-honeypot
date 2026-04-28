@@ -219,6 +219,80 @@ async def test_hmi_healthz_is_not_logged_as_page_activity(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_hmi_healthz_head_is_not_logged_as_page_activity(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-healthz-head.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.head("/healthz")
+
+    assert response.status_code == 200
+    assert response.content == b""
+    assert "set-cookie" not in response.headers
+    assert store.fetch_events() == ()
+
+
+@pytest.mark.asyncio
+async def test_hmi_readonly_head_routes_do_not_create_page_events(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-head-routes.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        for path in (
+            "/",
+            "/overview",
+            "/single-line",
+            "/inverters",
+            "/weather",
+            "/meter",
+            "/alarms",
+            "/trends",
+            "/service/login",
+        ):
+            response = await client.head(path)
+            assert response.status_code == 200, path
+            assert response.content == b"", path
+            assert "set-cookie" not in response.headers, path
+
+    assert store.fetch_events() == ()
+
+
+@pytest.mark.asyncio
+async def test_hmi_service_login_head_respects_disabled_service_login(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-head-service-disabled.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path).model_copy(update={"enable_service_login": False}),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.head("/service/login")
+
+    assert response.status_code == 403
+    assert response.content == b""
+    assert "set-cookie" not in response.headers
+    assert store.fetch_events() == ()
+
+
+@pytest.mark.asyncio
 async def test_hmi_events_use_forwarded_source_ip_from_trusted_proxy(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-forwarded-source.db")

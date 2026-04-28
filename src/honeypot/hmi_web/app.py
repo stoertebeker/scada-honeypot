@@ -14,7 +14,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -740,6 +740,24 @@ def create_hmi_app(
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.head("/healthz", include_in_schema=False)
+    async def healthz_head() -> Response:
+        return Response(status_code=200)
+
+    @app.head("/", include_in_schema=False)
+    @app.head("/overview", include_in_schema=False)
+    @app.head("/single-line", include_in_schema=False)
+    @app.head("/inverters", include_in_schema=False)
+    @app.head("/weather", include_in_schema=False)
+    @app.head("/meter", include_in_schema=False)
+    @app.head("/alarms", include_in_schema=False)
+    @app.head("/trends", include_in_schema=False)
+    @app.head("/service/login", include_in_schema=False)
+    async def hmi_readonly_head(request: Request) -> Response:
+        if request.url.path == "/service/login" and not config.enable_service_login:
+            return Response(status_code=403)
+        return Response(status_code=200)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/overview", response_class=HTMLResponse, include_in_schema=False)
