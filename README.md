@@ -10,10 +10,10 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **v1.3.0**. Der lokale Release, `pre-exposure` und der
-deployment-spezifische Betriebskurs sind abgenommen; `v1.3.0` automatisiert
-die DB-IP-Lite-Beschaffung fuer Country- und ASN-MMDBs inklusive CC-BY-
-Attribution in der Ops-Oberflaeche.
+Der aktuelle Stand ist **v1.3.1**. Der lokale Release, `pre-exposure` und der
+deployment-spezifische Betriebskurs sind abgenommen; `v1.3.1` ergaenzt eine
+leise `robots.txt` als Service-Login-Koeder und behaelt die DB-IP-Lite-
+Beschaffung aus `v1.3.0` bei.
 
 ## Betrieb
 
@@ -26,6 +26,7 @@ uv run python -m honeypot.main
 Standardpfade im lokalen Designbetrieb:
 
 - HMI: `http://127.0.0.1:8080/overview`
+- HMI robots lure: `http://127.0.0.1:8080/robots.txt`
 - Ops-Backend: `http://127.0.0.1:9090/`
 - Modbus/TCP: `127.0.0.1:1502`
 
@@ -254,7 +255,7 @@ uv run python -m playwright install chromium
   - Modbus-Sicht mit aktiven Units `1`, `11-13`, `21`, `31`, `41`
 - `hmi_web`
   - HMI fuer `/overview`, `/single-line`, `/inverters`, `/weather`, `/meter`,
-    `/alarms`, `/trends`, `/service/login`, `/service/panel`
+    `/alarms`, `/trends`, `/service/login`, `/service/panel`, `/robots.txt`
 
 ### Betrieb und Ausleitung
 
@@ -350,5 +351,5 @@ Wichtige Runtime-Gates:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.3.0`
-- Gesamtteststand aktuell: `371 passed`
+- Release-Version: `v1.3.1`
+- Gesamtteststand aktuell: `372 passed`

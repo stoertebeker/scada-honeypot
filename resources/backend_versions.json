@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.3.1",
+    "released_at": "2026-04-29",
+    "category": "Feature",
+    "title": "Service-login robots lure",
+    "summary": "Adds a public robots.txt hint that excludes the HMI service-login path to make the honeypot login surface more discoverable to scanners.",
+    "areas": ["hmi-web", "documentation", "tests"],
+    "changes": [
+      "Expose /robots.txt on the attacker-facing HMI surface.",
+      "List /service/login as disallowed while keeping the service-login route unchanged.",
+      "Keep robots.txt requests quiet so they do not create sessions or source activity events."
+    ],
+    "security_notes": [
+      "robots.txt is intentionally a lure, not an access-control mechanism.",
+      "The file reveals only an existing honeypot path and does not reference the protected Ops backend."
+    ]
+  },
+  {
     "version": "v1.3.0",
     "released_at": "2026-04-29",
     "category": "Feature",

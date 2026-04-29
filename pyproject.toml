@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scada-honeypot"
-version = "1.3.0"
+version = "1.3.1"
 description = "Fiktiver SCADA-Honeypot fuer einen Solarpark."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

@@ -162,6 +162,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.3.1" in versions.text
+    assert "Service-login robots lure" in versions.text
     assert "v1.3.0" in versions.text
     assert "DB-IP Lite GeoIP auto-update" in versions.text
     assert "v1.2.2" in versions.text

@@ -510,6 +510,9 @@ Pflichttests:
 - weitere Unit- und Integrationstests pruefen jetzt den DB-IP-Lite-Updater:
   feste Download-URLs, Vormonats-Fallback, optionales Fail-Open bei
   Provider-Ausfall und sichtbare CC-BY-Attribution im geschuetzten Ops-Backend
+- ein weiterer HMI-Integrationstest prueft `/robots.txt`: Service-Login steht
+  als Disallow-Koeder drin, GET/HEAD setzen kein Cookie und erzeugen keine
+  Eventspur
 - ein weiterer End-to-End-Nachweis hat einen realen Docker-Regressionspfad
   aufgespiesst: lokale `.env` mit `HMI_BIND_HOST=127.0.0.1` plus
   `docker compose up` darf den Host-Browserzugriff nicht wieder auf

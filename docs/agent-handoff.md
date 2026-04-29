@@ -11,8 +11,8 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.3.0`
-- Gesamtteststand: `371 passed`
+- Release-Version: `v1.3.1`
+- Gesamtteststand: `372 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
@@ -84,6 +84,7 @@ docker compose up --build -d
   - `FC03`, `FC06`, `FC16`
 - `hmi_web`
   - `/overview`
+  - `/robots.txt`
   - `/single-line`
   - `/inverters`
   - `/weather`
@@ -135,6 +136,8 @@ Wichtige End-to-End-Pfade, die schon stehen:
 - Inverter-Block Enable/Disable, Limit, PV-/DC-Disconnect und Reset
 - `/single-line` zeigt Inverter-Schalter als anonyme Koederpfade oder, mit
   Service-Login, als CSRF-geschuetzte Service-Control-Bedienung
+- `/robots.txt` markiert `/service/login` als disallowed und bleibt dabei
+  bewusst ein leiser Koeder ohne Session- oder Eventspur
 - Folge-Alerts:
   - `REPEATED_LOGIN_FAILURE`
   - `GRID_PATH_UNAVAILABLE`

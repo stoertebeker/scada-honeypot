@@ -240,6 +240,32 @@ async def test_hmi_healthz_head_is_not_logged_as_page_activity(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_hmi_robots_txt_disallows_service_login_without_logging(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-robots.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/robots.txt")
+        head_response = await client.head("/robots.txt")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.text == "User-agent: *\nDisallow: /service/login\n"
+    assert "set-cookie" not in response.headers
+    assert head_response.status_code == 200
+    assert head_response.content == b""
+    assert "set-cookie" not in head_response.headers
+    assert store.fetch_events() == ()
+
+
+@pytest.mark.asyncio
 async def test_hmi_readonly_head_routes_do_not_create_page_events(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-head-routes.db")

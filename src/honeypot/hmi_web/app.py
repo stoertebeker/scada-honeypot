@@ -55,6 +55,7 @@ _LOCALE_DIR = _REPO_ROOT / "resources" / "locales" / "attacker-ui"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 SERVICE_LOGIN_USERNAME = "field.service"
 SERVICE_LOGIN_PASSWORD = "Solar-Field-2026"
+ROBOTS_TXT = "User-agent: *\nDisallow: /service/login\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -744,6 +745,14 @@ def create_hmi_app(
     @app.head("/healthz", include_in_schema=False)
     async def healthz_head() -> Response:
         return Response(status_code=200)
+
+    @app.get("/robots.txt", include_in_schema=False)
+    async def robots_txt() -> Response:
+        return Response(content=ROBOTS_TXT, media_type="text/plain; charset=utf-8")
+
+    @app.head("/robots.txt", include_in_schema=False)
+    async def robots_txt_head() -> Response:
+        return Response(status_code=200, media_type="text/plain; charset=utf-8")
 
     @app.head("/", include_in_schema=False)
     @app.head("/overview", include_in_schema=False)
