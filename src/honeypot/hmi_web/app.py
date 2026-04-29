@@ -53,8 +53,8 @@ TREND_WINDOWS: dict[str, tuple[str, timedelta]] = {
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LOCALE_DIR = _REPO_ROOT / "resources" / "locales" / "attacker-ui"
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
-SERVICE_LOGIN_USERNAME = "field.service"
-SERVICE_LOGIN_PASSWORD = "Solar-Field-2026"
+SERVICE_LOGIN_USERNAME = "admin"
+SERVICE_LOGIN_PASSWORD = "sunshine"
 ROBOTS_TXT = "User-agent: *\nDisallow: /service/login\n"
 
 
@@ -1261,7 +1261,11 @@ def create_hmi_app(
             )
         username = (form.get("username", [""])[0]).strip()
         password = form.get("password", [""])[0]
-        login_success = username == SERVICE_LOGIN_USERNAME and password == SERVICE_LOGIN_PASSWORD
+        expected_username, expected_password = _service_login_credentials(event_recorder)
+        login_success = _constant_time_equal(username, expected_username) and _constant_time_equal(
+            password,
+            expected_password,
+        )
 
         if not login_success:
             capture_decision = service_login_tracker.record_failure(
@@ -3264,6 +3268,17 @@ def _request_source_ip(request: Request, *, config: RuntimeConfig) -> str:
 
 def _request_user_agent(request: Request) -> str:
     return request.headers.get("user-agent", "")
+
+
+def _service_login_credentials(event_recorder: EventRecorder | None) -> tuple[str, str]:
+    if event_recorder is None:
+        return SERVICE_LOGIN_USERNAME, SERVICE_LOGIN_PASSWORD
+    settings = load_ops_settings(event_recorder.store)
+    return settings.service_login_username, settings.service_login_password
+
+
+def _constant_time_equal(submitted: str, expected: str) -> bool:
+    return secrets.compare_digest(submitted.encode("utf-8"), expected.encode("utf-8"))
 
 
 def _validate_service_csrf_token(form: dict[str, list[str]], service_session: ServiceSession) -> None:

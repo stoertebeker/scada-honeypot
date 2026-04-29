@@ -428,7 +428,7 @@ def test_record_clears_repeated_login_failure_alert_after_successful_login(tmp_p
             protocol="http",
             service="web-hmi",
             endpoint_or_register="/service/login",
-            requested_value={"username": "field.service", "http_path": "/service/login"},
+            requested_value={"username": "admin", "http_path": "/service/login"},
             tags=("auth", "service", "web"),
         )
         recorder.record(failure_event)
@@ -448,7 +448,7 @@ def test_record_clears_repeated_login_failure_alert_after_successful_login(tmp_p
         protocol="http",
         service="web-hmi",
         endpoint_or_register="/service/login",
-        requested_value={"username": "field.service", "http_path": "/service/login"},
+        requested_value={"username": "admin", "http_path": "/service/login"},
         tags=("auth", "service", "web"),
     )
 

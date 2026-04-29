@@ -162,6 +162,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.3.2" in versions.text
+    assert "Configurable service-login lure" in versions.text
     assert "v1.3.1" in versions.text
     assert "Service-login robots lure" in versions.text
     assert "v1.3.0" in versions.text
@@ -288,6 +290,60 @@ async def test_ops_settings_enable_static_ip_enrichment_and_audit_change(tmp_pat
     assert any(source["rdns"] == "scan.example.test" for source in enriched_sources)
     assert store.fetch_ops_settings()["ip_enrichment_enabled"] is True
     assert any(event.event_type == "ops.settings.updated" for event in store.fetch_events())
+
+
+@pytest.mark.asyncio
+async def test_ops_settings_updates_service_login_lure_credentials(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-service-login-settings.db")
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        settings_page = await client.get("/settings")
+        csrf_token = _extract_csrf_token(settings_page.text)
+        update = await client.post(
+            "/settings",
+            data={
+                "csrf_token": csrf_token,
+                "service_login_username": "maintenance",
+                "service_login_password": "shadow",
+                "ip_enrichment_static_map_path": "",
+                "ip_enrichment_country_mmdb_path": "",
+                "ip_enrichment_asn_mmdb_path": "",
+                "ip_enrichment_rdns_timeout_ms": "300",
+                "events_default_limit": "100",
+                "alerts_default_limit": "100",
+                "sources_default_limit": "100",
+                "login_campaign_aggregation_enabled": "on",
+                "login_credential_capture_enabled": "on",
+                "login_password_capture_enabled": "on",
+                "login_password_display_enabled": "on",
+                "login_credential_export_enabled": "on",
+                "login_capture_sample_attempts": "5",
+                "login_capture_summary_interval_seconds": "60",
+                "login_campaign_idle_timeout_minutes": "10",
+                "login_capture_max_unique_passwords": "1000000",
+                "login_capture_max_credential_length": "256",
+            },
+            follow_redirects=False,
+        )
+        saved_page = await client.get("/settings")
+
+    stored_settings = store.fetch_ops_settings()
+    settings_event = next(event for event in store.fetch_events() if event.event_type == "ops.settings.updated")
+
+    assert settings_page.status_code == 200
+    assert 'name="service_login_username"' in settings_page.text
+    assert 'value="admin"' in settings_page.text
+    assert 'name="service_login_password"' in settings_page.text
+    assert 'value="sunshine"' in settings_page.text
+    assert update.status_code == 303
+    assert stored_settings["service_login_username"] == "maintenance"
+    assert stored_settings["service_login_password"] == "shadow"
+    assert 'value="maintenance"' in saved_page.text
+    assert 'value="shadow"' in saved_page.text
+    assert settings_event.requested_value["changed"]["service_login_username"]["after"] == "maintenance"
+    assert settings_event.requested_value["changed"]["service_login_password"]["after"] == "shadow"
 
 
 @pytest.mark.asyncio

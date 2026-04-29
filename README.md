@@ -10,10 +10,11 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **v1.3.1**. Der lokale Release, `pre-exposure` und der
-deployment-spezifische Betriebskurs sind abgenommen; `v1.3.1` ergaenzt eine
-leise `robots.txt` als Service-Login-Koeder und behaelt die DB-IP-Lite-
-Beschaffung aus `v1.3.0` bei.
+Der aktuelle Stand ist **v1.3.2**. Der lokale Release, `pre-exposure` und der
+deployment-spezifische Betriebskurs sind abgenommen; `v1.3.2` macht den
+Service-Login-Koeder im geschuetzten Ops-Backend konfigurierbar und behaelt
+die DB-IP-Lite-Beschaffung aus `v1.3.0` sowie die `robots.txt`-Lure aus
+`v1.3.1` bei.
 
 ## Betrieb
 
@@ -31,10 +32,13 @@ Standardpfade im lokalen Designbetrieb:
 - Modbus/TCP: `127.0.0.1:1502`
 
 Das Ops-Backend fuehrt eigene persistente Einstellungen unter `/settings`.
-IP-Anreicherung fuer die Source-Uebersicht wird dort aktiviert; rDNS bleibt
-standardmaessig aus, weil es aktiven DNS-Egress erzeugt. Laender werden in der
-Tabelle als kurze Codes wie `GER` angezeigt. Wenn keine ASN-MMDB konfiguriert
-ist, nutzt die ISP-Spalte bei aktivem rDNS einen kompakten Domain-Fallback.
+Der Service-Login-Koeder ist dort sichtbar und aenderbar; der Default lautet
+`admin` / `sunshine` und darf nicht fuer echte Ops-, SSH- oder Proxy-Zugaenge
+verwendet werden. IP-Anreicherung fuer die Source-Uebersicht wird ebenfalls
+dort aktiviert; rDNS bleibt standardmaessig aus, weil es aktiven DNS-Egress
+erzeugt. Laender werden in der Tabelle als kurze Codes wie `GER` angezeigt.
+Wenn keine ASN-MMDB konfiguriert ist, nutzt die ISP-Spalte bei aktivem rDNS
+einen kompakten Domain-Fallback.
 
 ### Lokaler Reset
 
@@ -266,6 +270,7 @@ uv run python -m playwright install chromium
     separatem Port
   - persistente Backend-Settings, Source-IP-Anreicherung und Audit-Events fuer
     Settings-Aenderungen
+  - konfigurierbare Service-Login-Koeder-Credentials fuer die HMI
   - geschuetzte Credential-Analyse fuer Service-Login-Kampagnen mit
     All-Time-/Kampagnen-Toplisten und CSV-Export
   - Backend-Version-Log unter `/versions` mit nachvollziehbaren Feature- und
@@ -351,5 +356,5 @@ Wichtige Runtime-Gates:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.3.1`
-- Gesamtteststand aktuell: `372 passed`
+- Release-Version: `v1.3.2`
+- Gesamtteststand aktuell: `374 passed`

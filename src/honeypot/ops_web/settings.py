@@ -11,6 +11,8 @@ from honeypot.storage import SQLiteEventStore
 
 @dataclass(frozen=True, slots=True)
 class OpsBackendSettings:
+    service_login_username: str = "admin"
+    service_login_password: str = "sunshine"
     ip_enrichment_enabled: bool = False
     ip_enrichment_rdns_enabled: bool = False
     ip_enrichment_static_map_path: str = ""
@@ -36,6 +38,18 @@ class OpsBackendSettings:
         defaults = asdict(cls())
         merged = {**defaults, **{key: values[key] for key in defaults.keys() & values.keys()}}
         return cls(
+            service_login_username=_bounded_text_value(
+                merged["service_login_username"],
+                field_name="service_login_username",
+                minimum=1,
+                maximum=128,
+            ),
+            service_login_password=_bounded_text_value(
+                merged["service_login_password"],
+                field_name="service_login_password",
+                minimum=1,
+                maximum=256,
+            ),
             ip_enrichment_enabled=_bool_value(merged["ip_enrichment_enabled"]),
             ip_enrichment_rdns_enabled=_bool_value(merged["ip_enrichment_rdns_enabled"]),
             ip_enrichment_static_map_path=_text_value(merged["ip_enrichment_static_map_path"]),
@@ -106,6 +120,16 @@ class OpsBackendSettings:
     def from_form(cls, values: Mapping[str, list[str]]) -> "OpsBackendSettings":
         defaults = cls()
         raw = {
+            "service_login_username": _first_form_value(
+                values,
+                "service_login_username",
+                defaults.service_login_username,
+            ),
+            "service_login_password": _first_form_value(
+                values,
+                "service_login_password",
+                defaults.service_login_password,
+            ),
             "ip_enrichment_enabled": "ip_enrichment_enabled" in values,
             "ip_enrichment_rdns_enabled": "ip_enrichment_rdns_enabled" in values,
             "ip_enrichment_static_map_path": _first_form_value(values, "ip_enrichment_static_map_path"),
@@ -191,6 +215,13 @@ def _text_value(value: Any) -> str:
     if not isinstance(value, str):
         raise ValueError("text settings muessen Strings sein")
     return value.strip()
+
+
+def _bounded_text_value(value: Any, *, field_name: str, minimum: int, maximum: int) -> str:
+    parsed = _text_value(value)
+    if len(parsed) < minimum or len(parsed) > maximum:
+        raise ValueError(f"{field_name} muss zwischen {minimum} und {maximum} Zeichen lang sein")
+    return parsed
 
 
 def _int_value(value: Any, *, field_name: str, minimum: int, maximum: int) -> int:

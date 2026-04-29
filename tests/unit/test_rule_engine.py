@@ -562,7 +562,7 @@ def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success
         result="failure",
         source_ip="198.51.100.42",
         asset_id="hmi-web",
-        requested_value={"username": "field.service"},
+        requested_value={"username": "admin"},
         tags=("auth", "service", "web"),
     )
 
@@ -577,7 +577,7 @@ def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success
         result="success",
         source_ip="198.51.100.42",
         asset_id="hmi-web",
-        requested_value={"username": "field.service"},
+        requested_value={"username": "admin"},
         tags=("auth", "service", "web"),
     )
     assert first == ()
@@ -586,7 +586,7 @@ def test_repeated_login_failure_rule_triggers_on_threshold_and_resets_on_success
     assert len(third) == 1
     assert third[0].alarm_code == REPEATED_LOGIN_FAILURE_ALERT_CODE
     assert third[0].severity == "medium"
-    assert "field.service" in third[0].message
+    assert "admin" in third[0].message
     assert engine.evaluate(success_event) == ()
     post_reset = engine.evaluate(failure_event.model_copy(update={"event_id": "evt_rule_test_4"}))
     assert post_reset == ()
@@ -601,7 +601,7 @@ def test_repeated_login_failure_rule_clears_matching_active_alert_on_success() -
         result="success",
         source_ip="198.51.100.42",
         asset_id="hmi-web",
-        requested_value={"username": "field.service"},
+        requested_value={"username": "admin"},
         tags=("auth", "service", "web"),
     )
     existing_alert = AlertRecord(
@@ -613,7 +613,7 @@ def test_repeated_login_failure_rule_clears_matching_active_alert_on_success() -
         state="active_unacknowledged",
         component="plant-sim",
         asset_id="hmi-web",
-        message="Wiederholte Login-Fehlschlaege fuer field.service von 198.51.100.42",
+        message="Wiederholte Login-Fehlschlaege fuer admin von 198.51.100.42",
         created_at=datetime(2026, 4, 16, 9, 29, tzinfo=UTC),
     )
 

@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.3.2",
+    "released_at": "2026-04-30",
+    "category": "Feature",
+    "title": "Configurable service-login lure",
+    "summary": "Moves the attacker-facing service-login lure credentials into protected Ops settings and changes the default lure to admin / sunshine.",
+    "areas": ["hmi-web", "ops-web", "documentation", "tests"],
+    "changes": [
+      "Use admin / sunshine as the default service-login lure credentials.",
+      "Expose editable service-login username and password fields in the protected Ops settings page.",
+      "Resolve HMI service-login success checks from persisted Ops settings while keeping brute-force logging unchanged."
+    ],
+    "security_notes": [
+      "The service-login credential is an intentional honeypot lure and must not be reused for Ops, SSH, Caddy or other real access paths.",
+      "The lure password is stored and displayed in cleartext only inside the protected Ops backend."
+    ]
+  },
+  {
     "version": "v1.3.1",
     "released_at": "2026-04-29",
     "category": "Feature",

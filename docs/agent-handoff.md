@@ -11,8 +11,8 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.3.1`
-- Gesamtteststand: `372 passed`
+- Release-Version: `v1.3.2`
+- Gesamtteststand: `374 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
@@ -22,6 +22,8 @@ Aktueller Kurs:
 - `./data/geoip` wird nach `/app/data/geoip` gemountet; der Entry-Point kann
   DB-IP-Lite-Country-/ASN-MMDBs automatisch aktualisieren und schreibt
   CC-BY-Attributionsmetadata fuer das Ops-Backend
+- der HMI-Service-Login-Koeder nutzt standardmaessig `admin` / `sunshine` und
+  ist im geschuetzten Ops-Backend unter `/settings` aenderbar
 
 Wichtige Grundregel:
 - HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.

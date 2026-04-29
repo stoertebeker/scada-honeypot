@@ -372,6 +372,8 @@ Pflichttests:
 - Fehlerseiten bleiben ruhig und generisch
 - erster Browser-Slice prueft `/service/login -> /service/panel -> breaker open -> /alarms`
   gegen den echten lokalen Runtime-Pfad
+- Integrationstest prueft, dass der HMI-Service-Login persistierte
+  Koeder-Credentials aus den Ops-Settings statt fest verdrahteter Werte nutzt
 - zweiter Browser-Slice prueft `power_limit` auf `/service/panel` mit sichtbarer
   Shared-Truth-Wirkung in `/overview` und `/trends`
 - dritter Browser-Slice prueft `breaker open -> breaker close` auf

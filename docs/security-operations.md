@@ -63,6 +63,9 @@ Eigenschaften:
   Remote-Zugriff nur ueber Tunnel/VPN oder vergleichbare Zugriffsschicht
 - operative Ops-Backend-Settings liegen persistent im lokalen Eventstore;
   Aenderungen erzeugen `ops.settings.updated`-Events
+- die HMI-Service-Login-Koeder-Credentials liegen dort im Klartext, weil sie
+  absichtlich brute-forcebar sind; sie duerfen niemals fuer echte
+  Admin-, Ops-, SSH- oder Proxy-Zugaenge wiederverwendet werden
 - das Ops-Backend zeigt unter `/versions` einen statischen Feature-/Fix-Verlauf
   aus `resources/backend_versions.json`; dieser Verlauf ist Betriebsmetadata
   und gehoert nicht auf die oeffentliche Honeypot-Oberflaeche
@@ -163,6 +166,7 @@ Vor Exponierung definieren:
 - welche Ports offen sind
 - welche HMI-Pfade aktiv sind
 - ob `service/login` fuer das jeweilige Deployment aktiv bleibt
+- welches Service-Login-Koederpasswort im geschuetzten Ops-Backend gesetzt ist
 - ob der Tracker in V1 ueberhaupt sichtbar ist
 - fuer Non-Local-Bind im aktuellen Runtime-Pfad ist bewusst
   `ALLOW_NONLOCAL_BIND=1` erforderlich

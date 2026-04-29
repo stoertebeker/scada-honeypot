@@ -35,11 +35,12 @@ Standardpfade im lokalen Designbetrieb:
 
 Wenn `ENABLE_SERVICE_LOGIN=1` aktiv ist, liegt der Service-Zugang aktuell auf:
 
-- Benutzer: `field.service`
-- Passwort: `Solar-Field-2026`
+- Benutzer: `admin`
+- Passwort: `sunshine`
 
 Wichtiger Sicherheitshinweis:
-- Das sind die aktuellen Test-Defaults im Code.
+- Das sind die aktuellen Koeder-Defaults und im geschuetzten Ops-Backend unter
+  `/settings` aenderbar.
 - Fuer einen echten Exponierungskurs darfst du diese Werte nicht als
   "automatisch akzeptabel" behandeln. Die Freigabe von `/service/login` ist ein
   bewusster Deployment-Entscheid.

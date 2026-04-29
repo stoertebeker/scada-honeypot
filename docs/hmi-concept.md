@@ -401,7 +401,9 @@ Die Seite soll:
 - aber keine echten Admin-Funktionen freischalten, die ueber die definierten
   V1-Bedienpfade hinausgehen
 
-In der V1-Default-Konfiguration ist `ENABLE_SERVICE_LOGIN=1`.
+In der V1-Default-Konfiguration ist `ENABLE_SERVICE_LOGIN=1`. Die
+Koeder-Credentials lauten standardmaessig `admin` / `sunshine` und koennen im
+geschuetzten Ops-Backend unter `/settings` angepasst werden.
 
 Sichtbare Elemente:
 

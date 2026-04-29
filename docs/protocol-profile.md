@@ -516,7 +516,9 @@ Empfohlen:
 - `/service/login`
 
 Die Seite `/service/login` ist in der V1-Default-Konfiguration aktiv und kann
-fuer strengere Deployments bewusst deaktiviert werden.
+fuer strengere Deployments bewusst deaktiviert werden. Die Koeder-Credentials
+werden im geschuetzten Ops-Backend unter `/settings` gepflegt; der Default ist
+`admin` / `sunshine`.
 
 ### 16.3 HTTP-Verhalten
 

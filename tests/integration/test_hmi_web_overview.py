@@ -20,6 +20,7 @@ from honeypot.hmi_web.app import (
     SESSION_COOKIE_NAME,
 )
 from honeypot.main import build_local_runtime
+from honeypot.ops_web.settings import OpsBackendSettings, save_ops_settings
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import ReadOnlyRegisterMap
 from honeypot.runtime_evolution import TrendSample
@@ -1255,6 +1256,49 @@ async def test_service_login_success_sets_session_and_opens_service_panel(tmp_pa
     assert auth_event.result == "success"
     assert panel_event.event_type == "hmi.page.service_panel_viewed"
     assert panel_event.session_id is not None
+
+
+@pytest.mark.asyncio
+async def test_service_login_uses_persisted_lure_credentials(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-settings.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    save_ops_settings(
+        store,
+        OpsBackendSettings(service_login_username="maintenance", service_login_password="shadow"),
+        updated_at=snapshot.start_time,
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        default_response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        custom_response = await client.post(
+            "/service/login",
+            data={"username": "maintenance", "password": "shadow"},
+            follow_redirects=False,
+        )
+        panel_response = await client.get("/service/panel")
+
+    auth_results = [
+        event.result for event in store.fetch_events() if event.event_type == "hmi.auth.service_login_attempt"
+    ]
+
+    assert default_response.status_code == 200
+    assert "Authentication failed. Check credentials and retry." in default_response.text
+    assert custom_response.status_code == 303
+    assert custom_response.headers["location"] == "/service/panel"
+    assert panel_response.status_code == 200
+    assert "maintenance" in panel_response.text
+    assert auth_results == ["failure", "success"]
 
 
 @pytest.mark.asyncio
