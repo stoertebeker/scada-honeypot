@@ -161,6 +161,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.2.1" in versions.text
+    assert "ASN MMDB enrichment mount" in versions.text
     assert "v1.2.0" in versions.text
     assert "Single production Compose path" in versions.text
     assert "v1.1.1" in versions.text

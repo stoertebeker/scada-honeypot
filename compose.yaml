@@ -33,6 +33,7 @@ x-honeypot-common: &honeypot-common
     - eventstore:/app/data
     - runtime-logs:/app/logs
     - runtime-pcap:/app/pcap
+    - ./data/geoip:/app/data/geoip:ro
   healthcheck:
     test: ["CMD", "/healthcheck.sh"]
     interval: 15s

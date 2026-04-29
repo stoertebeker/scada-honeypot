@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.2.1",
+    "released_at": "2026-04-29",
+    "category": "Feature",
+    "title": "ASN MMDB enrichment mount",
+    "summary": "Adds a read-only GeoIP data mount and broader ASN-MMDB parsing so the protected source overview can show real network organizations.",
+    "areas": ["ops-web", "container", "documentation", "tests"],
+    "changes": [
+      "Mount ./data/geoip into the container at /app/data/geoip as read-only storage for operator-provided MMDB files.",
+      "Support MaxMind GeoLite2-ASN and generic ASN-MMDB schemas when resolving ISP/source organization names.",
+      "Keep rDNS as a fallback only when no ASN database result is available."
+    ],
+    "security_notes": [
+      "ASN databases are local files only; the app does not download third-party data or embed licensed databases in the image.",
+      "The GeoIP bind mount is read-only inside the container."
+    ]
+  },
+  {
     "version": "v1.2.0",
     "released_at": "2026-04-29",
     "category": "Feature",

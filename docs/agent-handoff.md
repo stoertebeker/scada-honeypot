@@ -11,14 +11,16 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.2.0`
-- Gesamtteststand: `359 passed`
+- Release-Version: `v1.2.1`
+- Gesamtteststand: `363 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
 - der Docker-/Compose-Kurs ist auf einen Produktionsdienst reduziert,
   inklusive Healthcheck, `read_only`-Rootfs und einem Entry-Point, der
   Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
+- `./data/geoip` wird read-only nach `/app/data/geoip` gemountet; ASN-MMDBs
+  wie `GeoLite2-ASN.mmdb` bleiben lokale operator-provided Dateien
 
 Wichtige Grundregel:
 - HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
@@ -110,6 +112,9 @@ docker compose up --build -d
   - Gate fuer externe Bindings
 - `runtime_exposure`
   - Exposure-Gates, Findings-Log und Exposure-Sweep
+- `ops_web`
+  - Source-IP-Anreicherung mit Static Map, Country-MMDB, ASN-MMDB und rDNS-
+    Fallback; ASN-MMDB-Dateien liegen im Compose-Pfad unter `/app/data/geoip`
 - `main`
   - gemeinsamer Runtime-Einstieg
 

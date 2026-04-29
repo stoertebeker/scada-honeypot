@@ -18,6 +18,8 @@ logs/
 pcap/
 captures/
 tmp/
+data/geoip/*
+!data/geoip/.gitkeep
 *.log
 *.pcap
 *.pcapng

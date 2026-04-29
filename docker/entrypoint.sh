@@ -22,7 +22,9 @@ if [ "${HONEYPOT_FORCE_CONTAINER_BINDS:-0}" = "1" ]; then
 fi
 
 if [ "$(id -u)" = "0" ]; then
-    chown -R honeypot:honeypot /app/data /app/logs /app/pcap /app/tmp
+    chown honeypot:honeypot /app/data /app/logs /app/pcap /app/tmp
+    find /app/data -mindepth 1 -maxdepth 1 ! -name geoip -exec chown -R honeypot:honeypot {} +
+    chown -R honeypot:honeypot /app/logs /app/pcap /app/tmp
     exec gosu honeypot "$@"
 fi
 

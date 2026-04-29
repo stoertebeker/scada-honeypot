@@ -10,10 +10,10 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **v1.2.0**. Der lokale Release, `pre-exposure` und der
-deployment-spezifische Betriebskurs sind abgenommen; `v1.2.0` reduziert den
-Docker-Compose-Deploy auf einen Produktionsdienst ohne Zusatzprofile oder
-`HONEYPOT_ENV_FILE`-Parameter.
+Der aktuelle Stand ist **v1.2.1**. Der lokale Release, `pre-exposure` und der
+deployment-spezifische Betriebskurs sind abgenommen; `v1.2.1` ergaenzt einen
+read-only GeoIP-Mount und robustere ASN-MMDB-Auswertung fuer die
+Ops-Source-Uebersicht.
 
 ## Betrieb
 
@@ -139,6 +139,8 @@ Wichtige Defaults:
   `restart: unless-stopped` und `no-new-privileges`
 - der Healthcheck prueft den nicht-loggenden HMI-Endpunkt `/healthz` plus
   einen Modbus-Socket auf dem internen Runtime-Pfad
+- GeoIP-/ASN-Datenbanken liegen optional unter `./data/geoip` und werden im
+  Container read-only als `/app/data/geoip` gemountet
 
 Security-Hinweis:
 - `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Setze fuer direkten
@@ -147,6 +149,35 @@ Security-Hinweis:
 - Caddy ist optional. Ohne Caddy kann der Honeypot direkt per VM-IP erreicht
   werden; mit Caddy oder Tunnel bleibt das Ops-Backend im Docker-Netz intern
   erreichbar.
+
+### ASN-MMDB fuer ISP-Anreicherung
+
+Fuer belastbare ISP-/Provider-Namen in der geschuetzten Source-Uebersicht wird
+eine lokale ASN-MMDB empfohlen. Die Datei wird nicht ins Repo oder Image
+gebundled.
+
+```bash
+mkdir -p data/geoip
+# Beispiel: eigene GeoLite2-ASN.mmdb oder DB-IP ASN Lite MMDB hier ablegen
+ls -lh data/geoip
+```
+
+Im Ops-Backend unter `/settings`:
+
+- `Enable IP enrichment` aktivieren
+- `ASN MMDB path` auf `/app/data/geoip/GeoLite2-ASN.mmdb` setzen
+- alternativ fuer DB-IP: `/app/data/geoip/dbip-asn-lite.mmdb`
+- bei diesen Standard-Dateinamen funktioniert auch Auto-Erkennung, wenn das
+  Feld leer bleibt
+
+Hinweise:
+- MaxMind GeoLite2-ASN passt direkt und liefert ASN-Organisationen.
+- DB-IP ASN Lite funktioniert ebenfalls, ist aber attributionpflichtig.
+- rDNS bleibt nur Fallback, wenn keine ASN-MMDB oder kein Treffer vorhanden ist.
+
+Bezugsquellen:
+- MaxMind GeoLite2 ASN: `https://dev.maxmind.com/geoip/docs/databases/asn/`
+- DB-IP ASN Lite: `https://db-ip.com/db/download/ip-to-asn-lite`
 
 ### Tests
 
@@ -289,5 +320,5 @@ Wichtige Runtime-Gates:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.2.0`
-- Gesamtteststand aktuell: `359 passed`
+- Release-Version: `v1.2.1`
+- Gesamtteststand aktuell: `363 passed`

@@ -504,6 +504,9 @@ Pflichttests:
   `honeypot`: keine Compose-Profile, kein `HONEYPOT_ENV_FILE`-Parameter,
   hostseitige Ops-Loopback-Bindung und parsebare Beispiel-`.env`-Dateien mit
   Inline-Kommentaren fuer leere Felder
+- weitere Unit-Tests pruefen jetzt ASN-MMDB-Enrichment: MaxMind-kompatibler
+  Pfad, generischer MMDB-Fallback, Auto-Erkennung im GeoIP-Mount und Vorrang
+  vor rDNS-Fallback
 - ein weiterer End-to-End-Nachweis hat einen realen Docker-Regressionspfad
   aufgespiesst: lokale `.env` mit `HMI_BIND_HOST=127.0.0.1` plus
   `docker compose up` darf den Host-Browserzugriff nicht wieder auf

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from functools import lru_cache
@@ -46,6 +47,24 @@ _COUNTRY_CODE_ALIASES = {
     "US": "USA",
     "USA": "USA",
 }
+_DEFAULT_ASN_MMDB_PATHS = (
+    "/app/data/geoip/GeoLite2-ASN.mmdb",
+    "/app/data/geoip/dbip-asn-lite.mmdb",
+    "data/geoip/GeoLite2-ASN.mmdb",
+    "data/geoip/dbip-asn-lite.mmdb",
+)
+_ASN_ORGANIZATION_KEYS = frozenset(
+    {
+        "autonomous_system_organization",
+        "as_organization",
+        "as_org",
+        "asn_org",
+        "isp",
+        "organization",
+        "org",
+        "name",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,8 +218,24 @@ def _lookup_country_mmdb(source_ip: str, country_mmdb_path: str) -> str:
 
 
 def _lookup_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
-    if not asn_mmdb_path:
-        return ""
+    for candidate_path in _asn_mmdb_paths(asn_mmdb_path):
+        organization = _lookup_geoip2_asn_mmdb(source_ip, candidate_path)
+        if organization:
+            return organization
+        organization = _lookup_generic_asn_mmdb(source_ip, candidate_path)
+        if organization:
+            return organization
+    return ""
+
+
+def _asn_mmdb_paths(asn_mmdb_path: str) -> tuple[str, ...]:
+    configured_path = _text_value(asn_mmdb_path)
+    if configured_path:
+        return (configured_path,)
+    return tuple(path for path in _DEFAULT_ASN_MMDB_PATHS if Path(path).expanduser().is_file())
+
+
+def _lookup_geoip2_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
     try:
         import geoip2.database  # type: ignore[import-not-found]
     except ImportError:
@@ -212,6 +247,38 @@ def _lookup_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
         return ""
     organization = getattr(response, "autonomous_system_organization", None)
     return _text_value(organization)
+
+
+def _lookup_generic_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
+    try:
+        import maxminddb  # type: ignore[import-not-found]
+    except ImportError:
+        return ""
+
+    reader = None
+    try:
+        reader = maxminddb.open_database(str(Path(asn_mmdb_path).expanduser()))
+        record = reader.get(source_ip)
+    except Exception:
+        return ""
+    finally:
+        if reader is not None:
+            reader.close()
+    return _extract_asn_organization(record)
+
+
+def _extract_asn_organization(value: Any) -> str:
+    if isinstance(value, Mapping):
+        for key, nested_value in value.items():
+            if str(key).lower() in _ASN_ORGANIZATION_KEYS:
+                organization = _text_value(nested_value)
+                if organization:
+                    return organization
+        for nested_value in value.values():
+            organization = _extract_asn_organization(nested_value)
+            if organization:
+                return organization
+    return ""
 
 
 def _isp_from_rdns(rdns: str) -> str:
