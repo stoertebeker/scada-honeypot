@@ -507,6 +507,9 @@ Pflichttests:
 - weitere Unit-Tests pruefen jetzt GeoIP-MMDB-Enrichment: Country- und
   ASN-Auto-Erkennung, MaxMind-kompatible Pfade, generischer MMDB-Fallback und
   Vorrang vor rDNS-Fallback
+- weitere Unit- und Integrationstests pruefen jetzt den DB-IP-Lite-Updater:
+  feste Download-URLs, Vormonats-Fallback, optionales Fail-Open bei
+  Provider-Ausfall und sichtbare CC-BY-Attribution im geschuetzten Ops-Backend
 - ein weiterer End-to-End-Nachweis hat einen realen Docker-Regressionspfad
   aufgespiesst: lokale `.env` mit `HMI_BIND_HOST=127.0.0.1` plus
   `docker compose up` darf den Host-Browserzugriff nicht wieder auf

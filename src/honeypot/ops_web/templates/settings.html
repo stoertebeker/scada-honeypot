@@ -16,6 +16,9 @@
 
   <section>
     <h2>IP Enrichment</h2>
+    {% if geoip_attribution %}
+    <p class="muted">GeoIP data: {{ geoip_attribution.provider }}{% if geoip_attribution.downloaded_at %} / {{ geoip_attribution.downloaded_at }}{% endif %} / <a href="{{ geoip_attribution.url }}" rel="noopener noreferrer">{{ geoip_attribution.label }}</a> / {{ geoip_attribution.license_name }}</p>
+    {% endif %}
     <div class="settings-grid">
       <label class="checkbox">
         <input type="checkbox" name="ip_enrichment_enabled" {% if settings.ip_enrichment_enabled %}checked{% endif %}>

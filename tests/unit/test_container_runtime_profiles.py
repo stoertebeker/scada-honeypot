@@ -38,7 +38,10 @@ def test_compose_uses_single_production_runtime() -> None:
     assert "EVENT_STORE_PATH: /app/data/events.sqlite3" in compose_yaml
     assert "JSONL_ARCHIVE_PATH: /app/logs/events.jsonl" in compose_yaml
     assert "PCAP_CAPTURE_PATH: /app/pcap/session.pcapng" in compose_yaml
-    assert "./data/geoip:/app/data/geoip:ro" in compose_yaml
+    assert "GEOIP_DBIP_AUTO_UPDATE" in compose_yaml
+    assert "./data/geoip:/app/data/geoip:rw" in compose_yaml
+    assert "python -m honeypot.geoip_update" in entrypoint
+    assert "! -name geoip" in entrypoint
     assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
     assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint
     assert "export OPS_BIND_HOST=0.0.0.0" in entrypoint

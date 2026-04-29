@@ -1,5 +1,23 @@
 [
   {
+    "version": "v1.3.0",
+    "released_at": "2026-04-29",
+    "category": "Feature",
+    "title": "DB-IP Lite GeoIP auto-update",
+    "summary": "Automates Country and ASN MMDB retrieval for the protected source overview while preserving CC-BY attribution requirements.",
+    "areas": ["ops-web", "container", "documentation", "tests"],
+    "changes": [
+      "Add a fixed-URL DB-IP Lite updater for Country and ASN MMDB files.",
+      "Run the updater during Docker Compose startup so data/geoip is populated without manual downloads.",
+      "Write GeoIP metadata and render DB-IP CC-BY attribution in the protected Ops UI."
+    ],
+    "security_notes": [
+      "The updater is limited to official DB-IP Lite HTTPS download paths and is not a generic URL fetcher.",
+      "GeoIP download failures do not block honeypot startup; stale or absent data simply leaves enrichment incomplete.",
+      "DB-IP Lite data is credited as CC BY 4.0 wherever Ops pages may display enriched source information."
+    ]
+  },
+  {
     "version": "v1.2.2",
     "released_at": "2026-04-29",
     "category": "Fix",

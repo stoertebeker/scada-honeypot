@@ -72,8 +72,10 @@ Eigenschaften:
 - Anlagenhistorie fuer HMI-Trends liegt als `plant_history` im lokalen
   SQLite-Store, ist auf 30 Tage begrenzt und kann im Ops-Backend gezielt
   geloescht werden; diese Wartungsaktion erzeugt `ops.history.deleted`
-- Source-IP-Anreicherung nutzt lokale Mapping-/GeoIP-Daten; rDNS ist
-  standardmaessig deaktiviert, weil es aktiven DNS-Egress erzeugt
+- Source-IP-Anreicherung nutzt lokale Mapping-/GeoIP-Daten; Compose kann
+  DB-IP-Lite-Country-/ASN-MMDBs beim Start ueber feste HTTPS-Downloadpfade
+  aktualisieren und zeigt die erforderliche CC-BY-Attribution im Ops-Backend;
+  rDNS ist standardmaessig deaktiviert, weil es aktiven DNS-Egress erzeugt
 - ein kombinierter Runtime-Sweep fuer Monitoring, freigegebenes Exportziel,
   Reset und Fresh-Start ist jetzt im Testharness belegt
 - Stand 23. April 2026: formales `GO` fuer `pre-exposure`, siehe

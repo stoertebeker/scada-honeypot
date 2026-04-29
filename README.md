@@ -10,9 +10,10 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **v1.2.2**. Der lokale Release, `pre-exposure` und der
-deployment-spezifische Betriebskurs sind abgenommen; `v1.2.2` verbessert die
-Auto-Erkennung fuer Country- und ASN-MMDBs in der Ops-Source-Uebersicht.
+Der aktuelle Stand ist **v1.3.0**. Der lokale Release, `pre-exposure` und der
+deployment-spezifische Betriebskurs sind abgenommen; `v1.3.0` automatisiert
+die DB-IP-Lite-Beschaffung fuer Country- und ASN-MMDBs inklusive CC-BY-
+Attribution in der Ops-Oberflaeche.
 
 ## Betrieb
 
@@ -138,8 +139,9 @@ Wichtige Defaults:
   `restart: unless-stopped` und `no-new-privileges`
 - der Healthcheck prueft den nicht-loggenden HMI-Endpunkt `/healthz` plus
   einen Modbus-Socket auf dem internen Runtime-Pfad
-- GeoIP-/ASN-Datenbanken liegen optional unter `./data/geoip` und werden im
-  Container read-only als `/app/data/geoip` gemountet
+- DB-IP-Lite-GeoIP-Datenbanken werden bei Compose-Starts standardmaessig nach
+  `./data/geoip` aktualisiert; der Hauptprozess liest sie im Container unter
+  `/app/data/geoip`
 
 Security-Hinweis:
 - `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Setze fuer direkten
@@ -152,24 +154,42 @@ Security-Hinweis:
 ### GeoIP-MMDB fuer Source-Anreicherung
 
 Fuer belastbare Laender- und ISP-/Provider-Namen in der geschuetzten
-Source-Uebersicht werden lokale GeoIP-MMDBs empfohlen. Die Dateien werden
-nicht ins Repo oder Image gebundled.
+Source-Uebersicht aktualisiert der Docker-Compose-Start standardmaessig die
+freien DB-IP-Lite-MMDBs. Die Dateien werden nicht ins Repo oder Image
+gebundled.
 
 ```bash
 mkdir -p data/geoip
-# Beispiele: eigene GeoLite2-Country.mmdb und GeoLite2-ASN.mmdb hier ablegen
+docker compose up --build -d
 ls -lh data/geoip
 ```
+
+Der Updater schreibt:
+
+- `data/geoip/dbip-country-lite.mmdb`
+- `data/geoip/dbip-asn-lite.mmdb`
+- `data/geoip/metadata.json`
 
 Im Ops-Backend unter `/settings`:
 
 - `Enable IP enrichment` aktivieren
-- `Country MMDB path` optional auf `/app/data/geoip/GeoLite2-Country.mmdb` setzen
-- `ASN MMDB path` optional auf `/app/data/geoip/GeoLite2-ASN.mmdb` setzen
+- `Country MMDB path` kann leer bleiben oder auf
+  `/app/data/geoip/dbip-country-lite.mmdb` zeigen
+- `ASN MMDB path` kann leer bleiben oder auf
+  `/app/data/geoip/dbip-asn-lite.mmdb` zeigen
 - bei ueblichen Dateinamen mit `country`, `asn` oder `isp` funktioniert auch
   Auto-Erkennung, wenn die Felder leer bleiben
 
 Hinweise:
+- DB-IP Lite steht unter `Creative Commons Attribution 4.0 International
+  (CC BY 4.0)`. Das Ops-Backend zeigt bei vorhandener `metadata.json` den
+  erforderlichen Link `IP Geolocation by DB-IP`.
+- `GEOIP_DBIP_AUTO_UPDATE=0` deaktiviert den automatischen Download.
+- `GEOIP_DBIP_RELEASE=YYYY-MM` pinnt eine konkrete DB-IP-Monatsversion.
+- Der Updater nutzt fest verdrahtete DB-IP-HTTPS-URLs und ist kein frei
+  konfigurierbarer Downloader.
+- Download-Ausfaelle blockieren den Honeypot-Start nicht; fehlende Daten
+  fuehren nur zu `UNK` oder rDNS-Fallback.
 - MaxMind GeoLite2-Country und GeoLite2-ASN passen direkt.
 - DB-IP Country Lite und ASN Lite funktionieren ebenfalls, sind aber
   attributionpflichtig.
@@ -182,6 +202,12 @@ Bezugsquellen:
 - MaxMind GeoLite2 Country: `https://dev.maxmind.com/geoip/docs/databases/country/`
 - DB-IP ASN Lite: `https://db-ip.com/db/download/ip-to-asn-lite`
 - DB-IP Country Lite: `https://db-ip.com/db/download/ip-to-country-lite`
+
+Manueller Update-Lauf ausserhalb von Compose:
+
+```bash
+uv run honeypot-geoip-update --provider dbip-lite
+```
 
 ### Tests
 
@@ -324,5 +350,5 @@ Wichtige Runtime-Gates:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.2.2`
-- Gesamtteststand aktuell: `367 passed`
+- Release-Version: `v1.3.0`
+- Gesamtteststand aktuell: `371 passed`

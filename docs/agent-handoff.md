@@ -11,17 +11,17 @@ Aktueller Kurs:
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.2.2`
-- Gesamtteststand: `367 passed`
+- Release-Version: `v1.3.0`
+- Gesamtteststand: `371 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
 - der Docker-/Compose-Kurs ist auf einen Produktionsdienst reduziert,
   inklusive Healthcheck, `read_only`-Rootfs und einem Entry-Point, der
   Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
-- `./data/geoip` wird read-only nach `/app/data/geoip` gemountet; Country- und
-  ASN-MMDBs wie `GeoLite2-Country.mmdb`/`GeoLite2-ASN.mmdb` bleiben lokale
-  operator-provided Dateien
+- `./data/geoip` wird nach `/app/data/geoip` gemountet; der Entry-Point kann
+  DB-IP-Lite-Country-/ASN-MMDBs automatisch aktualisieren und schreibt
+  CC-BY-Attributionsmetadata fuer das Ops-Backend
 
 Wichtige Grundregel:
 - HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
@@ -117,6 +117,10 @@ docker compose up --build -d
   - Source-IP-Anreicherung mit Static Map, Country-MMDB, ASN-MMDB und rDNS-
     Fallback; GeoIP-MMDB-Dateien liegen im Compose-Pfad unter `/app/data/geoip`
     und werden bei ueblichen Dateinamen automatisch erkannt
+  - DB-IP-Lite-Attribution aus `metadata.json` wird in der geschuetzten
+    Ops-Oberflaeche angezeigt, sobald die Auto-Aktualisierung Daten geladen hat
+- `geoip_update`
+  - fester DB-IP-Lite-Downloader fuer Country und ASN, keine freie URL-Eingabe
 - `main`
   - gemeinsamer Runtime-Einstieg
 

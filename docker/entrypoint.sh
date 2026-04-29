@@ -3,6 +3,27 @@ set -eu
 
 mkdir -p /app/data /app/logs /app/pcap /app/tmp
 
+if [ "${GEOIP_DBIP_AUTO_UPDATE:-1}" = "1" ]; then
+    mkdir -p /app/data/geoip
+    geoip_timeout="${GEOIP_DBIP_TIMEOUT_SECONDS:-60}"
+    if [ -n "${GEOIP_DBIP_RELEASE:-}" ]; then
+        python -m honeypot.geoip_update \
+            --provider dbip-lite \
+            --target-dir /app/data/geoip \
+            --release "${GEOIP_DBIP_RELEASE}" \
+            --timeout-seconds "${geoip_timeout}" \
+            --optional
+    else
+        python -m honeypot.geoip_update \
+            --provider dbip-lite \
+            --target-dir /app/data/geoip \
+            --timeout-seconds "${geoip_timeout}" \
+            --optional
+    fi
+    chmod 755 /app/data/geoip || true
+    find /app/data/geoip -type f -exec chmod 644 {} +
+fi
+
 if [ "${HONEYPOT_FORCE_CONTAINER_BINDS:-0}" = "1" ]; then
     modbus_port="${MODBUS_PORT:-1502}"
     hmi_port="${HMI_PORT:-8080}"

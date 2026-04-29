@@ -12,6 +12,7 @@ from honeypot.config_core import RuntimeConfig
 from honeypot.event_core import AlertRecord, EventRecorder
 from honeypot.history_core import PlantHistorySample
 from honeypot.ops_web import create_ops_app
+from honeypot.ops_web import app as ops_app_module
 from honeypot.storage import SQLiteEventStore
 from honeypot.time_core import FrozenClock
 
@@ -161,6 +162,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.3.0" in versions.text
+    assert "DB-IP Lite GeoIP auto-update" in versions.text
     assert "v1.2.2" in versions.text
     assert "GeoIP country and ASN autodetect" in versions.text
     assert "v1.2.1" in versions.text
@@ -192,6 +195,45 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "v0.9.0" in versions.text
     assert "Credential campaign aggregation" in versions.text
     assert "The version log is only reachable through the protected Ops backend surface." in versions.text
+
+
+@pytest.mark.asyncio
+async def test_ops_pages_render_dbip_cc_by_attribution_when_metadata_exists(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-attribution.db")
+    seed_ops_store(store)
+    metadata_path = tmp_path / "geoip" / "metadata.json"
+    metadata_path.parent.mkdir()
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "provider": "DB-IP Lite",
+                "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+                "license_url": "https://creativecommons.org/licenses/by/4.0/",
+                "attribution": {
+                    "label": "IP Geolocation by DB-IP",
+                    "url": "https://db-ip.com",
+                },
+                "downloaded_at": "2026-04-29T10:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ops_app_module, "_GEOIP_METADATA_PATHS", (metadata_path,))
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        sources = await client.get("/sources")
+        settings = await client.get("/settings")
+
+    assert sources.status_code == 200
+    assert 'href="https://db-ip.com"' in sources.text
+    assert "IP Geolocation by DB-IP" in sources.text
+    assert "CC BY 4.0" in sources.text
+    assert "DB-IP Lite / 2026-04-29T10:00:00Z" in settings.text
 
 
 @pytest.mark.asyncio

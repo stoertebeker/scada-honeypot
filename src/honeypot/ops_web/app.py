@@ -33,6 +33,10 @@ from honeypot.storage import CredentialCountRecord, LoginCampaignRecord, SQLiteE
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _VERSION_LOG_PATH = _REPO_ROOT / "resources" / "backend_versions.json"
+_GEOIP_METADATA_PATHS = (
+    Path("/app/data/geoip/metadata.json"),
+    _REPO_ROOT / "data" / "geoip" / "metadata.json",
+)
 _OPS_SECURITY = HTTPBasic(auto_error=False)
 _OPS_FORM_MAX_BYTES = 16 * 1024
 _SOURCE_SORT_DEFAULT = "last_seen"
@@ -162,6 +166,16 @@ class BackendVersionRow:
     areas: tuple[str, ...]
     changes: tuple[str, ...]
     security_notes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GeoIpAttribution:
+    provider: str
+    label: str
+    url: str
+    license_name: str
+    license_url: str
+    downloaded_at: str
 
 
 def create_ops_app(
@@ -524,6 +538,7 @@ def _template_context(
         "site_code": config.site_code,
         "current_path": current_path,
         "ops_bind": f"{config.ops_bind_host}:{config.ops_port}",
+        "geoip_attribution": _load_geoip_attribution(),
         "nav_items": (
             ("/", "Dashboard"),
             ("/events", "Events"),
@@ -536,6 +551,38 @@ def _template_context(
     }
     context.update(extra)
     return context
+
+
+def _load_geoip_attribution(paths: tuple[Path, ...] | None = None) -> GeoIpAttribution | None:
+    resolved_paths = _GEOIP_METADATA_PATHS if paths is None else paths
+    for path in resolved_paths:
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        attribution = metadata.get("attribution")
+        if not isinstance(attribution, dict):
+            continue
+        label = _optional_text(attribution.get("label"))
+        url = _optional_text(attribution.get("url"))
+        license_name = _optional_text(metadata.get("license"))
+        if not label or not url or not license_name:
+            continue
+        return GeoIpAttribution(
+            provider=_optional_text(metadata.get("provider")) or "GeoIP",
+            label=label,
+            url=url,
+            license_name=license_name,
+            license_url=_optional_text(metadata.get("license_url")),
+            downloaded_at=_optional_text(metadata.get("downloaded_at")),
+        )
+    return None
+
+
+def _optional_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
 
 
 def _settings_context(

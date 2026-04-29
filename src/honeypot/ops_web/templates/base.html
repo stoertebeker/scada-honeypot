@@ -290,6 +290,18 @@
       background: #fff7f6;
     }
 
+    .attribution {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-align: right;
+    }
+
+    .attribution a {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
     @media (max-width: 820px) {
       header {
         grid-template-columns: 1fr;
@@ -315,6 +327,12 @@
       </nav>
     </header>
     {% block content %}{% endblock %}
+    {% if geoip_attribution %}
+    <footer class="attribution">
+      Source IP geolocation: <a href="{{ geoip_attribution.url }}" rel="noopener noreferrer">{{ geoip_attribution.label }}</a>
+      / {{ geoip_attribution.license_name }}
+    </footer>
+    {% endif %}
   </div>
 </body>
 </html>

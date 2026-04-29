@@ -9,6 +9,13 @@ from honeypot.ops_web.ip_enrichment import IpEnricher
 from honeypot.ops_web.settings import OpsBackendSettings
 
 
+@pytest.fixture(autouse=True)
+def isolate_geoip_mounts(monkeypatch) -> None:
+    monkeypatch.setattr(ip_enrichment, "_DEFAULT_ASN_MMDB_PATHS", ())
+    monkeypatch.setattr(ip_enrichment, "_DEFAULT_COUNTRY_MMDB_PATHS", ())
+    monkeypatch.setattr(ip_enrichment, "_GEOIP_SEARCH_DIRS", ())
+
+
 def test_ip_enrichment_derives_isp_from_rdns_when_asn_mmdb_is_unset(monkeypatch) -> None:
     enricher = IpEnricher()
     monkeypatch.setattr(

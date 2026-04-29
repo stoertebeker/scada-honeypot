@@ -29,11 +29,14 @@ x-honeypot-common: &honeypot-common
     FINDINGS_LOG_PATH: /app/logs/findings.md
     RUNTIME_STATUS_PATH: /app/logs/runtime-status.json
     PCAP_CAPTURE_PATH: /app/pcap/session.pcapng
+    GEOIP_DBIP_AUTO_UPDATE: ${GEOIP_DBIP_AUTO_UPDATE:-1}
+    GEOIP_DBIP_RELEASE: ${GEOIP_DBIP_RELEASE:-}
+    GEOIP_DBIP_TIMEOUT_SECONDS: ${GEOIP_DBIP_TIMEOUT_SECONDS:-60}
   volumes:
     - eventstore:/app/data
     - runtime-logs:/app/logs
     - runtime-pcap:/app/pcap
-    - ./data/geoip:/app/data/geoip:ro
+    - ./data/geoip:/app/data/geoip:rw
   healthcheck:
     test: ["CMD", "/healthcheck.sh"]
     interval: 15s
