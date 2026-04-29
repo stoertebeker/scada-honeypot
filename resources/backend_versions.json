@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.2.2",
+    "released_at": "2026-04-29",
+    "category": "Fix",
+    "title": "GeoIP country and ASN autodetect",
+    "summary": "Improves GeoIP database discovery so country codes and ISP organizations populate when operator-provided MMDB files use common variant names.",
+    "areas": ["ops-web", "documentation", "tests"],
+    "changes": [
+      "Auto-detect Country MMDB files such as GeoLite2-Country and dbip-country-lite from the GeoIP mount.",
+      "Auto-detect ASN or ISP MMDB files with variant filenames in the GeoIP mount instead of requiring exact names.",
+      "Add generic Country-MMDB parsing for nested iso_code records."
+    ],
+    "security_notes": [
+      "GeoIP databases are still local files only; the app performs no automatic downloads.",
+      "rDNS remains fallback-only after static maps and MMDB lookups."
+    ]
+  },
+  {
     "version": "v1.2.1",
     "released_at": "2026-04-29",
     "category": "Feature",

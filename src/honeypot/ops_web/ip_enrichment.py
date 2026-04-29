@@ -53,6 +53,16 @@ _DEFAULT_ASN_MMDB_PATHS = (
     "data/geoip/GeoLite2-ASN.mmdb",
     "data/geoip/dbip-asn-lite.mmdb",
 )
+_DEFAULT_COUNTRY_MMDB_PATHS = (
+    "/app/data/geoip/GeoLite2-Country.mmdb",
+    "/app/data/geoip/dbip-country-lite.mmdb",
+    "data/geoip/GeoLite2-Country.mmdb",
+    "data/geoip/dbip-country-lite.mmdb",
+)
+_GEOIP_SEARCH_DIRS = (
+    "/app/data/geoip",
+    "data/geoip",
+)
 _ASN_ORGANIZATION_KEYS = frozenset(
     {
         "autonomous_system_organization",
@@ -203,8 +213,25 @@ def _load_static_map(static_map_path: str, mtime_ns: int) -> dict[str, Any]:
 
 
 def _lookup_country_mmdb(source_ip: str, country_mmdb_path: str) -> str:
-    if not country_mmdb_path:
-        return ""
+    for candidate_path in _country_mmdb_paths(country_mmdb_path):
+        country_code = _lookup_geoip2_country_mmdb(source_ip, candidate_path)
+        if country_code:
+            return country_code
+        country_code = _lookup_generic_country_mmdb(source_ip, candidate_path)
+        if country_code:
+            return country_code
+    return ""
+
+
+def _country_mmdb_paths(country_mmdb_path: str) -> tuple[str, ...]:
+    return _mmdb_paths(
+        configured_path=country_mmdb_path,
+        default_paths=_DEFAULT_COUNTRY_MMDB_PATHS,
+        keywords=("country", "city"),
+    )
+
+
+def _lookup_geoip2_country_mmdb(source_ip: str, country_mmdb_path: str) -> str:
     try:
         import geoip2.database  # type: ignore[import-not-found]
     except ImportError:
@@ -215,6 +242,24 @@ def _lookup_country_mmdb(source_ip: str, country_mmdb_path: str) -> str:
     except Exception:
         return ""
     return _country_code(getattr(response.country, "iso_code", None))
+
+
+def _lookup_generic_country_mmdb(source_ip: str, country_mmdb_path: str) -> str:
+    try:
+        import maxminddb  # type: ignore[import-not-found]
+    except ImportError:
+        return ""
+
+    reader = None
+    try:
+        reader = maxminddb.open_database(str(Path(country_mmdb_path).expanduser()))
+        record = reader.get(source_ip)
+    except Exception:
+        return ""
+    finally:
+        if reader is not None:
+            reader.close()
+    return _extract_country_code(record)
 
 
 def _lookup_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
@@ -229,10 +274,33 @@ def _lookup_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
 
 
 def _asn_mmdb_paths(asn_mmdb_path: str) -> tuple[str, ...]:
-    configured_path = _text_value(asn_mmdb_path)
+    return _mmdb_paths(
+        configured_path=asn_mmdb_path,
+        default_paths=_DEFAULT_ASN_MMDB_PATHS,
+        keywords=("asn", "isp"),
+    )
+
+
+def _mmdb_paths(*, configured_path: str, default_paths: tuple[str, ...], keywords: tuple[str, ...]) -> tuple[str, ...]:
+    configured_path = _text_value(configured_path)
     if configured_path:
         return (configured_path,)
-    return tuple(path for path in _DEFAULT_ASN_MMDB_PATHS if Path(path).expanduser().is_file())
+
+    candidates: list[str] = []
+    for path in default_paths:
+        expanded_path = Path(path).expanduser()
+        if expanded_path.is_file():
+            candidates.append(str(expanded_path))
+
+    for search_dir in _GEOIP_SEARCH_DIRS:
+        expanded_dir = Path(search_dir).expanduser()
+        if not expanded_dir.is_dir():
+            continue
+        for candidate in sorted(expanded_dir.glob("*.mmdb")):
+            lowered_name = candidate.name.lower()
+            if any(keyword in lowered_name for keyword in keywords):
+                candidates.append(str(candidate))
+    return tuple(dict.fromkeys(candidates))
 
 
 def _lookup_geoip2_asn_mmdb(source_ip: str, asn_mmdb_path: str) -> str:
@@ -278,6 +346,25 @@ def _extract_asn_organization(value: Any) -> str:
             organization = _extract_asn_organization(nested_value)
             if organization:
                 return organization
+    return ""
+
+
+def _extract_country_code(value: Any) -> str:
+    if isinstance(value, Mapping):
+        for key, nested_value in value.items():
+            lowered_key = str(key).lower()
+            if lowered_key in {"iso_code", "country_code"}:
+                country_code = _country_code(nested_value)
+                if country_code:
+                    return country_code
+            if lowered_key in {"country", "registered_country", "represented_country", "location"}:
+                country_code = _extract_country_code(nested_value)
+                if country_code:
+                    return country_code
+        for nested_value in value.values():
+            country_code = _extract_country_code(nested_value)
+            if country_code:
+                return country_code
     return ""
 
 
