@@ -9,17 +9,16 @@ Aktueller Kurs:
 
 - lokaler V1-Release: `GO`
 - `pre-exposure`: `GO`
-- `exposed-research`: `GO` fuer den validierten Caddy-/Docker-Compose-Pfad
+- `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.1.1`
+- Release-Version: `v1.2.0`
 - Gesamtteststand: `359 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
-- der Docker-/Compose-Kurs ist vorhanden, inklusive Healthcheck,
-  `read_only`-Rootfs, Profiltrennung zwischen normalem Dienst und
-  `exposed-research` und einem Entry-Point, der Container-Binds bewusst auf
-  den extern erreichbaren Runtime-Pfad zieht
+- der Docker-/Compose-Kurs ist auf einen Produktionsdienst reduziert,
+  inklusive Healthcheck, `read_only`-Rootfs und einem Entry-Point, der
+  Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
 
 Wichtige Grundregel:
 - HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
@@ -55,9 +54,7 @@ uv run pytest -q
 ### Containerbetrieb
 
 ```bash
-docker compose up --build -d honeypot
-docker compose --profile exposed up --build -d honeypot-exposed
-docker compose --profile verify run --rm honeypot-sweep
+docker compose up --build -d
 ```
 
 ## Was an Deck steht
@@ -157,12 +154,13 @@ Wichtige End-to-End-Pfade, die schon stehen:
 Wichtige Regel:
 - Platzhalter- oder Doku-Ziele fuer aktive Exporter sind im
   `exposed-research`-Modus verboten.
-- im Compose-Kurs bleibt der Standarddienst `honeypot` bewusst ausserhalb des
-  `exposed-research`-Modus; fuer echten Exposure-Betrieb ist das Profil
-  `honeypot-exposed` zu verwenden
+- im Compose-Kurs gibt es nur noch den Produktionsdienst `honeypot`; der
+  Entry-Point aktiviert die Exposure-Gates fuer diesen Containerpfad
 - bind-relevante Containerwerte werden im Entry-Point erzwungen, damit eine
   lokale `.env` mit `127.0.0.1` den Host-Zugriff nicht wieder still auf
   Loopback drueckt
+- das Ops-Backend bleibt hostseitig per Default auf `127.0.0.1` veroeffentlicht
+  und wird nur ueber `OPS_PUBLISHED_HOST` bewusst auf andere Interfaces gelegt
 
 ## Relevante Doku zuerst lesen
 
@@ -222,5 +220,7 @@ Wenn lokal weitergearbeitet wird:
 Wenn der Release neu ausgerollt wird:
 
 1. Zielhost per `git pull` aktualisieren
-2. Compose-Image neu bauen und `honeypot-exposed` starten
-3. HMI, Ops, Caddy-Header, Source-IP und Modbus kurz extern gegenpruefen
+2. Compose-Image neu bauen und den einzigen Produktionsdienst starten:
+   `docker compose up --build -d`
+3. HMI, Ops, optionale Proxy-/TLS-Header, Source-IP und Modbus kurz
+   extern gegenpruefen

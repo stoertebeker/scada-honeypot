@@ -10,10 +10,10 @@ OT-Oberflaeche mit gemeinsamer Fachlogik fuer:
 - regelbasierte Folge-Alerts
 - kontrollierte Exportpfade
 
-Der aktuelle Stand ist **v1.1.1**. Der lokale Release, `pre-exposure` und der
-deployment-spezifische `exposed-research`-Kurs fuer die validierte
-Caddy-/Docker-Compose-Installation sind abgenommen; `v1.1.1` korrigiert den
-ISP-Fallback der geschuetzten Ops-Source-Uebersicht.
+Der aktuelle Stand ist **v1.2.0**. Der lokale Release, `pre-exposure` und der
+deployment-spezifische Betriebskurs sind abgenommen; `v1.2.0` reduziert den
+Docker-Compose-Deploy auf einen Produktionsdienst ohne Zusatzprofile oder
+`HONEYPOT_ENV_FILE`-Parameter.
 
 ## Betrieb
 
@@ -115,56 +115,38 @@ Hinweis:
 
 ### Compose-Betrieb
 
-Der naechste Docker-Kurs laeuft ueber `compose.yaml` mit benannten Volumes fuer
-Eventstore, Logs und PCAP:
+Der produktive Docker-Kurs laeuft ueber genau einen Dienst in `compose.yaml`.
+Eine `.env` ist weiter der Konfigurationsort, Compose braucht aber keine
+zusaetzlichen Parameter oder Profilnamen:
 
 ```bash
 cp .env.example .env
-docker compose up --build -d honeypot
+docker compose up --build -d
 docker compose logs -f honeypot
 ```
 
-Alternativ mit anderer Env-Datei:
-
-```bash
-HONEYPOT_ENV_FILE=.env.example docker compose up --build -d honeypot
-```
-
-Wichtige Regeln:
-- der Standarddienst `honeypot` erzwingt `EXPOSED_RESEARCH_ENABLED=0`, auch wenn
-  deine `.env` aus einer Exposure-Vorlage kopiert wurde
-- der Compose-Kurs erzwingt fuer Containerbetrieb die bind-relevanten Werte
-  bewusst im Entry-Point, auch wenn die lokale `.env` fuer den Direktlauf
-  weiter auf `127.0.0.1` steht
-- fuer echten `exposed-research` gibt es einen getrennten Profil-Dienst:
-
-```bash
-HONEYPOT_ENV_FILE=.env docker compose --profile exposed up --build -d honeypot-exposed
-```
-
-- `compose.yaml` setzt fuer Containerbetrieb sichere Non-Local-Bind-Defaults
-  auf `0.0.0.0`, ohne die Repo-Defaults im Code zu aendern
-- Persistenz liegt in benannten Docker-Volumes statt in hostspezifischen
-  Pfaden
+Wichtige Defaults:
+- HMI wird hostseitig auf `${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}`
+  veroeffentlicht
+- Modbus wird hostseitig auf `${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}`
+  veroeffentlicht
+- das interne Ops-Backend wird hostseitig nur auf
+  `${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}` veroeffentlicht
+- im Container lauschen HMI, Modbus und Ops auf `0.0.0.0`, damit spaetere
+  Compose-Services wie Caddy, Cloudflared, WireGuard oder Tailscale das Ops-
+  Backend intern ueber `http://honeypot:9090` erreichen koennen
 - der Hauptdienst laeuft mit `read_only`, `tmpfs` fuer `/tmp`,
   `restart: unless-stopped` und `no-new-privileges`
-- das interne Ops-Backend laeuft auf eigenem Port und wird im Compose-Betrieb
-  nur auf Host-Loopback veroeffentlicht: `127.0.0.1:${OPS_PUBLISHED_PORT:-9090}`
 - der Healthcheck prueft den nicht-loggenden HMI-Endpunkt `/healthz` plus
   einen Modbus-Socket auf dem internen Runtime-Pfad
-- fuer den Exposure-Sweep gibt es einen getrennten Profil-Dienst:
 
-```bash
-HONEYPOT_ENV_FILE=.env docker compose --profile verify run --rm honeypot-sweep
-```
-
-Dieser Dienst faehrt denselben
-`--verify-exposed-research-target-host`-Kurs wie der direkte CLI-Aufruf.
-
-Deployment-spezifische Beispielkarte fuer den ersten kontrollierten
-`exposed-research`-Zielhost:
-
-- [deploy/lab-vm-observer-01.env.example](deploy/lab-vm-observer-01.env.example)
+Security-Hinweis:
+- `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Setze fuer direkten
+  Backend-Zugriff nur bewusst eine andere Host-IP oder `0.0.0.0` und kombiniere
+  das mit Firewall, VPN, Tunnel oder Basic Auth.
+- Caddy ist optional. Ohne Caddy kann der Honeypot direkt per VM-IP erreicht
+  werden; mit Caddy oder Tunnel bleibt das Ops-Backend im Docker-Netz intern
+  erreichbar.
 
 ### Tests
 
@@ -305,7 +287,7 @@ Wichtige Runtime-Gates:
 
 - lokaler V1-Release: `GO`
 - `pre-exposure`: `GO`
-- `exposed-research`: `GO` fuer den validierten Caddy-/Docker-Compose-Pfad
+- `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
   auf `scada.stoerte.net` und `scada-admin.stoerte.net`
-- Release-Version: `v1.1.1`
+- Release-Version: `v1.2.0`
 - Gesamtteststand aktuell: `359 passed`

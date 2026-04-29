@@ -15,17 +15,20 @@ x-honeypot-common: &honeypot-common
     - /tmp:size=64m,mode=1777
     - /app/tmp:size=64m,mode=1777
   env_file:
-    - ${HONEYPOT_ENV_FILE:-.env}
+    - path: .env
+      required: false
   environment:
     HONEYPOT_FORCE_CONTAINER_BINDS: "1"
     MODBUS_PORT: ${MODBUS_PORT:-1502}
     HMI_PORT: ${HMI_PORT:-8080}
     OPS_PORT: ${OPS_PORT:-9090}
-    EVENT_STORE_PATH: ${EVENT_STORE_PATH:-./data/events.sqlite3}
-    JSONL_ARCHIVE_PATH: ${JSONL_ARCHIVE_PATH:-./logs/events.jsonl}
-    FINDINGS_LOG_PATH: ${FINDINGS_LOG_PATH:-./logs/findings.md}
-    RUNTIME_STATUS_PATH: ${RUNTIME_STATUS_PATH:-./logs/runtime-status.json}
-    PCAP_CAPTURE_PATH: ${PCAP_CAPTURE_PATH:-./pcap/session.pcapng}
+    MODBUS_PUBLISHED_PORT: ${MODBUS_PUBLISHED_PORT:-1502}
+    HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-8080}
+    EVENT_STORE_PATH: /app/data/events.sqlite3
+    JSONL_ARCHIVE_PATH: /app/logs/events.jsonl
+    FINDINGS_LOG_PATH: /app/logs/findings.md
+    RUNTIME_STATUS_PATH: /app/logs/runtime-status.json
+    PCAP_CAPTURE_PATH: /app/pcap/session.pcapng
   volumes:
     - eventstore:/app/data
     - runtime-logs:/app/logs
@@ -40,35 +43,10 @@ x-honeypot-common: &honeypot-common
 services:
   honeypot:
     <<: *honeypot-common
-    environment:
-      HONEYPOT_FORCE_CONTAINER_BINDS: "1"
-      HONEYPOT_RUNTIME_MODE: normal
     ports:
-      - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
-      - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
-      - "127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"
-
-  honeypot-exposed:
-    <<: *honeypot-common
-    profiles:
-      - exposed
-    environment:
-      HONEYPOT_FORCE_CONTAINER_BINDS: "1"
-      HONEYPOT_RUNTIME_MODE: exposed
-    ports:
-      - "${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
-      - "${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
-      - "127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"
-
-  honeypot-sweep:
-    <<: *honeypot-common
-    profiles:
-      - verify
-    restart: "no"
-    environment:
-      HONEYPOT_FORCE_CONTAINER_BINDS: "1"
-      HONEYPOT_RUNTIME_MODE: exposed
-    command: ["python", "-m", "honeypot.main", "--verify-exposed-research-target-host"]
+      - "${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
+      - "${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
+      - "${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"
 
 volumes:
   eventstore:

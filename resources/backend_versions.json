@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.2.0",
+    "released_at": "2026-04-29",
+    "category": "Feature",
+    "title": "Single production Compose path",
+    "summary": "Simplifies deployment to one production Docker Compose service that starts with docker compose up without extra profiles or environment-file parameters.",
+    "areas": ["container", "deployment", "documentation", "tests"],
+    "changes": [
+      "Remove the separate honeypot-exposed and honeypot-sweep Compose profile services.",
+      "Make docker compose up build the production honeypot with HMI and Modbus published by default.",
+      "Keep the Ops backend published on host-loopback by default while allowing OPS_PUBLISHED_HOST overrides for VPN, tunnel or reverse-proxy setups."
+    ],
+    "security_notes": [
+      "The app still binds internally to the Docker network for future proxy/tunnel services, while host-side Ops exposure defaults to 127.0.0.1.",
+      "Opening OPS_PUBLISHED_HOST beyond loopback requires an explicit operator decision and should be paired with auth, firewalling or private access."
+    ]
+  },
+  {
     "version": "v1.1.1",
     "released_at": "2026-04-29",
     "category": "Fix",

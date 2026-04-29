@@ -20,22 +20,29 @@ def test_example_env_files_load_with_inline_comments() -> None:
     assert exposed_config.duty_engineer_name == "ops-duty"
 
 
-def test_compose_profiles_split_normal_and_exposed_runtime() -> None:
+def test_compose_uses_single_production_runtime() -> None:
     compose_yaml = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
     entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     healthcheck = (REPO_ROOT / "docker" / "healthcheck.sh").read_text(encoding="utf-8")
 
-    assert "honeypot-exposed:" in compose_yaml
+    assert "honeypot-exposed:" not in compose_yaml
+    assert "honeypot-sweep:" not in compose_yaml
+    assert "profiles:" not in compose_yaml
+    assert "HONEYPOT_ENV_FILE" not in compose_yaml
     assert 'HONEYPOT_FORCE_CONTAINER_BINDS: "1"' in compose_yaml
-    assert 'HONEYPOT_RUNTIME_MODE: normal' in compose_yaml
-    assert 'HONEYPOT_RUNTIME_MODE: exposed' in compose_yaml
-    assert "profiles:\n      - exposed" in compose_yaml
+    assert 'path: .env' in compose_yaml
+    assert 'required: false' in compose_yaml
+    assert '"${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"' in compose_yaml
+    assert '"${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"' in compose_yaml
+    assert '"${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"' in compose_yaml
+    assert "EVENT_STORE_PATH: /app/data/events.sqlite3" in compose_yaml
+    assert "JSONL_ARCHIVE_PATH: /app/logs/events.jsonl" in compose_yaml
+    assert "PCAP_CAPTURE_PATH: /app/pcap/session.pcapng" in compose_yaml
     assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
     assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint
     assert "export OPS_BIND_HOST=0.0.0.0" in entrypoint
-    assert "ops:0.0.0.0:${OPS_PORT:-9090}" in entrypoint
-    assert "127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}" in compose_yaml
-    assert "export EXPOSED_RESEARCH_ENABLED=0" in entrypoint
     assert "export EXPOSED_RESEARCH_ENABLED=1" in entrypoint
+    assert "PUBLIC_INGRESS_MAPPINGS" in entrypoint
+    assert "HONEYPOT_RUNTIME_MODE" not in entrypoint
     assert "/healthz" in healthcheck
     assert "/overview" not in healthcheck
