@@ -19,6 +19,12 @@ Aktueller Kurs:
 - der Docker-/Compose-Kurs ist auf einen Produktionsdienst reduziert,
   inklusive Healthcheck, `read_only`-Rootfs und einem Entry-Point, der
   Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
+- `compose.yaml` zieht standardmaessig
+  `stoertebeker2k/scada-honeypot:latest`; lokale Builds bleiben ueber
+  `docker compose up --build -d` moeglich
+- GitHub Actions publiziert das Docker-Image nach Docker Hub:
+  `latest` und `sha-*` auf `main`, Versionstags bei Git-Tags `v*`, Pull
+  Requests nur Build ohne Push
 - `./data/geoip` wird nach `/app/data/geoip` gemountet; der Entry-Point kann
   DB-IP-Lite-Country-/ASN-MMDBs automatisch aktualisieren und schreibt
   CC-BY-Attributionsmetadata fuer das Ops-Backend
@@ -59,7 +65,8 @@ uv run pytest -q
 ### Containerbetrieb
 
 ```bash
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 ## Was an Deck steht
@@ -236,7 +243,7 @@ Wenn lokal weitergearbeitet wird:
 Wenn der Release neu ausgerollt wird:
 
 1. Zielhost per `git pull` aktualisieren
-2. Compose-Image neu bauen und den einzigen Produktionsdienst starten:
-   `docker compose up --build -d`
+2. Compose-Image ziehen und den einzigen Produktionsdienst starten:
+   `docker compose pull && docker compose up -d`
 3. HMI, Ops, optionale Proxy-/TLS-Header, Source-IP und Modbus kurz
    extern gegenpruefen

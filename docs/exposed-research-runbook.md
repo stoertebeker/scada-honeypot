@@ -62,13 +62,16 @@ uv sync --dev
 Optionaler Containerkurs statt Direktlauf:
 
 ```bash
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 
 Dabei gilt weiter:
 - `.env` enthaelt die echten Zielwerte
 - benannte Docker-Volumes tragen Eventstore, Logs und PCAP
 - der einzige Compose-Dienst `honeypot` ist der Produktionspfad
+- lokale Testimages koennen weiter bewusst mit `docker compose up --build -d`
+  gebaut werden
 - fuer Containerbetrieb zieht der Entry-Point die bind-relevanten Werte
   bewusst auf den extern erreichbaren Runtime-Pfad, auch wenn eine lokale
   `.env` fuer Direktlauf weiter `127.0.0.1` nutzt

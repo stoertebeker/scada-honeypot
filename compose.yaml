@@ -4,7 +4,7 @@ x-honeypot-common: &honeypot-common
   build:
     context: .
     dockerfile: Dockerfile
-  image: scada-honeypot:base
+  image: ${HONEYPOT_IMAGE:-stoertebeker2k/scada-honeypot:latest}
   init: true
   restart: unless-stopped
   stop_grace_period: 20s

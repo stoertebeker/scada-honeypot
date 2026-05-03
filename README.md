@@ -126,11 +126,14 @@ zusaetzlichen Parameter oder Profilnamen:
 
 ```bash
 cp .env.example .env
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 docker compose logs -f honeypot
 ```
 
 Wichtige Defaults:
+- das Runtime-Image wird standardmaessig aus
+  `stoertebeker2k/scada-honeypot:latest` gezogen
 - HMI wird hostseitig auf `${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}`
   veroeffentlicht
 - Modbus wird hostseitig auf `${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}`
@@ -148,6 +151,15 @@ Wichtige Defaults:
   `./data/geoip` aktualisiert; der Hauptprozess liest sie im Container unter
   `/app/data/geoip`
 
+Lokaler Build statt Docker-Hub-Image:
+
+```bash
+docker compose up --build -d
+```
+
+Mit `HONEYPOT_IMAGE` in `.env` kann ein anderer Registry- oder lokaler Tag
+gesetzt werden.
+
 Security-Hinweis:
 - `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Setze fuer direkten
   Backend-Zugriff nur bewusst eine andere Host-IP oder `0.0.0.0` und kombiniere
@@ -155,6 +167,20 @@ Security-Hinweis:
 - Caddy ist optional. Ohne Caddy kann der Honeypot direkt per VM-IP erreicht
   werden; mit Caddy oder Tunnel bleibt das Ops-Backend im Docker-Netz intern
   erreichbar.
+
+### Docker-Hub-Publish
+
+GitHub Actions baut das Image bei Pull Requests ohne Push. Bei Pushes auf
+`main` wird `stoertebeker2k/scada-honeypot:latest` plus ein `sha-*`-Tag
+veroeffentlicht; Git-Tags `v*` erzeugen zusaetzlich den passenden Versionstag.
+
+Erforderliches Secret im GitHub-Repo:
+
+- `DOCKERHUB_TOKEN`: Docker-Hub-Access-Token fuer `stoertebeker2k`
+
+Security-Hinweis:
+- Der Token bleibt ausschliesslich als GitHub Secret gespeichert und wird in
+  Pull Requests nicht an die Build-Schritte ausgegeben.
 
 ### GeoIP-MMDB fuer Source-Anreicherung
 
@@ -165,7 +191,8 @@ gebundled.
 
 ```bash
 mkdir -p data/geoip
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ls -lh data/geoip
 ```
 
