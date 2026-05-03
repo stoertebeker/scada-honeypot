@@ -11,6 +11,7 @@ def test_example_env_files_load_with_inline_comments() -> None:
     assert base_config.exposed_research_enabled is False
     assert base_config.watch_officer_name is None
     assert base_config.duty_engineer_name is None
+    assert base_config.hmi_port == 8080
 
     exposed_config = load_runtime_config(
         env_file=str(REPO_ROOT / "deploy" / "lab-vm-observer-01.env.example")
@@ -32,7 +33,8 @@ def test_compose_uses_single_production_runtime() -> None:
     assert 'HONEYPOT_FORCE_CONTAINER_BINDS: "1"' in compose_yaml
     assert 'path: .env' in compose_yaml
     assert 'required: false' in compose_yaml
-    assert '"${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"' in compose_yaml
+    assert "HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-80}" in compose_yaml
+    assert '"${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-80}:${HMI_PORT:-8080}"' in compose_yaml
     assert '"${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"' in compose_yaml
     assert '"${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"' in compose_yaml
     assert "EVENT_STORE_PATH: /app/data/events.sqlite3" in compose_yaml
@@ -50,3 +52,15 @@ def test_compose_uses_single_production_runtime() -> None:
     assert "HONEYPOT_RUNTIME_MODE" not in entrypoint
     assert "/healthz" in healthcheck
     assert "/overview" not in healthcheck
+
+
+def test_example_env_is_direct_vps_ready_without_exposing_ops() -> None:
+    env_text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "HONEYPOT_IMAGE=stoertebeker2k/scada-honeypot:latest" in env_text
+    assert "HMI_PUBLISHED_HOST=0.0.0.0" in env_text
+    assert "HMI_PUBLISHED_PORT=80" in env_text
+    assert "MODBUS_PUBLISHED_HOST=0.0.0.0" in env_text
+    assert "MODBUS_PUBLISHED_PORT=1502" in env_text
+    assert "OPS_PUBLISHED_HOST=127.0.0.1" in env_text
+    assert "OPS_PUBLISHED_PORT=9090" in env_text

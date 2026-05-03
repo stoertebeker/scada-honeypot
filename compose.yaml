@@ -23,7 +23,7 @@ x-honeypot-common: &honeypot-common
     HMI_PORT: ${HMI_PORT:-8080}
     OPS_PORT: ${OPS_PORT:-9090}
     MODBUS_PUBLISHED_PORT: ${MODBUS_PUBLISHED_PORT:-1502}
-    HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-8080}
+    HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-80}
     EVENT_STORE_PATH: /app/data/events.sqlite3
     JSONL_ARCHIVE_PATH: /app/logs/events.jsonl
     FINDINGS_LOG_PATH: /app/logs/findings.md
@@ -48,7 +48,7 @@ services:
   honeypot:
     <<: *honeypot-common
     ports:
-      - "${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}:${HMI_PORT:-8080}"
+      - "${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-80}:${HMI_PORT:-8080}"
       - "${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"
       - "${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"
 

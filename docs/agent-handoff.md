@@ -20,7 +20,8 @@ Aktueller Kurs:
   inklusive Healthcheck, `read_only`-Rootfs und einem Entry-Point, der
   Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
 - `compose.yaml` zieht standardmaessig
-  `stoertebeker2k/scada-honeypot:latest`; lokale Builds bleiben ueber
+  `stoertebeker2k/scada-honeypot:latest`, veroeffentlicht die HMI im
+  Beispielkurs auf Host-Port `80`; lokale Builds bleiben ueber
   `docker compose up --build -d` moeglich
 - GitHub Actions publiziert das Docker-Image nach Docker Hub:
   `latest` und `sha-*` auf `main`, Versionstags bei Git-Tags `v*`, Pull
@@ -68,6 +69,10 @@ uv run pytest -q
 docker compose pull
 docker compose up -d
 ```
+
+Default-Sicht danach:
+- HMI: `http://<vps-ip>/overview`
+- Ops: nur lokal auf dem Host unter `127.0.0.1:9090`
 
 ## Was an Deck steht
 

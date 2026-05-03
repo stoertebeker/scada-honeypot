@@ -134,7 +134,7 @@ docker compose logs -f honeypot
 Wichtige Defaults:
 - das Runtime-Image wird standardmaessig aus
   `stoertebeker2k/scada-honeypot:latest` gezogen
-- HMI wird hostseitig auf `${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-8080}`
+- HMI wird hostseitig auf `${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-80}`
   veroeffentlicht
 - Modbus wird hostseitig auf `${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}`
   veroeffentlicht
@@ -151,6 +151,14 @@ Wichtige Defaults:
   `./data/geoip` aktualisiert; der Hauptprozess liest sie im Container unter
   `/app/data/geoip`
 
+Direkter VPS-Betrieb:
+- mit der Beispielkonfiguration ist die HMI ueber `http://<vps-ip>/overview`
+  auf Port `80` erreichbar
+- das Ops-Backend bleibt absichtlich nur auf `127.0.0.1:9090` des VPS
+  veroeffentlicht und ist nicht Teil der oeffentlichen Honeypot-Flaeche
+- fuer lokale Entwicklung kann `HMI_PUBLISHED_PORT=8080` in `.env` gesetzt
+  werden, falls Port `80` bereits belegt ist
+
 Lokaler Build statt Docker-Hub-Image:
 
 ```bash
@@ -161,9 +169,9 @@ Mit `HONEYPOT_IMAGE` in `.env` kann ein anderer Registry- oder lokaler Tag
 gesetzt werden.
 
 Security-Hinweis:
-- `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Setze fuer direkten
-  Backend-Zugriff nur bewusst eine andere Host-IP oder `0.0.0.0` und kombiniere
-  das mit Firewall, VPN, Tunnel oder Basic Auth.
+- `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Lasse diesen Wert fuer
+  den direkten Internetbetrieb unveraendert; nutze fuer Admin-Zugriff besser
+  SSH-Portforwarding, VPN oder einen explizit gehaerteten Tunnel.
 - Caddy ist optional. Ohne Caddy kann der Honeypot direkt per VM-IP erreicht
   werden; mit Caddy oder Tunnel bleibt das Ops-Backend im Docker-Netz intern
   erreichbar.
