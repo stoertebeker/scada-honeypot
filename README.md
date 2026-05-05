@@ -69,6 +69,8 @@ sollten nur wenige Werte angepasst werden:
 
 Ops Basic Auth wird durch die FastAPI-App des Ops-Backends erzwungen. Es ist
 kein Reverse-Proxy-Feature und schuetzt nur das Ops-Backend, nicht die HMI.
+Die HMI-Service-Login-Credentials sind ein Koeder und werden im Ops-Backend
+unter `/settings` im Abschnitt `Service Login Lure` eingestellt.
 
 ## Bestandteile
 
