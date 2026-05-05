@@ -162,6 +162,12 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.2" in versions.text
+    assert "Full-width inverter service controls" in versions.text
+    assert "v1.4.1" in versions.text
+    assert "Service portal logout" in versions.text
+    assert "v1.4.0" in versions.text
+    assert "Production Docker defaults and local debug mode" in versions.text
     assert "v1.3.2" in versions.text
     assert "Configurable service-login lure" in versions.text
     assert "v1.3.1" in versions.text

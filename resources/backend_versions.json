@@ -1,5 +1,56 @@
 [
   {
+    "version": "v1.4.2",
+    "released_at": "2026-05-05",
+    "category": "Fix",
+    "title": "Full-width inverter service controls",
+    "summary": "Moves the long inverter block-control section below the first four service cards so the protected service portal stays readable.",
+    "areas": ["hmi-web", "service-login", "tests"],
+    "changes": [
+      "Keep the overview, alarms, production and history service cards in a balanced four-card grid.",
+      "Render inverter block controls in a separate full-width panel below the compact cards.",
+      "Add regression coverage for the full-width inverter-control container."
+    ],
+    "security_notes": [
+      "The layout change is presentation-only and does not add control endpoints or broaden HMI privileges.",
+      "The controls remain part of the honeypot lure surface and continue to use the existing service-session protections."
+    ]
+  },
+  {
+    "version": "v1.4.1",
+    "released_at": "2026-05-05",
+    "category": "Feature",
+    "title": "Service portal logout",
+    "summary": "Adds an explicit logout action to the attacker-facing service portal while keeping session changes CSRF-protected and observable.",
+    "areas": ["hmi-web", "service-login", "tests"],
+    "changes": [
+      "Add a POST-only /service/logout action guarded by the service-panel CSRF token.",
+      "Clear the server-side service session and delete the service_session cookie after logout.",
+      "Render a Log Out button only when the service portal session is authenticated."
+    ],
+    "security_notes": [
+      "Logout is POST-only to avoid link-prefetch or scanner-triggered session destruction.",
+      "The action affects only honeypot service sessions, not the protected Ops backend."
+    ]
+  },
+  {
+    "version": "v1.4.0",
+    "released_at": "2026-05-05",
+    "category": "Feature",
+    "title": "Production Docker defaults and local debug mode",
+    "summary": "Simplifies production Docker exposure by fixing internal container ports, keeping only the HMI host port configurable, and replacing the exposure flag with local debug mode.",
+    "areas": ["container", "runtime", "configuration", "documentation", "tests"],
+    "changes": [
+      "Keep container-internal HMI, Modbus and Ops ports fixed while mapping only HONEYPOT_PUBLISHED_HMI_PORT on the host side.",
+      "Remove EXPOSED_RESEARCH_ENABLED and treat production exposure as the normal runtime.",
+      "Add HONEYPOT_LOCAL_DEBUG for explicit local lab or debug runs."
+    ],
+    "security_notes": [
+      "The exposed Docker path no longer depends on a safety flag that can be misread; debug-only relaxations require an explicit local-debug opt-in.",
+      "Publishing the HMI on port 80 remains an operator mapping choice; Ops stays loopback unless deliberately changed."
+    ]
+  },
+  {
     "version": "v1.3.2",
     "released_at": "2026-04-30",
     "category": "Feature",
