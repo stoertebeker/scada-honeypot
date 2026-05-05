@@ -33,7 +33,7 @@ Arbeite in dieser Reihenfolge:
 - `ENABLE_TRACKER=0`
 - `ENABLE_SERVICE_LOGIN=1`
 - `FC04` bleibt in der Default-Konfiguration deaktiviert
-- kein sichtbarer Logout-Link in V1
+- Service-Logout erfolgt sichtbar im Service-Panel als CSRF-geschuetzter `POST`
 - Exporter laufen im selben Prozess ueber entkoppelte Outbox-/Runner-Logik
 - `MODBUS_BIND_HOST=127.0.0.1`
 - `HMI_BIND_HOST=127.0.0.1`

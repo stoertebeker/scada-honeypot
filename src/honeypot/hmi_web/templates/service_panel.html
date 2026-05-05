@@ -80,6 +80,10 @@
       font-weight: 600;
     }
 
+    .logout-form {
+      margin-top: 12px;
+    }
+
     .metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -258,6 +262,12 @@
       background: var(--warn);
     }
 
+    button.secondary {
+      border-color: var(--line);
+      background: rgba(251, 252, 248, 0.92);
+      color: var(--accent);
+    }
+
     button:disabled {
       opacity: 0.45;
       cursor: not-allowed;
@@ -332,6 +342,10 @@
           <a href="{{ item.href }}">{{ t(item.label_key) }}</a>
           {% endfor %}
         </nav>
+        <form class="logout-form" method="post" action="/service/logout">
+          <input type="hidden" name="service_csrf_token" value="{{ page.csrf_token }}">
+          <button type="submit" class="secondary">{{ t("action.logout") }}</button>
+        </form>
       </div>
     </header>
 

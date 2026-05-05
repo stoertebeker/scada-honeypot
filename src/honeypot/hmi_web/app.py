@@ -481,6 +481,10 @@ class ServiceSessionStore:
         self._sessions[handle] = refreshed
         return refreshed
 
+    def destroy(self, handle: str | None) -> None:
+        if handle is not None:
+            self._sessions.pop(handle, None)
+
 
 class HmiFormRequestError(ValueError):
     """Signalisiert ungueltige oder zu grosse HMI-Formular-Requests."""
@@ -1312,6 +1316,55 @@ def create_hmi_app(
         if set_cookie:
             _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
         _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
+        return response
+
+    @app.post("/service/logout", response_class=HTMLResponse, include_in_schema=False)
+    async def service_logout(request: Request) -> HTMLResponse:
+        service_session = _require_service_session(
+            request,
+            config=config,
+            service_sessions=service_sessions,
+        )
+        session_id, set_cookie = _session_state(request)
+        try:
+            form = await _read_urlencoded_form(request)
+            _validate_service_csrf_token(form, service_session)
+        except HmiFormRequestError:
+            return _service_panel_redirect_response(
+                session_id=session_id,
+                set_cookie=set_cookie,
+                service_session=service_session,
+                config=config,
+                status_code="control_invalid",
+            )
+
+        service_sessions.destroy(service_session.handle)
+        if event_recorder is not None:
+            event_recorder.record(
+                event_recorder.build_event(
+                    event_type="hmi.auth.service_logout",
+                    category="auth",
+                    severity="low",
+                    source_ip=_request_source_ip(request, config=config),
+                    actor_type="remote_client",
+                    component=HMI_COMPONENT,
+                    asset_id=HMI_COMPONENT,
+                    action="logout",
+                    result="success",
+                    session_id=service_session.handle,
+                    protocol=HMI_PROTOCOL,
+                    service=HMI_SERVICE,
+                    endpoint_or_register=request.url.path,
+                    requested_value={"username": service_session.username, "http_path": request.url.path},
+                    resulting_value={"http_status": 303, "service_session_active": False},
+                    message="Service logout completed",
+                    tags=("auth", "service", "web"),
+                )
+            )
+        response = RedirectResponse(url="/service/login", status_code=303)
+        if set_cookie:
+            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+        _delete_service_session_cookie(response, secure=config.service_cookie_secure)
         return response
 
     @app.get("/service/panel", response_class=HTMLResponse, include_in_schema=False)
@@ -3343,6 +3396,15 @@ def _set_service_session_cookie(response: HTMLResponse, service_session: Service
         httponly=True,
         samesite="lax",
         max_age=max_age,
+        secure=secure,
+    )
+
+
+def _delete_service_session_cookie(response: Response, *, secure: bool) -> None:
+    response.delete_cookie(
+        SERVICE_SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
         secure=secure,
     )
 

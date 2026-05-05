@@ -1259,6 +1259,47 @@ async def test_service_login_success_sets_session_and_opens_service_panel(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_service_logout_clears_session_and_requires_login_again(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-logout.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        login_response = await client.post(
+            "/service/login",
+            data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+            follow_redirects=False,
+        )
+        panel_response = await client.get("/service/panel")
+        csrf_token = extract_service_csrf_token(panel_response.text)
+        logout_response = await client.post(
+            "/service/logout",
+            data={SERVICE_CSRF_FIELD_NAME: csrf_token},
+            follow_redirects=False,
+        )
+        unauthorized_response = await client.get("/service/panel")
+
+    logout_cookie = set_cookie_header(logout_response, SERVICE_SESSION_COOKIE_NAME).lower()
+    logout_event = next(event for event in store.fetch_events() if event.event_type == "hmi.auth.service_logout")
+
+    assert login_response.status_code == 303
+    assert panel_response.status_code == 200
+    assert "Log Out" in panel_response.text
+    assert logout_response.status_code == 303
+    assert logout_response.headers["location"] == "/service/login"
+    assert "max-age=0" in logout_cookie
+    assert unauthorized_response.status_code == 401
+    assert logout_event.result == "success"
+    assert logout_event.resulting_value["service_session_active"] is False
+
+
+@pytest.mark.asyncio
 async def test_service_login_uses_persisted_lure_credentials(tmp_path: Path) -> None:
     snapshot = build_snapshot()
     store = SQLiteEventStore(tmp_path / "events" / "hmi-service-login-settings.db")

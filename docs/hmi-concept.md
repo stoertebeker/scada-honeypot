@@ -466,7 +466,7 @@ Bei erfolgreichem Login:
 - Session-Cookie oder aequivalenter Session-Zustand
 - sichtbarer Wechsel in `service_view`
 - keine weitreichenderen Funktionen als im V1-Scope dokumentiert
-- kein sichtbarer Logout-Link in V1
+- sichtbarer Logout-Button im Service-Panel als CSRF-geschuetzter `POST`
 
 Bei fehlgeschlagenem Login:
 
