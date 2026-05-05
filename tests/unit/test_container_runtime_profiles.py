@@ -33,10 +33,16 @@ def test_compose_uses_single_production_runtime() -> None:
     assert 'HONEYPOT_FORCE_CONTAINER_BINDS: "1"' in compose_yaml
     assert 'path: .env' in compose_yaml
     assert 'required: false' in compose_yaml
-    assert "HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-80}" in compose_yaml
-    assert '"${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-80}:${HMI_PORT:-8080}"' in compose_yaml
-    assert '"${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}:${MODBUS_PORT:-1502}"' in compose_yaml
-    assert '"${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}:${OPS_PORT:-9090}"' in compose_yaml
+    assert 'HMI_PORT: "8080"' in compose_yaml
+    assert 'MODBUS_PORT: "1502"' in compose_yaml
+    assert 'OPS_PORT: "9090"' in compose_yaml
+    assert "HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-8080}" in compose_yaml
+    assert '"0.0.0.0:${HMI_PUBLISHED_PORT:-8080}:8080"' in compose_yaml
+    assert '"0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}:1502"' in compose_yaml
+    assert '"127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:9090"' in compose_yaml
+    assert "HMI_PUBLISHED_HOST" not in compose_yaml
+    assert "MODBUS_PUBLISHED_HOST" not in compose_yaml
+    assert "OPS_PUBLISHED_HOST" not in compose_yaml
     assert "EVENT_STORE_PATH: /app/data/events.sqlite3" in compose_yaml
     assert "JSONL_ARCHIVE_PATH: /app/logs/events.jsonl" in compose_yaml
     assert "PCAP_CAPTURE_PATH: /app/pcap/session.pcapng" in compose_yaml
@@ -54,13 +60,38 @@ def test_compose_uses_single_production_runtime() -> None:
     assert "/overview" not in healthcheck
 
 
-def test_example_env_is_direct_vps_ready_without_exposing_ops() -> None:
+def test_example_env_keeps_only_host_ports_configurable_without_exposing_ops() -> None:
     env_text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    active_keys = {
+        line.split("=", 1)[0]
+        for line in env_text.splitlines()
+        if line and not line.lstrip().startswith("#") and "=" in line
+    }
+    reserved_reference_keys = {
+        "OPERATOR_NAME",
+        "INVERTER_BLOCK_COUNT",
+        "ENABLE_TRACKER",
+        "DEFAULT_POWER_LIMIT_PCT",
+        "WEATHER_REFRESH_SECONDS",
+        "EVENT_STORE_BACKEND",
+        "PCAP_CAPTURE_ENABLED",
+        "PCAP_CAPTURE_PATH",
+        "ALARM_PAGE_SIZE",
+    }
 
     assert "HONEYPOT_IMAGE=stoertebeker2k/scada-honeypot:latest" in env_text
-    assert "HMI_PUBLISHED_HOST=0.0.0.0" in env_text
-    assert "HMI_PUBLISHED_PORT=80" in env_text
-    assert "MODBUS_PUBLISHED_HOST=0.0.0.0" in env_text
+    assert "HMI_PUBLISHED_PORT=8080" in env_text
     assert "MODBUS_PUBLISHED_PORT=1502" in env_text
-    assert "OPS_PUBLISHED_HOST=127.0.0.1" in env_text
     assert "OPS_PUBLISHED_PORT=9090" in env_text
+    assert "HMI_PORT" not in active_keys
+    assert "MODBUS_PORT" not in active_keys
+    assert "OPS_PORT" not in active_keys
+    assert "HMI_BIND_HOST" not in active_keys
+    assert "MODBUS_BIND_HOST" not in active_keys
+    assert "OPS_BIND_HOST" not in active_keys
+    assert "HMI_PUBLISHED_HOST" not in active_keys
+    assert "MODBUS_PUBLISHED_HOST" not in active_keys
+    assert "OPS_PUBLISHED_HOST" not in active_keys
+    assert active_keys.isdisjoint(reserved_reference_keys)
+    for key in reserved_reference_keys:
+        assert f"# {key}=" in env_text

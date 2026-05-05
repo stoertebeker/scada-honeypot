@@ -71,15 +71,13 @@ Dabei gilt weiter:
 - benannte Docker-Volumes tragen Eventstore, Logs und PCAP
 - der einzige Compose-Dienst `honeypot` ist der Produktionspfad
 - die Beispielkonfiguration veroeffentlicht die HMI direkt auf
-  `0.0.0.0:80` des VPS
+  `0.0.0.0:8080` des VPS; fuer Port `80` nur `HMI_PUBLISHED_PORT=80` setzen
 - lokale Testimages koennen weiter bewusst mit `docker compose up --build -d`
   gebaut werden
 - fuer Containerbetrieb zieht der Entry-Point die bind-relevanten Werte
   bewusst auf den extern erreichbaren Runtime-Pfad, auch wenn eine lokale
   `.env` fuer Direktlauf weiter `127.0.0.1` nutzt
-- das Ops-Backend wird hostseitig nur auf `OPS_PUBLISHED_HOST` veroeffentlicht;
-  der Default ist `127.0.0.1` und soll fuer Direktbetrieb im Internet so
-  bleiben
+- das Ops-Backend wird hostseitig fest nur auf `127.0.0.1` veroeffentlicht
 - der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem,
   nicht-loggendem HMI-Healthcheck und Modbus-Socket-Check gehaertet
 - die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress und wird per

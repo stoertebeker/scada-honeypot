@@ -134,15 +134,13 @@ docker compose logs -f honeypot
 Wichtige Defaults:
 - das Runtime-Image wird standardmaessig aus
   `stoertebeker2k/scada-honeypot:latest` gezogen
-- HMI wird hostseitig auf `${HMI_PUBLISHED_HOST:-0.0.0.0}:${HMI_PUBLISHED_PORT:-80}`
+- HMI wird hostseitig auf `0.0.0.0:${HMI_PUBLISHED_PORT:-8080}` veroeffentlicht
+- Modbus wird hostseitig auf `0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}`
   veroeffentlicht
-- Modbus wird hostseitig auf `${MODBUS_PUBLISHED_HOST:-0.0.0.0}:${MODBUS_PUBLISHED_PORT:-1502}`
-  veroeffentlicht
-- das interne Ops-Backend wird hostseitig nur auf
-  `${OPS_PUBLISHED_HOST:-127.0.0.1}:${OPS_PUBLISHED_PORT:-9090}` veroeffentlicht
-- im Container lauschen HMI, Modbus und Ops auf `0.0.0.0`, damit spaetere
-  Compose-Services wie Caddy, Cloudflared, WireGuard oder Tailscale das Ops-
-  Backend intern ueber `http://honeypot:9090` erreichen koennen
+- das interne Ops-Backend wird hostseitig fest nur auf
+  `127.0.0.1:${OPS_PUBLISHED_PORT:-9090}` veroeffentlicht
+- im Container sind HMI, Modbus und Ops fest auf den internen Ports `8080`,
+  `1502` und `9090`; diese Ports sind keine `.env`-Deploymentschalter
 - der Hauptdienst laeuft mit `read_only`, `tmpfs` fuer `/tmp`,
   `restart: unless-stopped` und `no-new-privileges`
 - der Healthcheck prueft den nicht-loggenden HMI-Endpunkt `/healthz` plus
@@ -152,12 +150,11 @@ Wichtige Defaults:
   `/app/data/geoip`
 
 Direkter VPS-Betrieb:
-- mit der Beispielkonfiguration ist die HMI ueber `http://<vps-ip>/overview`
-  auf Port `80` erreichbar
+- mit der Beispielkonfiguration ist die HMI ueber
+  `http://<vps-ip>:8080/overview` erreichbar
+- fuer den HTTP-Standardport `80` nur `HMI_PUBLISHED_PORT=80` in `.env` setzen
 - das Ops-Backend bleibt absichtlich nur auf `127.0.0.1:9090` des VPS
   veroeffentlicht und ist nicht Teil der oeffentlichen Honeypot-Flaeche
-- fuer lokale Entwicklung kann `HMI_PUBLISHED_PORT=8080` in `.env` gesetzt
-  werden, falls Port `80` bereits belegt ist
 
 Lokaler Build statt Docker-Hub-Image:
 
@@ -169,9 +166,9 @@ Mit `HONEYPOT_IMAGE` in `.env` kann ein anderer Registry- oder lokaler Tag
 gesetzt werden.
 
 Security-Hinweis:
-- `OPS_PUBLISHED_HOST=127.0.0.1` ist der sichere Default. Lasse diesen Wert fuer
-  den direkten Internetbetrieb unveraendert; nutze fuer Admin-Zugriff besser
-  SSH-Portforwarding, VPN oder einen explizit gehaerteten Tunnel.
+- Compose bindet Ops hostseitig fest auf `127.0.0.1`. Nutze fuer
+  Admin-Zugriff besser SSH-Portforwarding, VPN oder einen explizit
+  gehaerteten Tunnel.
 - Caddy ist optional. Ohne Caddy kann der Honeypot direkt per VM-IP erreicht
   werden; mit Caddy oder Tunnel bleibt das Ops-Backend im Docker-Netz intern
   erreichbar.

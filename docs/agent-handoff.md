@@ -21,8 +21,9 @@ Aktueller Kurs:
   Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
 - `compose.yaml` zieht standardmaessig
   `stoertebeker2k/scada-honeypot:latest`, veroeffentlicht die HMI im
-  Beispielkurs auf Host-Port `80`; lokale Builds bleiben ueber
-  `docker compose up --build -d` moeglich
+  Beispielkurs auf Host-Port `8080` und nutzt feste interne Container-Ports;
+  fuer Host-Port `80` reicht `HMI_PUBLISHED_PORT=80`; lokale Builds bleiben
+  ueber `docker compose up --build -d` moeglich
 - GitHub Actions publiziert das Docker-Image nach Docker Hub:
   `latest` und `sha-*` auf `main`, Versionstags bei Git-Tags `v*`, Pull
   Requests nur Build ohne Push
@@ -71,7 +72,8 @@ docker compose up -d
 ```
 
 Default-Sicht danach:
-- HMI: `http://<vps-ip>/overview`
+- HMI: `http://<vps-ip>:8080/overview`
+- HMI auf Port `80`: `HMI_PUBLISHED_PORT=80` setzen
 - Ops: nur lokal auf dem Host unter `127.0.0.1:9090`
 
 ## Was an Deck steht
@@ -187,8 +189,8 @@ Wichtige Regel:
 - bind-relevante Containerwerte werden im Entry-Point erzwungen, damit eine
   lokale `.env` mit `127.0.0.1` den Host-Zugriff nicht wieder still auf
   Loopback drueckt
-- das Ops-Backend bleibt hostseitig per Default auf `127.0.0.1` veroeffentlicht
-  und wird nur ueber `OPS_PUBLISHED_HOST` bewusst auf andere Interfaces gelegt
+- das Ops-Backend bleibt hostseitig im Compose-Kurs fest auf `127.0.0.1`
+  veroeffentlicht
 
 ## Relevante Doku zuerst lesen
 
