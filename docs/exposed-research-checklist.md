@@ -1,153 +1,49 @@
-# Exposed-Research Checkliste
+# Exposed Research Checklist
 
-## Zweck
+Use this checklist before any internet-facing deployment.
 
-Diese Karte ist die deployment-spezifische Abnahme fuer den Schritt von
-`pre-exposure` zu `exposed-research`.
+## 1. Configuration
 
-Sie ist erst gueltig, wenn sie fuer das konkrete Zielumfeld ausgefuellt und
-abgezeichnet ist.
+- `.env` is based on `.env.example`
+- only host-published ports are changed for Docker deployment
+- `HONEYPOT_LOCAL_DEBUG` is not used in production
+- `HMI_PUBLISHED_PORT` and `MODBUS_PUBLISHED_PORT` match firewall/NAT rules
+- `OPS_PUBLISHED_PORT` remains host-loopback only
+- weather coordinates, if used, are not identifying the operator
 
-Vorbedingung:
+## 2. Identity Hygiene
 
-- [pre-exposure-decision.md](pre-exposure-decision.md)
-  steht auf `GO`
-- eine ausgefuellte Beispielkarte liegt in
-  [exposed-research-checklist-example.md](exposed-research-checklist-example.md)
-  und zeigt den aktuellen Projektstand bewusst als `NO-GO`
-- ein konkretes Referenzprofil liegt in
-  [exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
-  und definiert die erste freizugebende Zielkonfiguration
+- no real company names
+- no real plant names
+- no real usernames or passwords
+- no OEM branding
+- no host filesystem paths in public documentation
 
-## 1. Einsatzdaten
+## 3. Ingress And Egress
 
-- Deployment-Name:
-- Datum:
-- Verantwortliche Person:
-- Umgebung:
-  - isolierte VM / isoliertes VLAN / sonstige Isolation
-- Zweck der Exponierung:
-- geplante Dauer:
+- HMI public mapping is intentional
+- Modbus public mapping is intentional
+- Ops is not public
+- every active exporter has an approved target
+- every active exporter has a named recipient
+- no exporter uses `.example`, `.invalid`, `.test`, or documentation IP ranges
 
-## 2. Ingress-Entscheidung
+## 4. Verification
 
-Verbindlich festzuhalten:
+```bash
+docker compose config --quiet
+docker compose run --rm honeypot python -m honeypot.main --verify-exposed-research-target-host
+```
 
-- offene Ports:
-- offene Protokolle:
-- Bind-Interfaces:
-- freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
-- oeffentliche Port-Abbildung in `PUBLIC_INGRESS_MAPPINGS`:
-- vorgeschaltete NAT-/Firewall-Regeln:
-- externe Erreichbarkeit:
-  - nein / ja, bewusst dokumentiert
+Review:
 
-Pflichtchecks:
+- findings log
+- event store
+- JSONL archive
+- runtime status, if enabled
+- host firewall and container port mappings
 
-- nur benoetigte Ports freigegeben
-- keine unbewusste Bindung auf Management- oder Produktivnetze
-- Non-Local-Bind ist bewusst ueber `ALLOW_NONLOCAL_BIND=1` aktiviert
-- die freigegebenen Bindings entsprechen den geplanten offenen Ports
-- Modbus- und HMI-Pfade entsprechen dem geplanten Scope
+## 5. GO / NO-GO
 
-## 3. Entscheidung zu `/service/login`
-
-Verbindlich festzuhalten:
-
-- `ENABLE_SERVICE_LOGIN`:
-  - an / aus
-- Begruendung:
-- erwartete Nutzung im Beobachtungsszenario:
-
-Pflichtchecks:
-
-- Entscheidung ist dokumentiert und bewusst
-- Browser- und Fehlerpfade fuer den gewaehlten Zustand sind getestet
-- kein versteckter zweiter Service-Pfad bleibt offen
-
-## 4. Egress-Entscheidung
-
-Verbindlich festzuhalten:
-
-- aktive Exportkanaele:
-  - webhook / smtp / telegram / sonstige
-- freigegebene Ziele in `APPROVED_EGRESS_TARGETS`:
-- benannte Empfaenger in `APPROVED_EGRESS_RECIPIENTS`:
-- verantwortete Empfaenger:
-- welche Daten den Host verlassen duerfen:
-
-Pflichtchecks:
-
-- nur benoetigte Ziele freigegeben
-- keine produktiven Betreiber- oder OEM-Ziele
-- Failure- und Retry-Pfade fuer die aktiven Kanaele getestet
-- keine unbeabsichtigte Datenweitergabe
-
-## 5. Monitoring und Artefakte
-
-Verbindlich festzuhalten:
-
-- `RUNTIME_STATUS_ENABLED=1`:
-  - ja / nein
-- Pfad fuer Heartbeat:
-- Eventstore-Pfad:
-- optionale Artefakte:
-  - `JSONL`
-  - `PCAP`
-- Aufbewahrungsdauer:
-
-Pflichtchecks:
-
-- Heartbeat wird aktiv beobachtet
-- Alert-/Outbox-Stau ist operativ erkennbar
-- Artefakte wachsen nicht unkontrolliert
-
-## 6. Incident- und Reset-Prozess
-
-Verbindlich festzuhalten:
-
-- wer beobachtet den Honeypot aktiv:
-- wer trifft Stop-/Reset-Entscheidungen:
-- wo werden Findings dokumentiert:
-- gesetzte Rollenwerte:
-  - `WATCH_OFFICER_NAME`
-  - `DUTY_ENGINEER_NAME`
-- Findings-Pfad:
-  - `FINDINGS_LOG_PATH`
-- wann wird `--reset-runtime` gezogen:
-
-Pflichtchecks:
-
-- Reset-Pfad ist bekannt und geuebt
-- `uv run python -m honeypot.main --verify-exposed-research` ist fuer dieses
-  Zielprofil erfolgreich gelaufen
-- Artefakte werden vor Reset gesichert, wenn noetig
-- unerwarteter Egress oder HMI-/Modbus-Inkonsistenz fuehrt zu klarer Aktion
-
-## 7. Go/No-Go fuer dieses Deployment
-
-`GO` nur wenn:
-
-- Ingress-Entscheidung dokumentiert und technisch kontrolliert ist
-- `/service/login` bewusst entschieden wurde
-- Egress-Ziele bewusst freigegeben und verantwortet sind
-- Monitoring aktiv beobachtet wird
-- Incident- und Reset-Prozess klar benannt sind
-- der Exposure-Sweep erfolgreich gelaufen ist
-
-`NO-GO` wenn mindestens eines davon auftritt:
-
-- unklare offene Ports oder Interfaces
-- unklare Entscheidung zu `/service/login`
-- unklare oder unbewusste Egress-Ziele
-- kein beobachteter Heartbeat
-- kein benannter Incident-/Reset-Prozess
-- kein erfolgreicher Exposure-Sweep
-
-## 8. Freigabe
-
-- Urteil:
-  - `GO` / `NO-GO`
-- Datum:
-- verantwortliche Freigabe:
-- offene Restrisiken:
+GO only when the sweep passes and the operator can explain how to stop, reset,
+and collect evidence.

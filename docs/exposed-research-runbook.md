@@ -1,219 +1,69 @@
-# Exposed-Research-Runbook
+# Exposed Research Runbook
 
-## 1. Zweck dieses Dokuments
+## Purpose
 
-Dieses Runbook beschreibt den operativen Kurs fuer den ersten kontrollierten
-`exposed-research`-Einsatz.
+This runbook describes the current Docker production path for a controlled
+internet-facing honeypot deployment.
 
-Es ist bewusst **kein** Ersatz fuer die Checklisten, sondern die Schrittfolge
-fuer die Deckscrew:
-
-1. `.env` setzen
-2. Runtime pruefen
-3. Sweep fahren
-4. Artefakte bewerten
-5. erst danach Ingress oeffnen
-
-## 2. Vorbedingungen
-
-Vor dem ersten Zielhost-Lauf muessen diese Karten sauber vorbereitet sein:
-
-- [docs/exposed-research-checklist.md](exposed-research-checklist.md)
-- [docs/exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
-- [docs/exposed-research-checklist-lab-vm-observer-01.md](exposed-research-checklist-lab-vm-observer-01.md)
-
-Wichtige Mindestpunkte:
-
-- `ALLOW_NONLOCAL_BIND=1`
-- `APPROVED_INGRESS_BINDINGS` gesetzt
-- `PUBLIC_INGRESS_MAPPINGS` gesetzt
-- `APPROVED_EGRESS_TARGETS` gesetzt
-- `APPROVED_EGRESS_RECIPIENTS` gesetzt
-- `WATCH_OFFICER_NAME` gesetzt
-- `DUTY_ENGINEER_NAME` gesetzt
-
-Hinweis:
-- Docker Compose setzt die notwendigen Container-Ingress-Gates automatisch.
-- `HONEYPOT_LOCAL_DEBUG=1` ist nur fuer lokale Loopback-Entwicklung erlaubt
-  und fuer Production-Sweeps gesperrt.
-
-## 3. Zielhost vorbereiten
-
-### 3.1 `.env` anlegen
-
-Empfohlener Startpunkt:
-- `.env.example`
-- [deploy/lab-vm-observer-01.env.example](../deploy/lab-vm-observer-01.env.example)
-- danach deployment-spezifisch ausfuellen
-
-Die Werte muessen **echt** sein:
-
-- keine `.example`-, `.invalid`-, `.test`- oder Doku-IP-Ziele
-- keine Platzhalter fuer aktive Exporter
-- keine ungeklaerten Rollenfelder
-
-Wichtige Regel:
-- die Datei unter `deploy/` ist eine **versionierte Zielhost-Vorlage**
-- fuer den echten Einsatz wird sie auf dem Zielhost in eine **nicht
-  versionierte** `.env` ueberfuehrt
-
-### 3.2 Pakete und Projektstand
+## Prepare
 
 ```bash
-uv sync --dev
-```
-
-Optionaler Containerkurs statt Direktlauf:
-
-```bash
+cp .env.example .env
+docker compose config --quiet
 docker compose pull
+```
+
+Edit `.env` only for deployment-specific values:
+
+- public HMI host port
+- public Modbus host port
+- weather provider and coordinates
+- optional Ops Basic Auth
+- optional exporter targets and recipients
+
+## Verify Before Exposure
+
+Run the target-host sweep before opening public ingress:
+
+```bash
+docker compose run --rm honeypot python -m honeypot.main --verify-exposed-research-target-host
+```
+
+The sweep checks:
+
+- runtime build
+- egress approvals
+- exposure metadata
+- Modbus read
+- HMI `/overview` read
+- breaker alert lifecycle
+- findings log write
+
+## Start
+
+```bash
 docker compose up -d
+docker compose logs -f honeypot
 ```
 
-Dabei gilt weiter:
-- `.env` enthaelt die echten Zielwerte
-- benannte Docker-Volumes tragen Eventstore, Logs und PCAP
-- der einzige Compose-Dienst `honeypot` ist der Produktionspfad
-- die Beispielkonfiguration veroeffentlicht die HMI direkt auf
-  `0.0.0.0:8080` des VPS; fuer Port `80` nur `HMI_PUBLISHED_PORT=80` setzen
-- lokale Testimages koennen weiter bewusst mit `docker compose up --build -d`
-  gebaut werden
-- fuer Containerbetrieb zieht der Entry-Point die bind-relevanten Werte
-  bewusst auf den extern erreichbaren Runtime-Pfad, auch wenn eine lokale
-  `.env` fuer Direktlauf weiter `127.0.0.1` nutzt
-- das Ops-Backend wird hostseitig fest nur auf `127.0.0.1` veroeffentlicht
-- der Hauptdienst bleibt im Compose-Kurs mit `read_only` Root-Filesystem,
-  nicht-loggendem HMI-Healthcheck und Modbus-Socket-Check gehaertet
-- die Sweep-Fahrt bleibt Pflicht vor oeffentlichem Ingress und wird per
-  direktem CLI-Aufruf gefahren
+Expected:
 
-### 3.3 Noch keine oeffentliche Freigabe
+- HMI frontend reachable on the configured public host port
+- Modbus reachable on the configured public host port
+- Ops reachable only on host loopback
 
-Vor dem Sweep:
-- Firewall/NAT noch nicht nach aussen oeffnen
-- nur den Zielhost selbst oder einen eng kontrollierten Laborkorridor nutzen
+## Operate
 
-## 4. Trockenlauf auf dem Zielhost
+- watch logs and findings
+- review Ops events, alerts, sources, credentials, and versions
+- keep exporter targets under change control
+- do not expose Ops directly to the internet
 
-### 4.1 Runtime lokal pruefen
+## Stop And Reset
 
 ```bash
-uv run python -m honeypot.main --env-file .env
+docker compose down
 ```
 
-Kurz pruefen:
-- Modbus-Port bindet wie erwartet
-- HMI oeffnet `/overview`
-- Runtime-Status-Datei wird geschrieben, falls aktiviert
-
-Dann sauber stoppen.
-
-### 4.2 Exposure-Sweep fahren
-
-```bash
-uv run python -m honeypot.main --env-file .env --verify-exposed-research
-```
-
-Bevorzugt fuer den echten Zielhost:
-
-```bash
-uv run python -m honeypot.main --env-file .env --verify-exposed-research-target-host
-```
-
-Der Sweep prueft aktuell:
-
-1. Start der Runtime im freigegebenen Exposure-Modus
-2. Modbus-Read ueber den echten Runtime-Pfad
-3. HMI-Read auf `/overview`
-4. Alert-Lebenszyklus fuer `BREAKER_OPEN`
-5. sauberen Stop
-6. Eintrag nach `FINDINGS_LOG_PATH`
-
-Der Zielhost-Wrapper gibt danach zusaetzlich direkt aus:
-
-- `FINDINGS_LOG_PATH`
-- `RUNTIME_STATUS_PATH` oder `disabled`
-- `EVENT_STORE_PATH`
-- `JSONL_ARCHIVE_PATH` oder `disabled`
-
-## 5. Was danach geprueft werden muss
-
-### 5.1 Findings
-
-Datei:
-- `FINDINGS_LOG_PATH`
-
-Erwartet:
-- neuer Eintrag `verify-exposed-research passed`
-- `site_code`
-- `watch_officer`
-- `duty_engineer`
-- `public_ingress_mappings`
-- `approved_egress_recipients`
-- Kurzsummary des Sweeps
-
-### 5.2 Runtime-Heartbeat
-
-Datei:
-- `RUNTIME_STATUS_PATH`
-
-Erwartet:
-- Dienst-Adressen
-- Exporter-Health
-- Alert- und Outbox-Zaehler
-- nach Stop `running=false`
-
-### 5.3 Eventspur
-
-Relevante Artefakte:
-
-- `EVENT_STORE_PATH`
-- optional `JSONL_ARCHIVE_PATH`
-
-Erwartet:
-- HMI-/HTTP-Ereignisse
-- Modbus-Read
-- Breaker-Open/Close-Spur
-- passende Alerts
-
-## 6. Erst danach Ingress freigeben
-
-Die Reihenfolge ist verbindlich:
-
-1. Sweep auf dem Zielhost gruen
-2. Findings und Heartbeat gegenlesen
-3. erst dann Firewall/NAT/Ingress oeffnen
-
-Nicht andersherum. Sonst laeuft die Anlage schon offen, bevor die Deckscrew
-ueberhaupt weiss, ob die Runtime sauber auf Kurs ist.
-
-## 7. Erste Beobachtungsphase nach dem Oeffnen
-
-Die ersten Stunden nach Oeffnung sind keine Routine, sondern Pilotfahrt.
-
-Eng beobachten:
-
-- `FINDINGS_LOG_PATH`
-- `RUNTIME_STATUS_PATH`
-- `EVENT_STORE_PATH`
-- `JSONL_ARCHIVE_PATH`
-- Outbox- und Exporter-Zustand
-
-Watch-Officer und Duty-Engineer muessen in dieser Phase wirklich besetzt sein.
-
-## 8. Wann `NO-GO` gilt
-
-Kein Internetkurs, wenn eines davon zutrifft:
-
-- Sweep faellt rot
-- Findings werden nicht geschrieben
-- Heartbeat fehlt oder zeigt falsche Bindings
-- aktive Exporter nutzen Platzhalter- oder Doku-Ziele
-- `watch_officer` oder `duty_engineer` sind nur Platzhalter auf Papier
-- Ingress ist weiter unklar oder weicht von `PUBLIC_INGRESS_MAPPINGS` ab
-
-## 9. Verweise
-
-- [docs/security-operations.md](security-operations.md)
-- [docs/release-checklist.md](release-checklist.md)
-- [docs/exposed-research-checklist.md](exposed-research-checklist.md)
+For a fresh artifact set, reset through the Ops backend or run the documented
+runtime reset on a local/dev path. Do not delete evidence before collection.

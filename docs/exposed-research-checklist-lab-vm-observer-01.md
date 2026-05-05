@@ -1,184 +1,39 @@
-# Exposed-Research Checkliste: `lab-vm-observer-01`
+# Target-Host Exposed Research Checklist
 
-## Zweck
+This checklist captures the intended production posture for a generic target
+host. Replace values only in a non-versioned `.env` on the host.
 
-Diese Karte ist die **deployment-spezifisch ausgefuellte Einsatzkarte** fuer
-das erste kontrollierte `exposed-research`-Zielprofil
-`lab-vm-observer-01`.
+## Exposure Scope
 
-Sie uebernimmt die festen technischen Leitplanken aus
-[exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
-und macht daraus eine konkrete Freigabepruefung fuer den ersten echten
-Internet-Kurs.
+- HMI frontend: public HTTP port selected by `HMI_PUBLISHED_PORT`, default `8080`
+- Modbus/TCP: public port selected by `MODBUS_PUBLISHED_PORT`, default `1502`
+- Ops backend: host loopback only, default `127.0.0.1:9090`
 
-## 1. Einsatzdaten
+## Required Checks
 
-- Deployment-Name: `lab-vm-observer-01`
-- Datum: `2026-04-23`
-- Verantwortliche Person:
-  - operative Deckscrew `watch_officer`
-  - technische Freigabe `duty_engineer`
-- Umgebung:
-  - isolierte VM hinter vorgeschaltetem NAT-/Firewall-Gate
-- Zweck der Exponierung:
-  - kontrollierte Beobachtung von Modbus-/HMI-Zugriffen im offenen Netz
-- geplante Dauer:
-  - erster Pilotlauf `72h`, danach erneute Lagebewertung
-- Zielhost-`.env`-Vorlage:
-  - [deploy/lab-vm-observer-01.env.example](../deploy/lab-vm-observer-01.env.example)
+- `.env` does not contain real company names, real plant names, or real OT
+  credentials
+- HMI weather coordinates, if configured, are not visible in the HMI
+- Ops Basic Auth is enabled if the operator exposes Ops through a tunnel or proxy
+- `APPROVED_EGRESS_TARGETS` covers every active exporter
+- `APPROVED_EGRESS_RECIPIENTS` names every active recipient
+- `PUBLIC_INGRESS_MAPPINGS` matches the intended public Modbus and HMI ports
+- `WATCH_OFFICER_NAME` and `DUTY_ENGINEER_NAME` are set in the real deployment
 
-## 2. Ingress-Entscheidung
+## Sweep
 
-- offene Ports:
-  - extern `tcp/502`
-  - extern `tcp/80`
-- offene Protokolle:
-  - `Modbus/TCP`
-  - `HTTP`
-- Bind-Interfaces:
-  - `MODBUS_BIND_HOST=0.0.0.0`
-  - `HMI_BIND_HOST=0.0.0.0`
-- Production-Modus:
-  - keine lokale Debug-Ausnahme aktiv
-- freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
-  - `modbus:0.0.0.0:1502`
-  - `hmi:0.0.0.0:8080`
-- oeffentliche Port-Abbildung in `PUBLIC_INGRESS_MAPPINGS`:
-  - `modbus:502:1502`
-  - `hmi:80:8080`
-- vorgeschaltete NAT-/Firewall-Regeln:
-  - `tcp/502` extern -> `tcp/1502` Honeypot-VM
-  - `tcp/80` extern -> `tcp/8080` Honeypot-VM
-  - keine weiteren eingehenden Ports
-- externe Erreichbarkeit:
-  - ja, bewusst dokumentiert
+Run before opening public ingress:
 
-Bewertung:
+```bash
+docker compose run --rm honeypot python -m honeypot.main --verify-exposed-research-target-host
+```
 
-- der geplante Ingress ist technisch kontrollierbar und entspricht dem
-  Referenzprofil
-- das Runtime-Gate erzwingt jetzt zusaetzlich `PUBLIC_INGRESS_MAPPINGS`
-- deployment-seitig bleibt zu bestaetigen, dass auf der echten Firewall nur
-  genau diese zwei Regeln aktiv sind
+GO only if the sweep completes and the findings log is written.
 
-## 3. Entscheidung zu `/service/login`
+## Stop Conditions
 
-- `ENABLE_SERVICE_LOGIN`:
-  - an
-- Begruendung:
-  - Login-Versuche, Fehl-Logins und zugehoerige Rule-Alerts sind Teil des
-    gewuenschten Beobachtungsbilds
-  - der Pfad ist fuer `401`, `403`, Session-Ablauf und wiederholte Fehlversuche
-    bereits tief getestet
-- erwartete Nutzung im Beobachtungsszenario:
-  - opportunistische Bedienversuche ueber `/service/login` und
-    `/service/panel` sollen sichtbar bleiben
-
-Bewertung:
-
-- die Entscheidung ist bewusst und sicherheitlich vertretbar
-- vor Live-Betrieb darf daran nichts ohne neuen Gate-Check geaendert werden
-
-## 4. Egress-Entscheidung
-
-- aktive Exportkanaele:
-  - `webhook`
-- freigegebene Ziele in `APPROVED_EGRESS_TARGETS`:
-  - `webhook:collector.ops.lab:443`
-- benannte Empfaenger in `APPROVED_EGRESS_RECIPIENTS`:
-  - `webhook:observer-collector-live`
-- verantwortete Empfaenger:
-  - `observer-collector-live`
-- welche Daten den Host verlassen duerfen:
-  - Event-/Alert-Payloads aus Outbox und Exporter-Runner
-
-Bewertung:
-
-- der Ausleitungspfad ist technisch am tiefsten getestet und fuer dieses
-  Deployment auf genau einen Kanal begrenzt
-- das Runtime-Gate verbietet jetzt Platzhalter- und Dokumentationsziele fuer
-  aktive Exporter
-- deployment-seitig bleibt zu bestaetigen, dass `collector.ops.lab:443` der
-  tatsaechlich verantwortete Empfaenger ist
-
-## 5. Monitoring und Artefakte
-
-- `RUNTIME_STATUS_ENABLED=1`:
-  - ja
-- Pfad fuer Heartbeat:
-  - `./logs/runtime-status.json`
-- Eventstore-Pfad:
-  - `./data/events.sqlite3`
-- optionale Artefakte:
-  - `JSONL`: an unter `./logs/events.jsonl`
-  - `PCAP`: aus
-- Aufbewahrungsdauer:
-  - Eventstore `14 Tage`
-  - `JSONL` `14 Tage`
-  - Runtime-Status `7 Tage`
-
-Bewertung:
-
-- Heartbeat, Outbox-Stau und Exporter-Health sind operativ sichtbar
-- vor Live-Betrieb muss die Deckscrew bestaetigen, dass diese Pfade auf dem
-  Zielhost wirklich gesichert und gesichtet werden
-
-## 6. Incident- und Reset-Prozess
-
-- wer beobachtet den Honeypot aktiv:
-  - `blue-watch`
-- wer trifft Stop-/Reset-Entscheidungen:
-  - `ops-duty`
-- wo werden Findings dokumentiert:
-  - `./logs/findings.md`
-- wann wird `--reset-runtime` gezogen:
-  - nach unerwartetem Egress
-  - nach HMI-/Modbus-Inkonsistenz
-  - nach Debug-/Leak-Indiz
-  - nach beendetem Pilotlauf
-
-Bewertung:
-
-- der Reset-Pfad ist technisch validiert
-- die Rollen sind jetzt konkret benannt und als Runtime-Pflichtfelder
-  verdrahtet
-- der Findings-Pfad bleibt deployment-seitig auf dem Zielhost zu bestaetigen
-
-## 7. Go/No-Go fuer dieses Deployment
-
-**Urteil:** `GO`, vorbehaltlich Zielhost-Abgleich
-
-Begruendung:
-
-- die technische Zielkonfiguration ist jetzt dokumentiert, benannte Rollen und
-  benannte Egress-Empfaenger sind Runtime-Pflicht
-- der neue Sweep `uv run python -m honeypot.main --verify-exposed-research`
-  deckt Start, HMI, Modbus und Alert-Pfad ab
-
-Dieses `GO` gilt nur, wenn auf dem echten Zielhost zusaetzlich abgeglichen ist:
-
-1. die echte Ingress-Regelung auf dem Zielsystem gegen diese Karte verifiziert
-   wurde
-2. `observer-collector-live` auf `collector.ops.lab:443` tatsaechlich der
-   verantwortete Webhook-Empfaenger ist
-3. `blue-watch` und `ops-duty` fuer den Pilotlauf personell besetzt sind
-4. `uv run python -m honeypot.main --verify-exposed-research` auf dem Zielhost
-   erfolgreich gelaufen ist und einen Eintrag in `./logs/findings.md`
-   geschrieben hat
-
-## 8. Offene Restrisiken
-
-- Fehlkonfiguration auf NAT-/Firewall-Ebene koennte zusaetzliche Dienste
-  mitfreigeben
-- ein falsch gerouteter DNS- oder Webhook-Eintrag koennte trotz sauberem
-  Runtime-Gate auf das falsche Ziel zeigen
-- ein nicht ausgefuehrter Zielhost-Sweep wuerde echte Deployment-Abweichungen
-  vor Exponierung verdecken
-
-## 9. Bezug
-
-- [../deploy/lab-vm-observer-01.env.example](../deploy/lab-vm-observer-01.env.example)
-- [exposed-research-checklist.md](exposed-research-checklist.md)
-- [exposed-research-profile-lab-vm-observer-01.md](exposed-research-profile-lab-vm-observer-01.md)
-- [security-operations.md](security-operations.md)
-- [pre-exposure-decision.md](pre-exposure-decision.md)
+- HMI and Modbus disagree
+- Ops is reachable publicly by accident
+- exporter traffic goes to an unapproved target
+- logs, event store, or findings are not persisted
+- any real OT endpoint is reachable from the honeypot path

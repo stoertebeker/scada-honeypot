@@ -1,254 +1,75 @@
-# Agent-Handoff
+# Agent Handoff
 
-## Kurzlage
+## Current State
 
-Das Repo ist kein Geruest mehr, sondern ein weitgehend fertiger lokaler
-SCADA-Honeypot fuer einen fiktiven Solarpark.
+The repository is a working SCADA honeypot for a fictional solar plant. The
+production path is Docker Compose with one service named `honeypot`.
 
-Aktueller Kurs:
+Current baseline:
 
-- lokaler V1-Release: `GO`
-- `pre-exposure`: `GO`
-- `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
-- Release-Version: `v1.3.2`
-- Gesamtteststand: `378 passed`
-- Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
-  30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
-  Fixture-Start
-- der Docker-/Compose-Kurs ist auf einen Produktionsdienst reduziert,
-  inklusive Healthcheck, `read_only`-Rootfs und einem Entry-Point, der
-  Container-Binds bewusst auf den intern/proxyfaehigen Runtime-Pfad zieht
-- `compose.yaml` zieht standardmaessig
-  `stoertebeker2k/scada-honeypot:latest`, veroeffentlicht die HMI im
-  Beispielkurs auf Host-Port `8080` und nutzt feste interne Container-Ports;
-  fuer Host-Port `80` reicht `HMI_PUBLISHED_PORT=80`; lokale Builds bleiben
-  ueber `docker compose up --build -d` moeglich
-- GitHub Actions publiziert das Docker-Image nach Docker Hub:
-  `latest` und `sha-*` auf `main`, Versionstags bei Git-Tags `v*`, Pull
-  Requests nur Build ohne Push
-- GeoIP-Daten werden ueber den Compose-Mount bereitgestellt; der Entry-Point
-  kann DB-IP-Lite-Country-/ASN-MMDBs automatisch aktualisieren und schreibt
-  CC-BY-Attributionsmetadata fuer das Ops-Backend
-- der HMI-Service-Login-Koeder nutzt standardmaessig `admin` / `sunshine` und
-  ist im geschuetzten Ops-Backend unter `/settings` aenderbar
+- attacker-facing HMI frontend: host port `8080` by default
+- Modbus/TCP: host port `1502` by default
+- protected Ops backend: host-loopback only, port `9090`
+- Docker image: `stoertebeker2k/scada-honeypot:latest`
+- latest full local test status before this documentation sync: `378 passed`
+- Docker publish workflow runs on pushes to `main`
 
-Wichtige Grundregel:
-- HMI, Modbus und Eventspur laufen auf derselben Fachwahrheit.
-- Keine zweite Wahrheit neben Snapshot, Eventstore und Alarmhistorie bauen.
+The HMI service-login lure defaults to `admin` / `sunshine` and can be changed
+in the protected Ops backend under `/settings`.
 
-## Schnellstart
+## Start Commands
 
-### Lokaler Start
+Production:
 
 ```bash
-uv run python -m honeypot.main
-```
-
-### Lokaler Reset
-
-```bash
-uv run python -m honeypot.main --reset-runtime
-```
-
-### Exposure-Sweep
-
-```bash
-uv run python -m honeypot.main --verify-exposed-research
-uv run python -m honeypot.main --verify-exposed-research-target-host
-```
-
-### Gesamttestlauf
-
-```bash
-uv run pytest -q
-```
-
-### Containerbetrieb
-
-```bash
+cp .env.example .env
 docker compose pull
 docker compose up -d
+docker compose logs -f honeypot
 ```
 
-Default-Sicht danach:
-- HMI: `http://<vps-ip>:8080/overview`
-- HMI auf Port `80`: `HMI_PUBLISHED_PORT=80` setzen
-- Ops: nur lokal auf dem Host unter `127.0.0.1:9090`
+Local development:
 
-## Was an Deck steht
+```bash
+uv sync --dev
+HONEYPOT_LOCAL_DEBUG=1 uv run python -m honeypot.main
+uv run pytest
+```
 
-### Fachkern
+Target-host sweep:
 
-- `config_core`
-  - `.env`-Laden, Defaults, Validierung, Locale- und Exposure-Gates
-- `asset_domain`
-  - typisiertes Modell fuer Site, PPC, Inverter, Wetter, Meter, Grid, Alarme
-- `plant_sim`
-  - Prozesswirkung fuer Curtailment, Breaker, Blockverluste, Reset, Alarmfluss
-- `event_core`
-  - Event-/Alert-/Outbox-Modelle und Recorder
-- `storage`
-  - `SQLite` im `WAL`-Modus plus optionales JSONL-Archiv
-- `rule_engine`
-  - Folge-Alerts, Dedupe, Suppression, `cleared`-Logik
+```bash
+docker compose run --rm honeypot python -m honeypot.main --verify-exposed-research-target-host
+```
 
-### Angreiferpfade
+## Important Runtime Rules
 
-- `protocol_modbus`
-  - aktive Units `1`, `11-13`, `21`, `31`, `41`
-  - `FC03`, `FC06`, `FC16`
-- `hmi_web`
-  - `/overview`
-  - `/robots.txt`
-  - `/single-line`
-  - `/inverters`
-  - `/weather`
-  - `/meter`
-  - `/alarms`
-  - `/trends`
-  - `/service/login`
-  - `/service/panel`
+- HMI, Modbus, alerts, trends, and Ops all use the same plant truth.
+- Docker Compose forces container-internal binds required for exposure.
+- Ops stays published only on host loopback.
+- `HONEYPOT_LOCAL_DEBUG=1` is a development-only loopback bypass.
+- Production sweeps reject local debug mode.
+- Exporters require approved egress targets and named recipients.
 
-### Betrieb und Ausleitung
+## Main Modules
 
-- `monitoring`
-  - Heartbeat nach `RUNTIME_STATUS_PATH`
-- `runtime_evolution`
-  - tickende Snapshot-Zeit plus wettergetriebene Leistungs-/Meterfortschreibung und persistente 30-Tage-Erzeugungshistorie fuer `/trends`, inklusive Tagesenergie-Balken
-- `weather_core`
-  - interne Wetterabstraktion mit deterministischem Offline-Provider, Open-Meteo-Adaptern, Geo-Config und Leak-Guards
-- `exporter_sdk`
-  - gemeinsamer Exporter-Vertrag
-- `exporter_runner`
-  - Background-Runner fuer Webhook, SMTP und Telegram
-- `runtime_reset`
-  - definierter Reset von Laufartefakten
-- `runtime_egress`
-  - Gate fuer aktive Exportziele
-- `runtime_ingress`
-  - Gate fuer externe Bindings
-- `runtime_exposure`
-  - Exposure-Gates, Findings-Log und Exposure-Sweep
-- `ops_web`
-  - Source-IP-Anreicherung mit Static Map, Country-MMDB, ASN-MMDB und rDNS-
-    Fallback; GeoIP-MMDB-Dateien werden bei ueblichen Dateinamen automatisch
-    erkannt
-  - DB-IP-Lite-Attribution aus `metadata.json` wird in der geschuetzten
-    Ops-Oberflaeche angezeigt, sobald die Auto-Aktualisierung Daten geladen hat
-- `geoip_update`
-  - fester DB-IP-Lite-Downloader fuer Country und ASN, keine freie URL-Eingabe
-- `main`
-  - gemeinsamer Runtime-Einstieg
+- `config_core`: settings and validation
+- `asset_domain`: typed plant state
+- `plant_sim`: state transitions and process effects
+- `runtime_evolution`: clock-driven plant history and weather effects
+- `weather_core`: deterministic and Open-Meteo weather adapters
+- `protocol_modbus`: Modbus/TCP server and register map
+- `hmi_web`: attacker-facing HMI frontend and service panel
+- `ops_web`: protected operator backend
+- `event_core` and `storage`: events, alerts, SQLite/WAL, JSONL, outbox
+- `runtime_ingress`, `runtime_exposure`, `runtime_egress`: safety gates
+- `exporter_runner`: Webhook, SMTP, and Telegram delivery
 
-## Sichtbare Wirkung in V1
+## Open Tracker Item
 
-Wichtige End-to-End-Pfade, die schon stehen:
+`bd` currently keeps one forward-looking task open:
 
-- Curtailment ueber HMI und Modbus
-- Blindleistungsziel ueber HMI und Modbus
-- `plant_mode_request` als gelatchter Bedienwunsch
-- Breaker Open/Close mit sichtbarer Meter- und Alarmwirkung
-- Inverter-Block Enable/Disable, Limit, PV-/DC-Disconnect und Reset
-- `/single-line` zeigt Inverter-Schalter als anonyme Koederpfade oder, mit
-  Service-Login, als CSRF-geschuetzte Service-Control-Bedienung
-- `/robots.txt` markiert `/service/login` als disallowed und bleibt dabei
-  bewusst ein leiser Koeder ohne Session- oder Eventspur
-- Folge-Alerts:
-  - `REPEATED_LOGIN_FAILURE`
-  - `GRID_PATH_UNAVAILABLE`
-  - `LOW_SITE_OUTPUT_UNEXPECTED`
-  - `MULTI_BLOCK_UNAVAILABLE`
-- Webhook-, SMTP- und Telegram-Ausleitung ueber die Outbox
+- migrate low-change `.env` defaults into the Ops settings UI where safe
 
-## Wichtige Runtime-Gates
-
-### Ingress
-
-- `ALLOW_NONLOCAL_BIND=1`
-- `APPROVED_INGRESS_BINDINGS`
-
-### Egress
-
-- `APPROVED_EGRESS_TARGETS`
-
-### Exposed Research
-
-- `PUBLIC_INGRESS_MAPPINGS`
-- `APPROVED_EGRESS_RECIPIENTS`
-- `WATCH_OFFICER_NAME`
-- `DUTY_ENGINEER_NAME`
-- `FINDINGS_LOG_PATH`
-
-Wichtige Regel:
-- Platzhalter- oder Doku-Ziele fuer aktive Exporter sind im Production-Modus
-  verboten.
-- im Compose-Kurs gibt es nur noch den Produktionsdienst `honeypot`; der
-  Entry-Point setzt die Container-Ingress-Gates fuer diesen Pfad
-- bind-relevante Containerwerte werden im Entry-Point erzwungen, damit eine
-  lokale `.env` mit `127.0.0.1` den Host-Zugriff nicht wieder still auf
-  Loopback drueckt
-- das Ops-Backend bleibt hostseitig im Compose-Kurs fest auf `127.0.0.1`
-  veroeffentlicht
-
-## Relevante Doku zuerst lesen
-
-### Fuer Nicht-SCADA-Menschen
-
-1. [docs/scada-primer-and-module-guide.md](scada-primer-and-module-guide.md)
-2. [docs/test-attacker-guide.md](test-attacker-guide.md)
-
-### Fuer Architektur und Fachmodell
-
-1. [docs/architecture.md](architecture.md)
-2. [docs/domain-model.md](domain-model.md)
-3. [docs/protocol-profile.md](protocol-profile.md)
-4. [docs/register-matrix.md](register-matrix.md)
-5. [docs/hmi-concept.md](hmi-concept.md)
-6. [docs/logging-and-events.md](logging-and-events.md)
-
-### Fuer Betrieb und Freigabe
-
-1. [docs/testing-strategy.md](testing-strategy.md)
-2. [docs/release-checklist.md](release-checklist.md)
-3. [docs/security-operations.md](security-operations.md)
-4. [docs/pre-exposure-decision.md](pre-exposure-decision.md)
-5. [docs/exposed-research-checklist.md](exposed-research-checklist.md)
-6. [docs/exposed-research-runbook.md](exposed-research-runbook.md)
-
-## Letzte relevante Commits
-
-- `c330cc7` `docs: simplify readme structure`
-- `db75ea2` `docs: add scada primer and attacker runbooks`
-- `44470a1` `feat: record exposed research sweep findings`
-- `90cdb90` `feat: gate exposed research deployments`
-- `8ee4865` `feat: gate nonlocal ingress approvals`
-- `d66c41e` `feat: gate exporter egress targets`
-- `0c3a6cd` `feat: add local runtime reset path`
-- `47dab3c` `feat: add local runtime status heartbeat`
-
-## Offene Luecken
-
-Repo-seitig ist der Grundbau fuer `v1.0.0` geschlossen. Der validierte
-Einsatzpfad umfasst Caddy vor HMI und Ops, public Modbus `1502`,
-Trusted-Proxy-Source-IP, leise `HEAD`-Probes und die geschuetzte Ops-Oberflaeche.
-
-Offen fuer Produktpflege nach `v1.0.0`:
-
-1. Admin-Passwort nach Release-Rollout rotieren
-2. Egress-Empfaenger je Deployment regelmaessig pruefen
-3. weitere HMI-/Modbus-Slices nur mit passender Testabdeckung ergaenzen
-
-## Naechster sinnvoller Schritt
-
-Wenn lokal weitergearbeitet wird:
-
-1. keine neue Grundmechanik vorziehen
-2. nur gezielte Härtung, Test- oder Doku-Schlaege
-
-Wenn der Release neu ausgerollt wird:
-
-1. Zielhost per `git pull` aktualisieren
-2. Compose-Image ziehen und den einzigen Produktionsdienst starten:
-   `docker compose pull && docker compose up -d`
-3. HMI, Ops, optionale Proxy-/TLS-Header, Source-IP und Modbus kurz
-   extern gegenpruefen
+Keep `.beads/issues.jsonl` in sync with `bd export --no-memories -o .beads/issues.jsonl`
+before committing tracker changes.
