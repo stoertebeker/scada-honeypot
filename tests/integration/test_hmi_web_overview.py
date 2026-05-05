@@ -1253,6 +1253,12 @@ async def test_service_login_success_sets_session_and_opens_service_panel(tmp_pa
     assert "Service Panel" in panel_response.text
     assert "Service view active" not in panel_response.text
     assert SERVICE_LOGIN_USERNAME in panel_response.text
+    assert 'class="controls service-control-grid"' in panel_response.text
+    assert 'class="inverter-control-row"' in panel_response.text
+    assert 'class="panel inverter-control-panel"' in panel_response.text
+    assert panel_response.text.index('class="controls service-control-grid"') < panel_response.text.index(
+        'class="inverter-control-row"'
+    )
     assert auth_event.result == "success"
     assert panel_event.event_type == "hmi.page.service_panel_viewed"
     assert panel_event.session_id is not None

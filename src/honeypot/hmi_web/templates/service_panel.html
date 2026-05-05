@@ -156,6 +156,14 @@
       margin-bottom: 18px;
     }
 
+    .inverter-control-row {
+      margin-bottom: 18px;
+    }
+
+    .inverter-control-panel {
+      width: 100%;
+    }
+
     form {
       display: grid;
       gap: 12px;
@@ -289,6 +297,7 @@
 
     .block-grid {
       display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       gap: 12px;
     }
 
@@ -362,7 +371,7 @@
     <p class="status {{ page.status_tone }}">{{ page.status_label }}</p>
     {% endif %}
 
-    <section class="controls">
+    <section class="controls service-control-grid">
       <article class="panel">
         <h2>{{ t("section.service_control.power_limit") }}</h2>
         {% if page.controls_available %}
@@ -459,8 +468,10 @@
         <p class="hint">{{ t("service.status.control_unavailable") }}</p>
         {% endif %}
       </article>
+    </section>
 
-      <article class="panel">
+    <section class="inverter-control-row">
+      <article class="panel inverter-control-panel">
         <h2>{{ t("section.service_control.inverter_blocks") }}</h2>
         {% if page.controls_available %}
         <div class="block-grid">
