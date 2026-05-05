@@ -38,8 +38,8 @@ Internet-Kurs.
 - Bind-Interfaces:
   - `MODBUS_BIND_HOST=0.0.0.0`
   - `HMI_BIND_HOST=0.0.0.0`
-- Exposure-Mode:
-  - `EXPOSED_RESEARCH_ENABLED=1`
+- Production-Modus:
+  - keine lokale Debug-Ausnahme aktiv
 - freigegebene Runtime-Bindings in `APPROVED_INGRESS_BINDINGS`:
   - `modbus:0.0.0.0:1502`
   - `hmi:0.0.0.0:8080`

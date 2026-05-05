@@ -35,7 +35,6 @@ if [ "${HONEYPOT_FORCE_CONTAINER_BINDS:-0}" = "1" ]; then
     export HMI_BIND_HOST=0.0.0.0
     export MODBUS_BIND_HOST=0.0.0.0
     export OPS_BIND_HOST=0.0.0.0
-    export EXPOSED_RESEARCH_ENABLED=1
     export APPROVED_INGRESS_BINDINGS="modbus:0.0.0.0:${modbus_port},hmi:0.0.0.0:${hmi_port},ops:0.0.0.0:${ops_port}"
     export PUBLIC_INGRESS_MAPPINGS="${PUBLIC_INGRESS_MAPPINGS:-modbus:${modbus_public_port}:${modbus_port},hmi:${hmi_public_port}:${hmi_port}}"
     export WATCH_OFFICER_NAME="${WATCH_OFFICER_NAME:-compose-prod-watch}"

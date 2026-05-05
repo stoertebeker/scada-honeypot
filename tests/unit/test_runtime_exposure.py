@@ -38,7 +38,6 @@ def test_exposed_research_policy_rejects_missing_operator_roles(monkeypatch, tmp
     config = _config(
         monkeypatch,
         tmp_path,
-        exposed_research_enabled=True,
         allow_nonlocal_bind=True,
         modbus_bind_host="0.0.0.0",
         hmi_bind_host="0.0.0.0",
@@ -53,7 +52,6 @@ def test_exposed_research_policy_rejects_placeholder_webhook_targets(monkeypatch
     config = _config(
         monkeypatch,
         tmp_path,
-        exposed_research_enabled=True,
         allow_nonlocal_bind=True,
         modbus_bind_host="0.0.0.0",
         hmi_bind_host="0.0.0.0",
@@ -77,7 +75,6 @@ def test_exposed_research_policy_accepts_named_roles_recipients_and_realistic_ta
     config = _config(
         monkeypatch,
         tmp_path,
-        exposed_research_enabled=True,
         allow_nonlocal_bind=True,
         modbus_bind_host="0.0.0.0",
         hmi_bind_host="0.0.0.0",
@@ -98,6 +95,24 @@ def test_exposed_research_policy_accepts_named_roles_recipients_and_realistic_ta
         "hmi:80:8080",
         "modbus:502:1502",
     )
+
+
+def test_exposed_research_policy_allows_local_debug_bypass(monkeypatch, tmp_path: Path) -> None:
+    config = _config(monkeypatch, tmp_path, honeypot_local_debug=True)
+
+    approved = enforce_exposed_research_policy(config=config, exporters={})
+
+    assert approved == ()
+
+
+def test_exposed_research_policy_rejects_local_debug_for_production_sweeps(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config = _config(monkeypatch, tmp_path, honeypot_local_debug=True)
+
+    with pytest.raises(RuntimeError, match="HONEYPOT_LOCAL_DEBUG"):
+        enforce_exposed_research_policy(config=config, exporters={}, allow_local_debug=False)
 
 
 def test_append_exposed_research_finding_writes_actionable_markdown(monkeypatch, tmp_path: Path) -> None:

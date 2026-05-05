@@ -469,7 +469,11 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
     runtime_started = False
     try:
         enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
-        enforce_exposed_research_policy(config=runtime.config, exporters=runtime.exporters)
+        enforce_exposed_research_policy(
+            config=runtime.config,
+            exporters=runtime.exporters,
+            allow_local_debug=False,
+        )
         runtime.start()
         runtime_started = True
         modbus_address = _loopback_runtime_address(runtime.modbus_service.address)

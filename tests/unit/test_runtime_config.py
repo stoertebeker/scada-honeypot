@@ -35,7 +35,7 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.runtime_status_interval_seconds == 5
     assert config.approved_egress_targets == ()
     assert config.approved_ingress_bindings == ()
-    assert config.exposed_research_enabled is False
+    assert config.honeypot_local_debug is False
     assert config.hmi_cookie_secure is False
     assert config.service_cookie_secure is False
     assert config.forwarded_header_enabled is False
@@ -190,7 +190,6 @@ def test_runtime_config_normalizes_exposure_metadata(monkeypatch, tmp_path: Path
         public_ingress_mappings="MODBUS:502:1502, hmi:80:8080, modbus:502:1502",
         watch_officer_name="  blue-watch  ",
         duty_engineer_name="  ops-duty  ",
-        exposed_research_enabled=True,
     )
 
     assert config.approved_egress_recipients == (
@@ -203,7 +202,25 @@ def test_runtime_config_normalizes_exposure_metadata(monkeypatch, tmp_path: Path
     )
     assert config.watch_officer_name == "blue-watch"
     assert config.duty_engineer_name == "ops-duty"
-    assert config.exposed_research_enabled is True
+
+
+def test_runtime_config_rejects_local_debug_with_nonlocal_binds(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError, match="HONEYPOT_LOCAL_DEBUG"):
+        RuntimeConfig(
+            _env_file=None,
+            honeypot_local_debug=True,
+            modbus_bind_host="0.0.0.0",
+        )
+
+    with pytest.raises(ValidationError, match="HONEYPOT_LOCAL_DEBUG"):
+        RuntimeConfig(
+            _env_file=None,
+            honeypot_local_debug=True,
+            allow_nonlocal_bind=True,
+        )
 
 
 def test_runtime_config_reads_nonlocal_bind_gate(monkeypatch, tmp_path: Path) -> None:

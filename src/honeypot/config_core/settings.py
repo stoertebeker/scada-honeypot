@@ -98,7 +98,7 @@ class RuntimeConfig(BaseSettings):
     ops_basic_auth_username: str | None = None
     ops_basic_auth_password: str | None = None
     allow_nonlocal_bind: bool = False
-    exposed_research_enabled: bool = False
+    honeypot_local_debug: bool = False
     enable_service_login: bool = True
     hmi_cookie_secure: bool = False
     service_cookie_secure: bool = False
@@ -242,6 +242,28 @@ class RuntimeConfig(BaseSettings):
                 "OPS_BASIC_AUTH_USERNAME und OPS_BASIC_AUTH_PASSWORD sind erforderlich, "
                 "wenn OPS_BASIC_AUTH_ENABLED aktiv ist"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_local_debug_mode(self) -> "RuntimeConfig":
+        if not self.honeypot_local_debug:
+            return self
+        if self.allow_nonlocal_bind:
+            raise ValueError("HONEYPOT_LOCAL_DEBUG darf ALLOW_NONLOCAL_BIND nicht aktivieren")
+
+        non_loopback_binds = []
+        for setting, host in (
+            ("MODBUS_BIND_HOST", self.modbus_bind_host),
+            ("HMI_BIND_HOST", self.hmi_bind_host),
+            ("OPS_BIND_HOST", self.ops_bind_host),
+        ):
+            if setting == "OPS_BIND_HOST" and not self.ops_enabled:
+                continue
+            if host != "127.0.0.1":
+                non_loopback_binds.append(setting)
+        if non_loopback_binds:
+            joined_settings = ", ".join(non_loopback_binds)
+            raise ValueError(f"HONEYPOT_LOCAL_DEBUG erlaubt nur Loopback-Bindings: {joined_settings}")
         return self
 
     @model_validator(mode="after")

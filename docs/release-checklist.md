@@ -97,8 +97,8 @@ Caddy-/Docker-Compose-Pfad abgenommen:
 
 - lokaler V1-Release -> `GO`
 - `pre-exposure` -> `GO`
-- `exposed-research` -> `GO` fuer `scada.stoerte.net`,
-  `scada-admin.stoerte.net` und den oeffentlichen Modbus-Port `1502`
+- `exposed-research` -> `GO` fuer den validierten Zielhost und den
+  oeffentlichen Modbus-Port `1502`
 - letzter Gesamtteststand -> `356 passed`
 - externer Sweep -> HMI, Ops, Caddy-Security-Header, leise `HEAD`-Probes,
   Trusted-Proxy-Source-IP und Modbus-Read erfolgreich

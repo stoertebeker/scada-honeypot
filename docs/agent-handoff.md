@@ -10,9 +10,8 @@ Aktueller Kurs:
 - lokaler V1-Release: `GO`
 - `pre-exposure`: `GO`
 - `exposed-research`: `GO` fuer den validierten Docker-Compose-Produktionspfad
-  auf `scada.stoerte.net` und `scada-admin.stoerte.net`
 - Release-Version: `v1.3.2`
-- Gesamtteststand: `374 passed`
+- Gesamtteststand: `378 passed`
 - Trends und sichtbare Snapshot-Zeit laufen inzwischen ueber eine persistente
   30-Tage-Erzeugungshistorie und `observed_at`, nicht mehr nur ueber den
   Fixture-Start
@@ -27,8 +26,8 @@ Aktueller Kurs:
 - GitHub Actions publiziert das Docker-Image nach Docker Hub:
   `latest` und `sha-*` auf `main`, Versionstags bei Git-Tags `v*`, Pull
   Requests nur Build ohne Push
-- `./data/geoip` wird nach `/app/data/geoip` gemountet; der Entry-Point kann
-  DB-IP-Lite-Country-/ASN-MMDBs automatisch aktualisieren und schreibt
+- GeoIP-Daten werden ueber den Compose-Mount bereitgestellt; der Entry-Point
+  kann DB-IP-Lite-Country-/ASN-MMDBs automatisch aktualisieren und schreibt
   CC-BY-Attributionsmetadata fuer das Ops-Backend
 - der HMI-Service-Login-Koeder nutzt standardmaessig `admin` / `sunshine` und
   ist im geschuetzten Ops-Backend unter `/settings` aenderbar
@@ -132,8 +131,8 @@ Default-Sicht danach:
   - Exposure-Gates, Findings-Log und Exposure-Sweep
 - `ops_web`
   - Source-IP-Anreicherung mit Static Map, Country-MMDB, ASN-MMDB und rDNS-
-    Fallback; GeoIP-MMDB-Dateien liegen im Compose-Pfad unter `/app/data/geoip`
-    und werden bei ueblichen Dateinamen automatisch erkannt
+    Fallback; GeoIP-MMDB-Dateien werden bei ueblichen Dateinamen automatisch
+    erkannt
   - DB-IP-Lite-Attribution aus `metadata.json` wird in der geschuetzten
     Ops-Oberflaeche angezeigt, sobald die Auto-Aktualisierung Daten geladen hat
 - `geoip_update`
@@ -174,7 +173,6 @@ Wichtige End-to-End-Pfade, die schon stehen:
 
 ### Exposed Research
 
-- `EXPOSED_RESEARCH_ENABLED=1`
 - `PUBLIC_INGRESS_MAPPINGS`
 - `APPROVED_EGRESS_RECIPIENTS`
 - `WATCH_OFFICER_NAME`
@@ -182,10 +180,10 @@ Wichtige End-to-End-Pfade, die schon stehen:
 - `FINDINGS_LOG_PATH`
 
 Wichtige Regel:
-- Platzhalter- oder Doku-Ziele fuer aktive Exporter sind im
-  `exposed-research`-Modus verboten.
+- Platzhalter- oder Doku-Ziele fuer aktive Exporter sind im Production-Modus
+  verboten.
 - im Compose-Kurs gibt es nur noch den Produktionsdienst `honeypot`; der
-  Entry-Point aktiviert die Exposure-Gates fuer diesen Containerpfad
+  Entry-Point setzt die Container-Ingress-Gates fuer diesen Pfad
 - bind-relevante Containerwerte werden im Entry-Point erzwungen, damit eine
   lokale `.env` mit `127.0.0.1` den Host-Zugriff nicht wieder still auf
   Loopback drueckt

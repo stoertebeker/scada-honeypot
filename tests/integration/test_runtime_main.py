@@ -273,7 +273,6 @@ def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(tmp_path: 
             (
                 "SITE_CODE=runtime-exposed-01",
                 "ALLOW_NONLOCAL_BIND=1",
-                "EXPOSED_RESEARCH_ENABLED=1",
                 "MODBUS_BIND_HOST=0.0.0.0",
                 "MODBUS_PORT=1502",
                 "HMI_BIND_HOST=0.0.0.0",
@@ -320,7 +319,6 @@ def test_cli_verify_exposed_research_target_host_prints_artifact_summary(
             (
                 "SITE_CODE=runtime-exposed-02",
                 "ALLOW_NONLOCAL_BIND=1",
-                "EXPOSED_RESEARCH_ENABLED=1",
                 "MODBUS_BIND_HOST=0.0.0.0",
                 "MODBUS_PORT=1502",
                 "HMI_BIND_HOST=0.0.0.0",

@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def test_example_env_files_load_with_inline_comments() -> None:
     base_config = load_runtime_config(env_file=str(REPO_ROOT / ".env.example"))
-    assert base_config.exposed_research_enabled is False
+    assert base_config.honeypot_local_debug is False
     assert base_config.watch_officer_name is None
     assert base_config.duty_engineer_name is None
     assert base_config.hmi_port == 8080
@@ -16,7 +16,7 @@ def test_example_env_files_load_with_inline_comments() -> None:
     exposed_config = load_runtime_config(
         env_file=str(REPO_ROOT / "deploy" / "lab-vm-observer-01.env.example")
     )
-    assert exposed_config.exposed_research_enabled is True
+    assert exposed_config.honeypot_local_debug is False
     assert exposed_config.watch_officer_name == "blue-watch"
     assert exposed_config.duty_engineer_name == "ops-duty"
 
@@ -53,7 +53,7 @@ def test_compose_uses_single_production_runtime() -> None:
     assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
     assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint
     assert "export OPS_BIND_HOST=0.0.0.0" in entrypoint
-    assert "export EXPOSED_RESEARCH_ENABLED=1" in entrypoint
+    assert "EXPOSED_RESEARCH_ENABLED" not in entrypoint
     assert "PUBLIC_INGRESS_MAPPINGS" in entrypoint
     assert "HONEYPOT_RUNTIME_MODE" not in entrypoint
     assert "/healthz" in healthcheck
@@ -89,6 +89,8 @@ def test_example_env_keeps_only_host_ports_configurable_without_exposing_ops() -
     assert "HMI_BIND_HOST" not in active_keys
     assert "MODBUS_BIND_HOST" not in active_keys
     assert "OPS_BIND_HOST" not in active_keys
+    assert "EXPOSED_RESEARCH_ENABLED" not in active_keys
+    assert "HONEYPOT_LOCAL_DEBUG" not in active_keys
     assert "HMI_PUBLISHED_HOST" not in active_keys
     assert "MODBUS_PUBLISHED_HOST" not in active_keys
     assert "OPS_PUBLISHED_HOST" not in active_keys

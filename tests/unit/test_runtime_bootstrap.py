@@ -99,7 +99,6 @@ def test_main_rejects_exposed_research_without_named_roles(tmp_path: Path) -> No
     env_file.write_text(
         (
             "ALLOW_NONLOCAL_BIND=1\n"
-            "EXPOSED_RESEARCH_ENABLED=1\n"
             "MODBUS_BIND_HOST=0.0.0.0\n"
             "HMI_BIND_HOST=0.0.0.0\n"
             "APPROVED_INGRESS_BINDINGS=modbus:0.0.0.0:1502,hmi:0.0.0.0:8080\n"
@@ -124,7 +123,6 @@ def test_verify_exposed_research_runtime_rejects_placeholder_export_target(tmp_p
     env_file.write_text(
         (
             "ALLOW_NONLOCAL_BIND=1\n"
-            "EXPOSED_RESEARCH_ENABLED=1\n"
             "MODBUS_BIND_HOST=0.0.0.0\n"
             "MODBUS_PORT=1502\n"
             "HMI_BIND_HOST=0.0.0.0\n"
@@ -421,7 +419,7 @@ class _FakeRuntime:
         self.config = SimpleNamespace(
             site_code="site-01",
             approved_egress_targets=(),
-            exposed_research_enabled=False,
+            honeypot_local_debug=True,
         )
         self.manifest = bootstrap_runtime()
         self.snapshot = SimpleNamespace(fixture_name="normal_operation")

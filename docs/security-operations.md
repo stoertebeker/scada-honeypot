@@ -94,13 +94,12 @@ Eigenschaften:
 - nur mit aktivem Logging
 - nur mit Egress-Kontrolle
 - nur mit definiertem Incident- und Reset-Prozess
-- nur mit explizitem Exposure-Start-Gate:
-  `EXPOSED_RESEARCH_ENABLED=1`, `PUBLIC_INGRESS_MAPPINGS`,
-  `APPROVED_EGRESS_RECIPIENTS`, `WATCH_OFFICER_NAME`,
-  `DUTY_ENGINEER_NAME`
+- nur mit expliziten Production-Gates:
+  `PUBLIC_INGRESS_MAPPINGS`, `APPROVED_EGRESS_RECIPIENTS`,
+  `WATCH_OFFICER_NAME`, `DUTY_ENGINEER_NAME`
 - Stand 23. April 2026 technisch deutlich weiter; die Runtime erzwingt jetzt
   benannte Rollen, benannte Egress-Empfaenger und verbietet Platzhalterziele
-  fuer aktive Exporter im `exposed-research`-Modus
+  fuer aktive Exporter im Production-Modus
 - fuer diese deployment-spezifische Freigabe ist
   [exposed-research-checklist.md](exposed-research-checklist.md)
   verbindlich zu fuehren

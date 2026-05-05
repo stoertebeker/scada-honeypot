@@ -26,12 +26,16 @@ Wichtige Mindestpunkte:
 
 - `ALLOW_NONLOCAL_BIND=1`
 - `APPROVED_INGRESS_BINDINGS` gesetzt
-- `EXPOSED_RESEARCH_ENABLED=1`
 - `PUBLIC_INGRESS_MAPPINGS` gesetzt
 - `APPROVED_EGRESS_TARGETS` gesetzt
 - `APPROVED_EGRESS_RECIPIENTS` gesetzt
 - `WATCH_OFFICER_NAME` gesetzt
 - `DUTY_ENGINEER_NAME` gesetzt
+
+Hinweis:
+- Docker Compose setzt die notwendigen Container-Ingress-Gates automatisch.
+- `HONEYPOT_LOCAL_DEBUG=1` ist nur fuer lokale Loopback-Entwicklung erlaubt
+  und fuer Production-Sweeps gesperrt.
 
 ## 3. Zielhost vorbereiten
 

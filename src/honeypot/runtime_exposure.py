@@ -77,11 +77,14 @@ def enforce_exposed_research_policy(
     *,
     config: RuntimeConfig,
     exporters: dict[str, HoneypotExporter],
+    allow_local_debug: bool = True,
 ) -> tuple[str, ...]:
     """Erzwingt die letzten Runtime-Gates fuer echten exposed-research-Betrieb."""
 
-    if not config.exposed_research_enabled:
-        return ()
+    if config.honeypot_local_debug:
+        if allow_local_debug:
+            return ()
+        raise RuntimeError("HONEYPOT_LOCAL_DEBUG ist beim Production-Sweep nicht erlaubt")
 
     if not config.allow_nonlocal_bind:
         raise RuntimeError(
