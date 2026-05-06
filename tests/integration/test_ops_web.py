@@ -178,6 +178,21 @@ async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_ops_dashboard_top_sources_sort_by_event_count(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-dashboard-source-sort.db")
+    seed_source_sort_store(store)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        dashboard = await client.get("/")
+
+    assert dashboard.status_code == 200
+    top_sources = dashboard.text.split("<h2>Top Sources</h2>", maxsplit=1)[1]
+    assert _source_ips(top_sources) == ["198.51.100.10", "192.0.2.9", "203.0.113.44"]
+
+
+@pytest.mark.asyncio
 async def test_ops_events_page_does_not_highlight_page_views_as_control_attempts(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops-page-view-events.db")
     seed_source_sort_store(store)
@@ -261,6 +276,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.6" in versions.text
+    assert "Dashboard top sources by event volume" in versions.text
     assert "v1.4.5" in versions.text
     assert "Filtered Ops events CSV export" in versions.text
     assert "v1.4.4" in versions.text

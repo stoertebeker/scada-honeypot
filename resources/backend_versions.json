@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.6",
+    "released_at": "2026-05-06",
+    "category": "Fix",
+    "title": "Dashboard top sources by event volume",
+    "summary": "Sorts the protected Ops dashboard Top Sources table by event count so the busiest sources stand out immediately.",
+    "areas": ["ops-web", "source-analysis", "tests"],
+    "changes": [
+      "Use events-desc ordering for the dashboard Top Sources table.",
+      "Keep the detailed Sources page sort controls unchanged.",
+      "Add regression coverage for dashboard source ordering."
+    ],
+    "security_notes": [
+      "The change is read-only presentation logic in the protected Ops backend.",
+      "No event data, source-IP handling or public honeypot surface is changed."
+    ]
+  },
+  {
     "version": "v1.4.5",
     "released_at": "2026-05-06",
     "category": "Feature",

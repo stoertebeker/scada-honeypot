@@ -249,7 +249,13 @@ def create_ops_app(
             summary=_build_summary(events=events, alerts=alerts),
             events=_event_rows(tuple(reversed(events))[:25]),
             alerts=_alert_rows(tuple(reversed(alerts))[:10]),
-            sources=_source_rows(events, settings=settings, ip_enricher=ip_enricher)[:8],
+            sources=_source_rows(
+                events,
+                settings=settings,
+                ip_enricher=ip_enricher,
+                sort="events",
+                direction="desc",
+            )[:8],
         )
         return templates.TemplateResponse(request=request, name="dashboard.html", context=context)
 
