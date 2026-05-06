@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.3",
+    "released_at": "2026-05-06",
+    "category": "Fix",
+    "title": "Widescreen-safe Ops backend layout",
+    "summary": "Lets the protected Ops backend use the full available width on normal displays while capping content at a 16:9 viewport ratio on ultrawide screens.",
+    "areas": ["ops-web", "ux", "tests"],
+    "changes": [
+      "Remove the old fixed 1280px Ops shell cap.",
+      "Let the Ops shell fill the viewport on normal displays.",
+      "Cap the Ops shell to a 16:9 viewport-derived width on widescreen layouts."
+    ],
+    "security_notes": [
+      "The change affects only protected Ops presentation and does not expose new endpoints or data.",
+      "Tables remain horizontally scrollable as a fallback for narrow screens."
+    ]
+  },
+  {
     "version": "v1.4.2",
     "released_at": "2026-05-05",
     "category": "Fix",

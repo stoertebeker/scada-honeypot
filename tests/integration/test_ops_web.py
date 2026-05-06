@@ -110,6 +110,8 @@ async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -
 
     assert dashboard.status_code == 200
     assert "Ops Dashboard" in dashboard.text
+    assert "max-width: calc(100vh * 16 / 9);" in dashboard.text
+    assert "max-width: 1280px;" not in dashboard.text
     assert "hmi.action.unauthenticated_control_attempt" in dashboard.text
     assert "203.0.113.44" in dashboard.text
     assert 'class="mono cell-source">203.0.113.44' in dashboard.text
@@ -162,6 +164,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.3" in versions.text
+    assert "Widescreen-safe Ops backend layout" in versions.text
     assert "v1.4.2" in versions.text
     assert "Full-width inverter service controls" in versions.text
     assert "v1.4.1" in versions.text

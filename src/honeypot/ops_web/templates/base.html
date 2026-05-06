@@ -29,9 +29,15 @@
     }
 
     .shell {
-      max-width: 1280px;
+      width: 100%;
       margin: 0 auto;
-      padding: 24px;
+      padding: clamp(16px, 1.25vw, 24px);
+    }
+
+    @media (min-aspect-ratio: 16 / 9) {
+      .shell {
+        max-width: calc(100vh * 16 / 9);
+      }
     }
 
     header {
