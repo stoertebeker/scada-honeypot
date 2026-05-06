@@ -73,6 +73,25 @@ _SOURCE_SORT_COLUMNS = (
     ("top_type", "Top Type"),
     ("top_endpoint", "Top Endpoint"),
 )
+_EVENT_CSV_COLUMNS = (
+    "timestamp",
+    "event_type",
+    "severity",
+    "source_ip",
+    "actor_type",
+    "component",
+    "asset_id",
+    "action",
+    "result",
+    "session_id",
+    "protocol",
+    "service",
+    "endpoint_or_register",
+    "error_code",
+    "message",
+    "requested_value",
+)
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
 _CONTROL_EVENT_TYPE_PREFIXES = ("hmi.action.",)
 _CONTROL_ACTION_TOKENS = (
     "breaker",
@@ -260,8 +279,36 @@ def create_ops_app(
             source_ip=source_ip or "",
             result=result or "",
             limit=resolved_limit,
+            events_export_href=_events_export_href(
+                event_type=event_type,
+                source_ip=source_ip,
+                result=result,
+                limit=resolved_limit,
+            ),
         )
         return templates.TemplateResponse(request=request, name="events.html", context=context)
+
+    @app.get("/events/export.csv", include_in_schema=False)
+    async def events_export(
+        event_type: str | None = None,
+        source_ip: str | None = None,
+        result: str | None = None,
+        limit: int | None = Query(default=None, ge=1, le=500),
+        _: None = Depends(require_ops_auth),
+    ) -> StreamingResponse:
+        settings = load_ops_settings(event_store)
+        resolved_limit = settings.events_default_limit if limit is None else limit
+        events = _filter_events(
+            tuple(reversed(event_store.fetch_events())),
+            event_type=event_type,
+            source_ip=source_ip,
+            result=result,
+        )
+        return StreamingResponse(
+            _events_csv_stream(events[:resolved_limit]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="ops-events-filtered.csv"'},
+        )
 
     @app.get("/alerts", response_class=HTMLResponse, include_in_schema=False)
     async def alerts_page(
@@ -753,6 +800,23 @@ def _filter_events(
     return filtered
 
 
+def _events_export_href(
+    *,
+    event_type: str | None,
+    source_ip: str | None,
+    result: str | None,
+    limit: int,
+) -> str:
+    params: dict[str, str] = {"limit": str(limit)}
+    if event_type:
+        params["event_type"] = event_type
+    if source_ip:
+        params["source_ip"] = source_ip
+    if result:
+        params["result"] = result
+    return "/events/export.csv?" + urlencode(params)
+
+
 def _event_rows(events: tuple[EventRecord, ...]) -> tuple[EventRow, ...]:
     return tuple(
         EventRow(
@@ -990,6 +1054,49 @@ def _credential_csv_stream(
         yield buffer.getvalue()
         buffer.seek(0)
         buffer.truncate(0)
+
+
+def _events_csv_stream(events: tuple[EventRecord, ...]):
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(_EVENT_CSV_COLUMNS)
+    yield buffer.getvalue()
+    buffer.seek(0)
+    buffer.truncate(0)
+    for event in events:
+        writer.writerow(
+            tuple(
+                _csv_safe_cell(value)
+                for value in (
+                    _format_dt_iso(event.timestamp),
+                    event.event_type,
+                    event.severity,
+                    event.source_ip,
+                    event.actor_type,
+                    event.component,
+                    event.asset_id,
+                    event.action,
+                    event.result,
+                    event.session_id or "",
+                    event.protocol or "",
+                    event.service or "",
+                    event.endpoint_or_register or "",
+                    event.error_code or "",
+                    event.message or "",
+                    _compact_json(event.requested_value, max_length=1000),
+                )
+            )
+        )
+        yield buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
+
+
+def _csv_safe_cell(value: Any) -> str:
+    text = "" if value is None else str(value)
+    if text.lstrip().startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + text
+    return text
 
 
 def _load_backend_versions(path: Path = _VERSION_LOG_PATH) -> tuple[BackendVersionRow, ...]:

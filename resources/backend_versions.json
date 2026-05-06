@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.5",
+    "released_at": "2026-05-06",
+    "category": "Feature",
+    "title": "Filtered Ops events CSV export",
+    "summary": "Adds a protected CSV export for the current Ops Events filter view so operators can analyze source-specific activity offline.",
+    "areas": ["ops-web", "export", "tests"],
+    "changes": [
+      "Add an Export filtered CSV action to the Ops Events page.",
+      "Reuse the existing event_type, source_ip, result and limit filters for /events/export.csv.",
+      "Export stable event columns including timestamp, source, action, result, endpoint, message and requested value."
+    ],
+    "security_notes": [
+      "The CSV export is available only through the protected Ops backend.",
+      "Spreadsheet-formula prefixes in exported cells are neutralized before streaming the CSV."
+    ]
+  },
+  {
     "version": "v1.4.4",
     "released_at": "2026-05-06",
     "category": "Feature",

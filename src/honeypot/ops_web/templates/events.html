@@ -11,6 +11,9 @@
     <input name="limit" type="number" min="1" max="500" value="{{ limit }}" placeholder="limit">
     <button type="submit">Apply</button>
   </form>
+  <div class="actions">
+    <a class="button-link" href="{{ events_export_href }}">Export filtered CSV</a>
+  </div>
   {% include "partials/events_table.html" %}
 </section>
 {% endblock %}

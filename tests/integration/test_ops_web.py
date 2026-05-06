@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
@@ -96,6 +98,53 @@ def seed_source_sort_store(store: SQLiteEventStore) -> None:
             clock.advance(timedelta(minutes=1))
 
 
+def seed_event_export_store(store: SQLiteEventStore) -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 20, 0, tzinfo=UTC))
+    recorder = EventRecorder(store=store, clock=clock)
+    page_view = recorder.build_event(
+        event_type="hmi.page.overview_viewed",
+        category="hmi",
+        severity="low",
+        source_ip="203.0.113.44",
+        actor_type="remote_client",
+        component="hmi-web",
+        asset_id="hmi-web",
+        action="view_overview",
+        result="served",
+        session_id="human_a",
+        protocol="http",
+        service="web-hmi",
+        endpoint_or_register="/overview",
+        requested_value={"http_method": "GET", "http_path": "/overview"},
+        resulting_value={"http_status": 200},
+        message="Overview viewed",
+        tags=("read-only", "overview"),
+    )
+    recorder.record(page_view)
+    clock.advance(timedelta(minutes=1))
+    control_attempt = recorder.build_event(
+        event_type="hmi.action.service_control_submitted",
+        category="hmi",
+        severity="medium",
+        source_ip="198.51.100.66",
+        actor_type="remote_client",
+        component="hmi-web",
+        asset_id="grid-01",
+        action="=set_breaker",
+        result="rejected",
+        session_id="human_b",
+        protocol="http",
+        service="web-hmi",
+        endpoint_or_register="@/service/panel/breaker",
+        requested_value={"control": "breaker", "request": "open"},
+        resulting_value={"http_status": 400},
+        error_code="control_rejected",
+        message="+clicked breaker",
+        tags=("service-panel", "breaker"),
+    )
+    recorder.record(control_attempt)
+
+
 @pytest.mark.asyncio
 async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops.db")
@@ -145,6 +194,36 @@ async def test_ops_events_page_does_not_highlight_page_views_as_control_attempts
 
 
 @pytest.mark.asyncio
+async def test_ops_events_export_uses_filters_and_neutralizes_csv_formulas(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-events-export.db")
+    seed_event_export_store(store)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        events = await client.get("/events?source_ip=198.51.100.66&result=rejected&limit=10")
+        export = await client.get("/events/export.csv?source_ip=198.51.100.66&result=rejected&limit=10")
+
+    rows = list(csv.DictReader(io.StringIO(export.text)))
+
+    assert events.status_code == 200
+    assert (
+        'href="/events/export.csv?limit=10&amp;source_ip=198.51.100.66&amp;result=rejected"'
+        in events.text
+    )
+    assert export.status_code == 200
+    assert export.headers["content-type"].startswith("text/csv")
+    assert 'filename="ops-events-filtered.csv"' in export.headers["content-disposition"]
+    assert len(rows) == 1
+    assert rows[0]["source_ip"] == "198.51.100.66"
+    assert rows[0]["result"] == "rejected"
+    assert rows[0]["action"] == "'=set_breaker"
+    assert rows[0]["endpoint_or_register"] == "'@/service/panel/breaker"
+    assert rows[0]["message"] == "'+clicked breaker"
+    assert "203.0.113.44" not in export.text
+
+
+@pytest.mark.asyncio
 async def test_ops_basic_auth_rejects_missing_and_wrong_credentials(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops-auth.db")
     app = create_ops_app(
@@ -182,6 +261,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.5" in versions.text
+    assert "Filtered Ops events CSV export" in versions.text
     assert "v1.4.4" in versions.text
     assert "Highlighted Ops control attempts" in versions.text
     assert "v1.4.3" in versions.text
