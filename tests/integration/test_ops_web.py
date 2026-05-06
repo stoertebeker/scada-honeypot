@@ -112,6 +112,8 @@ async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -
     assert "Ops Dashboard" in dashboard.text
     assert "max-width: calc(100vh * 16 / 9);" in dashboard.text
     assert "max-width: 1280px;" not in dashboard.text
+    assert 'class="event-control-attempt"' in dashboard.text
+    assert "Control attempt" in dashboard.text
     assert "hmi.action.unauthenticated_control_attempt" in dashboard.text
     assert "203.0.113.44" in dashboard.text
     assert 'class="mono cell-source">203.0.113.44' in dashboard.text
@@ -124,6 +126,22 @@ async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -
     assert summary.json()["summary"]["last_event_at"] == "2026-04-26T20:00:00Z"
     assert summary.json()["sources"][0]["rejected_count"] == 1
     assert summary.json()["sources"][0]["country_code"] == "-"
+
+
+@pytest.mark.asyncio
+async def test_ops_events_page_does_not_highlight_page_views_as_control_attempts(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-page-view-events.db")
+    seed_source_sort_store(store)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        events = await client.get("/events?source_ip=203.0.113.44&limit=10")
+
+    assert events.status_code == 200
+    assert "hmi.page.overview_viewed" in events.text
+    assert 'class="event-control-attempt"' not in events.text
+    assert "Control attempt" not in events.text
 
 
 @pytest.mark.asyncio
@@ -164,6 +182,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.4" in versions.text
+    assert "Highlighted Ops control attempts" in versions.text
     assert "v1.4.3" in versions.text
     assert "Widescreen-safe Ops backend layout" in versions.text
     assert "v1.4.2" in versions.text

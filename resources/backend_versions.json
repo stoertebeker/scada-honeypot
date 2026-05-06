@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.4",
+    "released_at": "2026-05-06",
+    "category": "Feature",
+    "title": "Highlighted Ops control attempts",
+    "summary": "Highlights HMI control and switching attempts in the protected Ops events table so human interaction stands out during source investigation.",
+    "areas": ["ops-web", "hmi-observation", "tests"],
+    "changes": [
+      "Classify HMI action events, service-panel endpoints and plant-control actions as control attempts.",
+      "Render control-attempt rows with a warning accent and badge in the Ops events table.",
+      "Keep normal HMI page-view events unmarked."
+    ],
+    "security_notes": [
+      "The highlight is read-only presentation logic in the protected Ops backend.",
+      "No new public HMI endpoint, control path or authentication behavior is introduced."
+    ]
+  },
+  {
     "version": "v1.4.3",
     "released_at": "2026-05-06",
     "category": "Fix",

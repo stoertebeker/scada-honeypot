@@ -73,6 +73,24 @@ _SOURCE_SORT_COLUMNS = (
     ("top_type", "Top Type"),
     ("top_endpoint", "Top Endpoint"),
 )
+_CONTROL_EVENT_TYPE_PREFIXES = ("hmi.action.",)
+_CONTROL_ACTION_TOKENS = (
+    "breaker",
+    "block_control",
+    "control",
+    "dc_disconnect",
+    "disconnect",
+    "plant_mode",
+    "power_limit",
+    "reactive_power",
+    "set_",
+    "setpoint",
+)
+_CONTROL_ENDPOINT_PREFIXES = (
+    "/service/panel",
+    "/single-line/breaker-attempt",
+    "/single-line/inverter-attempt",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +117,7 @@ class EventRow:
     session_id: str
     message: str
     requested_value: str
+    is_control_attempt: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -749,9 +768,23 @@ def _event_rows(events: tuple[EventRecord, ...]) -> tuple[EventRow, ...]:
             session_id=event.session_id or "",
             message=event.message or "",
             requested_value=_compact_json(event.requested_value),
+            is_control_attempt=_is_control_attempt_event(event),
         )
         for event in events
     )
+
+
+def _is_control_attempt_event(event: EventRecord) -> bool:
+    event_type = event.event_type.lower()
+    if any(event_type.startswith(prefix) for prefix in _CONTROL_EVENT_TYPE_PREFIXES):
+        return True
+
+    action = event.action.lower()
+    if any(token in action for token in _CONTROL_ACTION_TOKENS):
+        return True
+
+    endpoint = (event.endpoint_or_register or "").lower()
+    return any(endpoint.startswith(prefix) for prefix in _CONTROL_ENDPOINT_PREFIXES)
 
 
 def _alert_rows(alerts: tuple[AlertRecord, ...]) -> tuple[AlertRow, ...]:

@@ -14,9 +14,14 @@
     </thead>
     <tbody>
       {% for event in events %}
-      <tr>
+      <tr{% if event.is_control_attempt %} class="event-control-attempt"{% endif %}>
         <td class="mono cell-time">{{ event.timestamp }}</td>
-        <td class="mono">{{ event.event_type }}</td>
+        <td class="mono">
+          {{ event.event_type }}
+          {% if event.is_control_attempt %}
+          <span class="event-badge">Control attempt</span>
+          {% endif %}
+        </td>
         <td class="mono cell-source">{{ event.source_ip }}</td>
         <td>{{ event.action }}</td>
         <td class="result-{{ event.result }}">{{ event.result }}</td>
