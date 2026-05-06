@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.7",
+    "released_at": "2026-05-06",
+    "category": "Feature",
+    "title": "Multi-source Ops event filters",
+    "summary": "Extends the Ops Events source-IP filter to support multiple included and !-excluded IP tokens with matching CSV export behavior.",
+    "areas": ["ops-web", "source-analysis", "export", "tests"],
+    "changes": [
+      "Allow multiple source_ip tokens separated by spaces or commas.",
+      "Treat !IP tokens as source exclusions and AND as a readability separator.",
+      "Apply the same include/exclude semantics to filtered Events CSV exports."
+    ],
+    "security_notes": [
+      "Filtering remains in server-side allowlisted application logic and does not introduce raw SQL fragments.",
+      "CSV exports remain protected by the Ops backend authentication path and keep formula-prefix neutralization."
+    ]
+  },
+  {
     "version": "v1.4.6",
     "released_at": "2026-05-06",
     "category": "Fix",

@@ -209,6 +209,43 @@ async def test_ops_events_page_does_not_highlight_page_views_as_control_attempts
 
 
 @pytest.mark.asyncio
+async def test_ops_events_source_filter_supports_multi_include_and_exclude_tokens(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-events-source-filter.db")
+    seed_source_sort_store(store)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        include = await client.get(
+            "/events",
+            params={"source_ip": "203.0.113.44 198.51.100.10", "limit": "10"},
+        )
+        exclude = await client.get(
+            "/events",
+            params={"source_ip": "!203.0.113.44 AND !198.51.100.10", "limit": "10"},
+        )
+        mixed = await client.get(
+            "/events",
+            params={"source_ip": "203.0.113.44,198.51.100.10 !198.51.100.10", "limit": "10"},
+        )
+
+    assert include.status_code == 200
+    assert _source_ips(include.text) == [
+        "198.51.100.10",
+        "198.51.100.10",
+        "198.51.100.10",
+        "203.0.113.44",
+    ]
+    assert "Source filter supports multiple IPs." in include.text
+
+    assert exclude.status_code == 200
+    assert _source_ips(exclude.text) == ["192.0.2.9", "192.0.2.9"]
+
+    assert mixed.status_code == 200
+    assert _source_ips(mixed.text) == ["203.0.113.44"]
+
+
+@pytest.mark.asyncio
 async def test_ops_events_export_uses_filters_and_neutralizes_csv_formulas(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops-events-export.db")
     seed_event_export_store(store)
@@ -218,8 +255,13 @@ async def test_ops_events_export_uses_filters_and_neutralizes_csv_formulas(tmp_p
     async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
         events = await client.get("/events?source_ip=198.51.100.66&result=rejected&limit=10")
         export = await client.get("/events/export.csv?source_ip=198.51.100.66&result=rejected&limit=10")
+        exclude_export = await client.get(
+            "/events/export.csv",
+            params={"source_ip": "!203.0.113.44", "limit": "10"},
+        )
 
     rows = list(csv.DictReader(io.StringIO(export.text)))
+    excluded_rows = list(csv.DictReader(io.StringIO(exclude_export.text)))
 
     assert events.status_code == 200
     assert (
@@ -236,6 +278,8 @@ async def test_ops_events_export_uses_filters_and_neutralizes_csv_formulas(tmp_p
     assert rows[0]["endpoint_or_register"] == "'@/service/panel/breaker"
     assert rows[0]["message"] == "'+clicked breaker"
     assert "203.0.113.44" not in export.text
+    assert exclude_export.status_code == 200
+    assert [row["source_ip"] for row in excluded_rows] == ["198.51.100.66"]
 
 
 @pytest.mark.asyncio
@@ -276,6 +320,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.7" in versions.text
+    assert "Multi-source Ops event filters" in versions.text
     assert "v1.4.6" in versions.text
     assert "Dashboard top sources by event volume" in versions.text
     assert "v1.4.5" in versions.text

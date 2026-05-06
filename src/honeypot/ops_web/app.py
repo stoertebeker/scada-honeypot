@@ -92,6 +92,7 @@ _EVENT_CSV_COLUMNS = (
     "requested_value",
 )
 _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
+_SOURCE_FILTER_SEPARATORS = {",", "\n", "\r", "\t"}
 _CONTROL_EVENT_TYPE_PREFIXES = ("hmi.action.",)
 _CONTROL_ACTION_TOKENS = (
     "breaker",
@@ -800,10 +801,39 @@ def _filter_events(
     if event_type:
         filtered = tuple(event for event in filtered if event.event_type == event_type)
     if source_ip:
-        filtered = tuple(event for event in filtered if event.source_ip == source_ip)
+        source_filter = _parse_source_ip_filter(source_ip)
+        filtered = tuple(
+            event for event in filtered if _source_ip_matches_filter(event.source_ip, source_filter)
+        )
     if result:
         filtered = tuple(event for event in filtered if event.result == result)
     return filtered
+
+
+def _parse_source_ip_filter(value: str) -> tuple[frozenset[str], frozenset[str]]:
+    normalized = value
+    for separator in _SOURCE_FILTER_SEPARATORS:
+        normalized = normalized.replace(separator, " ")
+    include: set[str] = set()
+    exclude: set[str] = set()
+    for raw_token in normalized.split():
+        token = raw_token.strip()
+        if not token or token.upper() == "AND":
+            continue
+        if token.startswith("!"):
+            excluded = token[1:].strip()
+            if excluded:
+                exclude.add(excluded)
+            continue
+        include.add(token)
+    return frozenset(include), frozenset(exclude)
+
+
+def _source_ip_matches_filter(source_ip: str, source_filter: tuple[frozenset[str], frozenset[str]]) -> bool:
+    include, exclude = source_filter
+    if include and source_ip not in include:
+        return False
+    return source_ip not in exclude
 
 
 def _events_export_href(
