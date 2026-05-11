@@ -66,6 +66,12 @@ class LoginCredentialStats:
     all_time_dropped_unique_passwords: int
 
 
+@dataclass(frozen=True, slots=True)
+class EventPage:
+    events: tuple[EventRecord, ...]
+    next_before_rowid: int | None
+
+
 class SQLiteEventStore:
     """SQLite-Persistenz fuer `current_state`, `event_log`, `alert_log` und `outbox`."""
 
@@ -191,6 +197,15 @@ class SQLiteEventStore:
 
                 CREATE INDEX IF NOT EXISTS idx_outbox_status_next_attempt
                 ON outbox(status, next_attempt_at);
+
+                CREATE INDEX IF NOT EXISTS idx_event_log_event_type
+                ON event_log(event_type);
+
+                CREATE INDEX IF NOT EXISTS idx_event_log_source_ip
+                ON event_log(source_ip);
+
+                CREATE INDEX IF NOT EXISTS idx_event_log_result
+                ON event_log(result);
 
                 CREATE INDEX IF NOT EXISTS idx_plant_history_observed_at
                 ON plant_history(observed_at);
@@ -730,6 +745,67 @@ class SQLiteEventStore:
 
         return tuple(EventRecord.model_validate(json.loads(str(row["raw_event_json"]))) for row in rows)
 
+    def fetch_events_page(
+        self,
+        *,
+        limit: int,
+        before_rowid: int | None = None,
+        event_type: str | None = None,
+        source_ips: Sequence[str] = (),
+        excluded_source_ips: Sequence[str] = (),
+        result: str | None = None,
+    ) -> EventPage:
+        if limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+        if before_rowid is not None and before_rowid <= 0:
+            raise ValueError("before_rowid muss groesser als 0 sein")
+
+        clauses: list[str] = []
+        params: list[Any] = []
+        if before_rowid is not None:
+            clauses.append("rowid < ?")
+            params.append(before_rowid)
+        if event_type:
+            clauses.append("event_type = ?")
+            params.append(event_type)
+        _append_in_clause(
+            clauses,
+            params,
+            column="source_ip",
+            values=source_ips,
+            negated=False,
+        )
+        _append_in_clause(
+            clauses,
+            params,
+            column="source_ip",
+            values=excluded_source_ips,
+            negated=True,
+        )
+        if result:
+            clauses.append("result = ?")
+            params.append(result)
+
+        where = "" if not clauses else f"WHERE {' AND '.join(clauses)}"
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT rowid, raw_event_json
+                FROM event_log
+                {where}
+                ORDER BY rowid DESC
+                LIMIT ?
+                """,
+                tuple(params + [limit + 1]),
+            ).fetchall()
+
+        page_rows = rows[:limit]
+        next_before_rowid = int(page_rows[-1]["rowid"]) if len(rows) > limit and page_rows else None
+        return EventPage(
+            events=tuple(EventRecord.model_validate(json.loads(str(row["raw_event_json"]))) for row in page_rows),
+            next_before_rowid=next_before_rowid,
+        )
+
     def fetch_event(self, event_id: str) -> EventRecord | None:
         normalized_event_id = _normalize_required_text(event_id, field_name="event_id")
         with self._connect() as connection:
@@ -911,6 +987,23 @@ class SQLiteEventStore:
                 """,
                 (normalized_error, *outbox_ids),
             )
+
+
+def _append_in_clause(
+    clauses: list[str],
+    params: list[Any],
+    *,
+    column: str,
+    values: Sequence[str],
+    negated: bool,
+) -> None:
+    normalized_values = tuple(sorted({value.strip() for value in values if value.strip()}))
+    if not normalized_values:
+        return
+    placeholders = ", ".join("?" for _ in normalized_values)
+    operator = "NOT IN" if negated else "IN"
+    clauses.append(f"{column} {operator} ({placeholders})")
+    params.extend(normalized_values)
 
 
 def _alert_from_row(row: sqlite3.Row) -> AlertRecord:

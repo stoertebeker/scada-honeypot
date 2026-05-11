@@ -207,6 +207,44 @@ def test_fetch_events_preserves_insert_order_for_identical_timestamps(tmp_path) 
     assert [event.event_id for event in events] == [first_event.event_id, second_event.event_id]
 
 
+def test_fetch_events_page_returns_newest_matching_records_with_cursor(tmp_path) -> None:
+    recorder = build_recorder(tmp_path)
+    for index in range(5):
+        recorder.record(
+            recorder.build_event(
+                event_type="hmi.page.overview_viewed",
+                category="hmi",
+                severity="low",
+                source_ip="203.0.113.24" if index % 2 == 0 else "198.51.100.10",
+                actor_type="remote_client",
+                component="hmi-web",
+                asset_id="hmi-web",
+                action=f"view_overview_{index}",
+                result="served",
+                requested_value={"index": index},
+            )
+        )
+
+    first_page = recorder.store.fetch_events_page(
+        limit=2,
+        source_ips=("203.0.113.24",),
+        excluded_source_ips=("198.51.100.10",),
+        result="served",
+    )
+    second_page = recorder.store.fetch_events_page(
+        limit=2,
+        before_rowid=first_page.next_before_rowid,
+        source_ips=("203.0.113.24",),
+        excluded_source_ips=("198.51.100.10",),
+        result="served",
+    )
+
+    assert [event.action for event in first_page.events] == ["view_overview_4", "view_overview_2"]
+    assert first_page.next_before_rowid is not None
+    assert [event.action for event in second_page.events] == ["view_overview_0"]
+    assert second_page.next_before_rowid is None
+
+
 def test_fetch_alerts_preserves_insert_order_for_identical_timestamps(tmp_path) -> None:
     recorder = build_recorder(tmp_path)
     first_event = recorder.build_event(

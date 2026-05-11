@@ -14,6 +14,9 @@
   <p class="meta">Source filter supports multiple IPs. Use spaces or commas as separators and prefix an IP with ! to exclude it.</p>
   <div class="actions">
     <a class="button-link" href="{{ events_export_href }}">Export filtered CSV</a>
+    {% if next_events_href %}
+    <a class="button-link" href="{{ next_events_href }}">Show next 100 events</a>
+    {% endif %}
   </div>
   {% include "partials/events_table.html" %}
 </section>

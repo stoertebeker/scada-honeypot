@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import io
 from datetime import UTC, datetime, timedelta
 import json
@@ -145,6 +146,33 @@ def seed_event_export_store(store: SQLiteEventStore) -> None:
     recorder.record(control_attempt)
 
 
+def seed_many_event_store(store: SQLiteEventStore, *, count: int) -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 20, 0, tzinfo=UTC))
+    recorder = EventRecorder(store=store, clock=clock)
+    for index in range(count):
+        event = recorder.build_event(
+            event_type="hmi.page.synthetic_event_viewed",
+            category="hmi",
+            severity="low",
+            source_ip="203.0.113.44",
+            actor_type="remote_client",
+            component="hmi-web",
+            asset_id="hmi-web",
+            action=f"view_event_{index:03d}",
+            result="served",
+            session_id=f"event_page_{index:03d}",
+            protocol="http",
+            service="web-hmi",
+            endpoint_or_register="/overview",
+            requested_value={"index": index},
+            resulting_value={"http_status": 200},
+            message="Synthetic page event viewed",
+            tags=("read-only", "events-page"),
+        )
+        recorder.record(event)
+        clock.advance(timedelta(seconds=1))
+
+
 @pytest.mark.asyncio
 async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops.db")
@@ -246,6 +274,33 @@ async def test_ops_events_source_filter_supports_multi_include_and_exclude_token
 
 
 @pytest.mark.asyncio
+async def test_ops_events_page_links_next_hundred_events_without_repeating_current_page(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-events-pagination.db")
+    seed_many_event_store(store, count=205)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        first = await client.get("/events?limit=100")
+        next_href = _extract_href(first.text, "Show next 100 events")
+        second = await client.get(next_href)
+
+    assert first.status_code == 200
+    assert "view_event_204" in first.text
+    assert "view_event_105" in first.text
+    assert "view_event_104" not in first.text
+    assert 'href="/events/export.csv?limit=100"' in first.text
+    assert "Show next 100 events" in first.text
+
+    assert second.status_code == 200
+    assert "view_event_104" in second.text
+    assert "view_event_005" in second.text
+    assert "view_event_004" not in second.text
+    assert "view_event_204" not in second.text
+    assert 'href="/events/export.csv?limit=100&amp;before=' in second.text
+
+
+@pytest.mark.asyncio
 async def test_ops_events_export_uses_filters_and_neutralizes_csv_formulas(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops-events-export.db")
     seed_event_export_store(store)
@@ -320,6 +375,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.8" in versions.text
+    assert "Paged Ops events view" in versions.text
     assert "v1.4.7" in versions.text
     assert "Multi-source Ops event filters" in versions.text
     assert "v1.4.6" in versions.text
@@ -713,6 +770,12 @@ def _extract_csrf_token(rendered_html: str) -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', rendered_html)
     assert match is not None
     return match.group(1)
+
+
+def _extract_href(rendered_html: str, label: str) -> str:
+    match = re.search(r'href="([^"]+)">' + re.escape(label), rendered_html)
+    assert match is not None
+    return html.unescape(match.group(1))
 
 
 def _source_ips(rendered_html: str) -> list[str]:

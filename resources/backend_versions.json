@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.8",
+    "released_at": "2026-05-11",
+    "category": "Fix",
+    "title": "Paged Ops events view",
+    "summary": "Moves the protected Ops Events view to SQL-backed pages and adds a next-100 navigation action for reviewing older activity without loading the full event log.",
+    "areas": ["ops-web", "event-store", "performance", "tests"],
+    "changes": [
+      "Fetch only the requested Events page plus one sentinel row from SQLite.",
+      "Add a Show next 100 events action that keeps the active filters.",
+      "Apply the same paged query path to the Events API and filtered CSV export."
+    ],
+    "security_notes": [
+      "Event filters stay parameterized and the new cursor parameter is range-validated by FastAPI.",
+      "The Events view remains available only through the protected Ops backend path."
+    ]
+  },
+  {
     "version": "v1.4.7",
     "released_at": "2026-05-06",
     "category": "Feature",

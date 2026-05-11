@@ -111,6 +111,7 @@ _CONTROL_ENDPOINT_PREFIXES = (
     "/single-line/breaker-attempt",
     "/single-line/inverter-attempt",
 )
+_EVENTS_NEXT_BATCH_SIZE = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,30 +268,43 @@ def create_ops_app(
         source_ip: str | None = None,
         result: str | None = None,
         limit: int | None = Query(default=None, ge=1, le=500),
+        before: int | None = Query(default=None, ge=1),
         _: None = Depends(require_ops_auth),
     ) -> HTMLResponse:
         settings = load_ops_settings(event_store)
         resolved_limit = settings.events_default_limit if limit is None else limit
-        events = _filter_events(
-            tuple(reversed(event_store.fetch_events())),
+        event_page = _fetch_filtered_event_page(
+            event_store,
             event_type=event_type,
             source_ip=source_ip,
             result=result,
+            limit=resolved_limit,
+            before=before,
         )
         context = _template_context(
             request=request,
             config=config,
             current_path="/events",
-            events=_event_rows(events[:resolved_limit]),
+            events=_event_rows(event_page.events),
             event_type=event_type or "",
             source_ip=source_ip or "",
             result=result or "",
             limit=resolved_limit,
+            next_events_href=_events_page_href(
+                event_type=event_type,
+                source_ip=source_ip,
+                result=result,
+                limit=_EVENTS_NEXT_BATCH_SIZE,
+                before=event_page.next_before_rowid,
+            )
+            if event_page.next_before_rowid is not None
+            else "",
             events_export_href=_events_export_href(
                 event_type=event_type,
                 source_ip=source_ip,
                 result=result,
                 limit=resolved_limit,
+                before=before,
             ),
         )
         return templates.TemplateResponse(request=request, name="events.html", context=context)
@@ -301,18 +315,21 @@ def create_ops_app(
         source_ip: str | None = None,
         result: str | None = None,
         limit: int | None = Query(default=None, ge=1, le=500),
+        before: int | None = Query(default=None, ge=1),
         _: None = Depends(require_ops_auth),
     ) -> StreamingResponse:
         settings = load_ops_settings(event_store)
         resolved_limit = settings.events_default_limit if limit is None else limit
-        events = _filter_events(
-            tuple(reversed(event_store.fetch_events())),
+        event_page = _fetch_filtered_event_page(
+            event_store,
             event_type=event_type,
             source_ip=source_ip,
             result=result,
+            limit=resolved_limit,
+            before=before,
         )
         return StreamingResponse(
-            _events_csv_stream(events[:resolved_limit]),
+            _events_csv_stream(event_page.events),
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": 'attachment; filename="ops-events-filtered.csv"'},
         )
@@ -546,17 +563,23 @@ def create_ops_app(
         source_ip: str | None = None,
         result: str | None = None,
         limit: int | None = Query(default=None, ge=1, le=500),
+        before: int | None = Query(default=None, ge=1),
         _: None = Depends(require_ops_auth),
     ) -> dict[str, Any]:
         settings = load_ops_settings(event_store)
         resolved_limit = settings.events_default_limit if limit is None else limit
-        events = _filter_events(
-            tuple(reversed(event_store.fetch_events())),
+        event_page = _fetch_filtered_event_page(
+            event_store,
             event_type=event_type,
             source_ip=source_ip,
             result=result,
+            limit=resolved_limit,
+            before=before,
         )
-        return {"events": [event.model_dump(mode="json") for event in events[:resolved_limit]]}
+        return {
+            "events": [event.model_dump(mode="json") for event in event_page.events],
+            "next_before": event_page.next_before_rowid,
+        }
 
     @app.get("/api/alerts", include_in_schema=False)
     async def api_alerts(
@@ -790,24 +813,26 @@ def _build_summary(
     )
 
 
-def _filter_events(
-    events: tuple[EventRecord, ...],
+def _fetch_filtered_event_page(
+    event_store: SQLiteEventStore,
     *,
     event_type: str | None,
     source_ip: str | None,
     result: str | None,
-) -> tuple[EventRecord, ...]:
-    filtered = events
-    if event_type:
-        filtered = tuple(event for event in filtered if event.event_type == event_type)
-    if source_ip:
-        source_filter = _parse_source_ip_filter(source_ip)
-        filtered = tuple(
-            event for event in filtered if _source_ip_matches_filter(event.source_ip, source_filter)
-        )
-    if result:
-        filtered = tuple(event for event in filtered if event.result == result)
-    return filtered
+    limit: int,
+    before: int | None,
+):
+    include_sources, exclude_sources = (
+        _parse_source_ip_filter(source_ip) if source_ip else (frozenset(), frozenset())
+    )
+    return event_store.fetch_events_page(
+        limit=limit,
+        before_rowid=before,
+        event_type=event_type or None,
+        source_ips=tuple(include_sources),
+        excluded_source_ips=tuple(exclude_sources),
+        result=result or None,
+    )
 
 
 def _parse_source_ip_filter(value: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -829,28 +854,61 @@ def _parse_source_ip_filter(value: str) -> tuple[frozenset[str], frozenset[str]]
     return frozenset(include), frozenset(exclude)
 
 
-def _source_ip_matches_filter(source_ip: str, source_filter: tuple[frozenset[str], frozenset[str]]) -> bool:
-    include, exclude = source_filter
-    if include and source_ip not in include:
-        return False
-    return source_ip not in exclude
-
-
 def _events_export_href(
     *,
     event_type: str | None,
     source_ip: str | None,
     result: str | None,
     limit: int,
+    before: int | None = None,
+) -> str:
+    return _events_href(
+        "/events/export.csv",
+        event_type=event_type,
+        source_ip=source_ip,
+        result=result,
+        limit=limit,
+        before=before,
+    )
+
+
+def _events_page_href(
+    *,
+    event_type: str | None,
+    source_ip: str | None,
+    result: str | None,
+    limit: int,
+    before: int | None,
+) -> str:
+    return _events_href(
+        "/events",
+        event_type=event_type,
+        source_ip=source_ip,
+        result=result,
+        limit=limit,
+        before=before,
+    )
+
+
+def _events_href(
+    path: str,
+    *,
+    event_type: str | None,
+    source_ip: str | None,
+    result: str | None,
+    limit: int,
+    before: int | None,
 ) -> str:
     params: dict[str, str] = {"limit": str(limit)}
+    if before is not None:
+        params["before"] = str(before)
     if event_type:
         params["event_type"] = event_type
     if source_ip:
         params["source_ip"] = source_ip
     if result:
         params["result"] = result
-    return "/events/export.csv?" + urlencode(params)
+    return path + "?" + urlencode(params)
 
 
 def _event_rows(events: tuple[EventRecord, ...]) -> tuple[EventRow, ...]:
