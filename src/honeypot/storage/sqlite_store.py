@@ -72,6 +72,28 @@ class EventPage:
     next_before_rowid: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class EventActivitySummary:
+    total_events: int
+    total_alerts: int
+    active_alerts: int
+    unique_sources: int
+    rejected_events: int
+    last_event_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceActivityRecord:
+    source_ip: str
+    event_count: int
+    rejected_count: int
+    session_count: int
+    first_seen: datetime
+    last_seen: datetime
+    top_event_type: str
+    top_endpoint: str
+
+
 class SQLiteEventStore:
     """SQLite-Persistenz fuer `current_state`, `event_log`, `alert_log` und `outbox`."""
 
@@ -206,6 +228,18 @@ class SQLiteEventStore:
 
                 CREATE INDEX IF NOT EXISTS idx_event_log_result
                 ON event_log(result);
+
+                CREATE INDEX IF NOT EXISTS idx_event_log_source_type
+                ON event_log(source_ip, event_type);
+
+                CREATE INDEX IF NOT EXISTS idx_event_log_source_endpoint
+                ON event_log(source_ip, endpoint_or_register);
+
+                CREATE INDEX IF NOT EXISTS idx_alert_log_state
+                ON alert_log(state);
+
+                CREATE INDEX IF NOT EXISTS idx_alert_log_created_at
+                ON alert_log(created_at);
 
                 CREATE INDEX IF NOT EXISTS idx_plant_history_observed_at
                 ON plant_history(observed_at);
@@ -806,6 +840,79 @@ class SQLiteEventStore:
             next_before_rowid=next_before_rowid,
         )
 
+    def fetch_activity_summary(self) -> EventActivitySummary:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM event_log) AS total_events,
+                    (SELECT COUNT(*) FROM alert_log) AS total_alerts,
+                    (SELECT COUNT(*) FROM alert_log WHERE state LIKE 'active%') AS active_alerts,
+                    (SELECT COUNT(DISTINCT source_ip) FROM event_log) AS unique_sources,
+                    (SELECT COUNT(*) FROM event_log WHERE result = 'rejected') AS rejected_events,
+                    (SELECT timestamp FROM event_log ORDER BY rowid DESC LIMIT 1) AS last_event_at
+                """
+            ).fetchone()
+
+        last_event_at = row["last_event_at"]
+        return EventActivitySummary(
+            total_events=int(row["total_events"]),
+            total_alerts=int(row["total_alerts"]),
+            active_alerts=int(row["active_alerts"]),
+            unique_sources=int(row["unique_sources"]),
+            rejected_events=int(row["rejected_events"]),
+            last_event_at=None if last_event_at is None else _parse_timestamp(str(last_event_at)),
+        )
+
+    def fetch_top_sources(self, *, limit: int) -> tuple[SourceActivityRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    grouped.source_ip,
+                    grouped.event_count,
+                    grouped.rejected_count,
+                    grouped.session_count,
+                    grouped.first_seen,
+                    grouped.last_seen,
+                    (
+                        SELECT event_type
+                        FROM event_log AS type_events
+                        WHERE type_events.source_ip = grouped.source_ip
+                        GROUP BY event_type
+                        ORDER BY COUNT(*) DESC, MIN(rowid) ASC
+                        LIMIT 1
+                    ) AS top_event_type,
+                    (
+                        SELECT COALESCE(endpoint_or_register, '')
+                        FROM event_log AS endpoint_events
+                        WHERE endpoint_events.source_ip = grouped.source_ip
+                        GROUP BY COALESCE(endpoint_or_register, '')
+                        ORDER BY COUNT(*) DESC, MIN(rowid) ASC
+                        LIMIT 1
+                    ) AS top_endpoint
+                FROM (
+                    SELECT
+                        source_ip,
+                        COUNT(*) AS event_count,
+                        SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                        COUNT(DISTINCT session_id) AS session_count,
+                        MIN(timestamp) AS first_seen,
+                        MAX(timestamp) AS last_seen
+                    FROM event_log
+                    GROUP BY source_ip
+                ) AS grouped
+                ORDER BY grouped.event_count DESC, grouped.source_ip ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        return tuple(_source_activity_from_row(row) for row in rows)
+
     def fetch_event(self, event_id: str) -> EventRecord | None:
         normalized_event_id = _normalize_required_text(event_id, field_name="event_id")
         with self._connect() as connection:
@@ -837,6 +944,23 @@ class SQLiteEventStore:
             _alert_from_row(row)
             for row in rows
         )
+
+    def fetch_recent_alerts(self, *, limit: int) -> tuple[AlertRecord, ...]:
+        if limit <= 0:
+            raise ValueError("limit muss groesser als 0 sein")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT alert_id, event_id, correlation_id, alarm_code, severity, state,
+                       component, asset_id, message, created_at
+                FROM alert_log
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        return tuple(_alert_from_row(row) for row in rows)
 
     def fetch_alert(self, alert_id: str) -> AlertRecord | None:
         normalized_alert_id = _normalize_required_text(alert_id, field_name="alert_id")
@@ -1018,6 +1142,19 @@ def _alert_from_row(row: sqlite3.Row) -> AlertRecord:
         asset_id=str(row["asset_id"]),
         message=row["message"],
         created_at=_parse_timestamp(str(row["created_at"])),
+    )
+
+
+def _source_activity_from_row(row: sqlite3.Row) -> SourceActivityRecord:
+    return SourceActivityRecord(
+        source_ip=str(row["source_ip"]),
+        event_count=int(row["event_count"]),
+        rejected_count=int(row["rejected_count"]),
+        session_count=int(row["session_count"]),
+        first_seen=_parse_timestamp(str(row["first_seen"])),
+        last_seen=_parse_timestamp(str(row["last_seen"])),
+        top_event_type=str(row["top_event_type"] or ""),
+        top_endpoint=str(row["top_endpoint"] or ""),
     )
 
 

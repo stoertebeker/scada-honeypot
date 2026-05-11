@@ -221,6 +221,37 @@ async def test_ops_dashboard_top_sources_sort_by_event_count(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_ops_dashboard_and_summary_api_do_not_fetch_full_event_snapshots(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-dashboard-bounded.db")
+    seed_many_event_store(store, count=30)
+
+    def fail_full_event_fetch():
+        raise AssertionError("dashboard should not load the full event log")
+
+    def fail_full_alert_fetch():
+        raise AssertionError("dashboard should not load the full alert log")
+
+    monkeypatch.setattr(store, "fetch_events", fail_full_event_fetch)
+    monkeypatch.setattr(store, "fetch_alerts", fail_full_alert_fetch)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        dashboard = await client.get("/")
+        summary = await client.get("/api/summary")
+
+    assert dashboard.status_code == 200
+    assert summary.status_code == 200
+    assert summary.json()["summary"]["total_events"] == 30
+    assert "view_event_029" in dashboard.text
+    assert "view_event_005" in dashboard.text
+    assert "view_event_004" not in dashboard.text
+
+
+@pytest.mark.asyncio
 async def test_ops_events_page_does_not_highlight_page_views_as_control_attempts(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops-page-view-events.db")
     seed_source_sort_store(store)
@@ -375,6 +406,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.9" in versions.text
+    assert "SQL-backed Ops dashboard" in versions.text
     assert "v1.4.8" in versions.text
     assert "Paged Ops events view" in versions.text
     assert "v1.4.7" in versions.text

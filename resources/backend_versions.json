@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.9",
+    "released_at": "2026-05-11",
+    "category": "Fix",
+    "title": "SQL-backed Ops dashboard",
+    "summary": "Moves the protected Ops dashboard summary, recent activity, recent alerts and top-source rows onto bounded SQLite queries so the page no longer materializes the full event and alert logs.",
+    "areas": ["ops-web", "event-store", "performance", "tests"],
+    "changes": [
+      "Use SQL aggregate queries for dashboard totals and active-alert counts.",
+      "Fetch only bounded recent event and alert rows for dashboard tables.",
+      "Build dashboard top sources from grouped SQLite activity records."
+    ],
+    "security_notes": [
+      "Dashboard data remains read-only and available only through the protected Ops backend path.",
+      "The new aggregation queries use static SQL with no request-controlled fragments."
+    ]
+  },
+  {
     "version": "v1.4.8",
     "released_at": "2026-05-11",
     "category": "Fix",

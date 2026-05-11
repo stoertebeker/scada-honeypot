@@ -245,6 +245,77 @@ def test_fetch_events_page_returns_newest_matching_records_with_cursor(tmp_path)
     assert second_page.next_before_rowid is None
 
 
+def test_activity_summary_top_sources_and_recent_alerts_use_store_aggregates(tmp_path) -> None:
+    recorder = build_recorder(tmp_path)
+    source_plan = (
+        ("203.0.113.24", 1),
+        ("198.51.100.10", 3),
+        ("192.0.2.9", 3),
+    )
+    recorded_events = []
+    active_alert = None
+    cleared_alert = None
+    for source_ip, count in source_plan:
+        for index in range(count):
+            result = "rejected" if source_ip == "198.51.100.10" and index == 0 else "served"
+            event = recorder.build_event(
+                event_type="hmi.page.overview_viewed" if index != 2 else "hmi.page.alarms_viewed",
+                category="hmi",
+                severity="low",
+                source_ip=source_ip,
+                actor_type="remote_client",
+                component="hmi-web",
+                asset_id="hmi-web",
+                action=f"view_{index}",
+                result=result,
+                session_id=f"session_{source_ip}_{index}",
+                protocol="http",
+                service="web-hmi",
+                endpoint_or_register="/overview" if index != 2 else "/alarms",
+                requested_value={"index": index},
+            )
+            alert = None
+            if source_ip == "192.0.2.9" and index == 1:
+                active_alert = recorder.build_alert(
+                    event=event,
+                    alarm_code="REPEATED_LOGIN_FAILURE",
+                    severity="medium",
+                    state="active_unacknowledged",
+                    message="Repeated failures",
+                )
+                alert = active_alert
+            if source_ip == "192.0.2.9" and index == 2:
+                cleared_alert = recorder.build_alert(
+                    event=event,
+                    alarm_code="GRID_PATH_UNAVAILABLE",
+                    severity="critical",
+                    state="cleared",
+                    message="Grid path restored",
+                )
+                alert = cleared_alert
+            recorder.record(event, alert=alert)
+            recorded_events.append(event)
+
+    summary = recorder.store.fetch_activity_summary()
+    top_sources = recorder.store.fetch_top_sources(limit=2)
+    recent_alerts = recorder.store.fetch_recent_alerts(limit=1)
+
+    assert active_alert is not None
+    assert cleared_alert is not None
+    assert summary.total_events == 7
+    assert summary.total_alerts == 2
+    assert summary.active_alerts == 1
+    assert summary.unique_sources == 3
+    assert summary.rejected_events == 1
+    assert summary.last_event_at == recorded_events[-1].timestamp
+    assert [source.source_ip for source in top_sources] == ["192.0.2.9", "198.51.100.10"]
+    assert top_sources[0].event_count == 3
+    assert top_sources[0].session_count == 3
+    assert top_sources[0].top_event_type == "hmi.page.overview_viewed"
+    assert top_sources[0].top_endpoint == "/overview"
+    assert [alert.alert_id for alert in recent_alerts] == [cleared_alert.alert_id]
+
+
 def test_fetch_alerts_preserves_insert_order_for_identical_timestamps(tmp_path) -> None:
     recorder = build_recorder(tmp_path)
     first_event = recorder.build_event(

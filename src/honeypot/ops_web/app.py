@@ -241,23 +241,19 @@ def create_ops_app(
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def dashboard(request: Request, _: None = Depends(require_ops_auth)) -> HTMLResponse:
-        events = event_store.fetch_events()
-        alerts = event_store.fetch_alerts()
         settings = load_ops_settings(event_store)
         context = _template_context(
             request=request,
             config=config,
             current_path="/",
-            summary=_build_summary(events=events, alerts=alerts),
-            events=_event_rows(tuple(reversed(events))[:25]),
-            alerts=_alert_rows(tuple(reversed(alerts))[:10]),
-            sources=_source_rows(
-                events,
+            summary=_summary_from_activity(event_store.fetch_activity_summary()),
+            events=_event_rows(event_store.fetch_events_page(limit=25).events),
+            alerts=_alert_rows(event_store.fetch_recent_alerts(limit=10)),
+            sources=_source_rows_from_activity(
+                event_store.fetch_top_sources(limit=8),
                 settings=settings,
                 ip_enricher=ip_enricher,
-                sort="events",
-                direction="desc",
-            )[:8],
+            ),
         )
         return templates.TemplateResponse(request=request, name="dashboard.html", context=context)
 
@@ -546,14 +542,21 @@ def create_ops_app(
 
     @app.get("/api/summary", include_in_schema=False)
     async def api_summary(_: None = Depends(require_ops_auth)) -> dict[str, Any]:
-        events = event_store.fetch_events()
-        alerts = event_store.fetch_alerts()
         settings = load_ops_settings(event_store)
         return {
-            "summary": asdict(_build_summary(events=events, alerts=alerts, display_timestamps=False)),
+            "summary": asdict(
+                _summary_from_activity(
+                    event_store.fetch_activity_summary(),
+                    display_timestamps=False,
+                )
+            ),
             "sources": [
                 asdict(source)
-                for source in _source_rows(events, settings=settings, ip_enricher=ip_enricher)[:25]
+                for source in _source_rows_from_activity(
+                    event_store.fetch_top_sources(limit=25),
+                    settings=settings,
+                    ip_enricher=ip_enricher,
+                )
             ],
         }
 
@@ -796,20 +799,15 @@ def _request_source_ip(request: Request, *, config: RuntimeConfig) -> str:
     return resolve_request_source_ip(request, config)
 
 
-def _build_summary(
-    *,
-    events: tuple[EventRecord, ...],
-    alerts: tuple[AlertRecord, ...],
-    display_timestamps: bool = True,
-) -> OpsSummary:
+def _summary_from_activity(summary: Any, *, display_timestamps: bool = True) -> OpsSummary:
     timestamp_formatter = _format_dt_display if display_timestamps else _format_dt_iso
     return OpsSummary(
-        total_events=len(events),
-        total_alerts=len(alerts),
-        active_alerts=sum(1 for alert in alerts if alert.state.startswith("active")),
-        unique_sources=len({event.source_ip for event in events}),
-        rejected_events=sum(1 for event in events if event.result == "rejected"),
-        last_event_at=timestamp_formatter(events[-1].timestamp) if events else "none",
+        total_events=summary.total_events,
+        total_alerts=summary.total_alerts,
+        active_alerts=summary.active_alerts,
+        unique_sources=summary.unique_sources,
+        rejected_events=summary.rejected_events,
+        last_event_at="none" if summary.last_event_at is None else timestamp_formatter(summary.last_event_at),
     )
 
 
@@ -1006,6 +1004,33 @@ def _source_rows(
         reverse=normalized_direction == "desc",
     )
     return tuple(row for row, _, _ in rows)
+
+
+def _source_rows_from_activity(
+    sources: tuple[Any, ...],
+    *,
+    settings: OpsBackendSettings,
+    ip_enricher: IpEnricher,
+) -> tuple[SourceRow, ...]:
+    rows: list[SourceRow] = []
+    for source in sources:
+        enrichment = ip_enricher.enrich(source.source_ip, settings)
+        rows.append(
+            SourceRow(
+                source_ip=source.source_ip,
+                country_code=enrichment.country_code,
+                rdns=enrichment.rdns,
+                isp=enrichment.isp,
+                event_count=source.event_count,
+                rejected_count=source.rejected_count,
+                session_count=source.session_count,
+                first_seen=_format_dt_display(source.first_seen),
+                last_seen=_format_dt_display(source.last_seen),
+                top_event_type=source.top_event_type,
+                top_endpoint=source.top_endpoint,
+            )
+        )
+    return tuple(rows)
 
 
 def _normalize_source_sort(value: str | None) -> str:
