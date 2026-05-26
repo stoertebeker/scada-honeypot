@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.15",
+    "released_at": "2026-05-26",
+    "category": "Feature",
+    "title": "Ops-managed Modbus timing defaults",
+    "summary": "Moves the bounded Modbus response timing profile into protected Ops settings while keeping .env values as a boot fallback.",
+    "areas": ["ops-web", "configuration", "modbus", "documentation", "tests"],
+    "changes": [
+      "Add Modbus timing controls to Ops Settings with 0..2000 ms validation and min/max ordering.",
+      "Let the Modbus server read timing bounds from Ops settings at response time, falling back to .env when no Ops value exists.",
+      "Document the configuration boundary so boot-only and security-critical values remain in .env."
+    ],
+    "security_notes": [
+      "Ops-managed timing is bounded and does not alter bind hosts, ports, ingress approvals, or exposed routes.",
+      "Deployment-critical, boot-time, evidence-path and egress settings remain outside the runtime UI."
+    ]
+  },
+  {
     "version": "v1.4.14",
     "released_at": "2026-05-26",
     "category": "Feature",

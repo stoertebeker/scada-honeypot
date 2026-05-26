@@ -45,6 +45,10 @@ Ops contains:
 
 Protect Ops with loopback, VPN, SSH tunnel, or a hardened proxy path.
 
+Only bounded runtime-safe defaults belong in Ops settings. Bind hosts, ports,
+trusted proxies, egress approvals, exporter endpoints, evidence paths, and
+boot-only service toggles remain `.env` decisions.
+
 ## Weather Privacy
 
 Weather coordinates may be real internally. They must not appear in HMI pages,

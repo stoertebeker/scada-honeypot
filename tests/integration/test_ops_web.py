@@ -406,6 +406,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.15" in versions.text
+    assert "Ops-managed Modbus timing defaults" in versions.text
     assert "v1.4.14" in versions.text
     assert "Rare historical maintenance windows" in versions.text
     assert "v1.4.13" in versions.text
@@ -618,6 +620,95 @@ async def test_ops_settings_updates_service_login_lure_credentials(tmp_path: Pat
     assert 'value="shadow"' in saved_page.text
     assert settings_event.requested_value["changed"]["service_login_username"]["after"] == "maintenance"
     assert settings_event.requested_value["changed"]["service_login_password"]["after"] == "shadow"
+
+
+@pytest.mark.asyncio
+async def test_ops_settings_updates_modbus_response_timing(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-modbus-timing-settings.db")
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        settings_page = await client.get("/settings")
+        csrf_token = _extract_csrf_token(settings_page.text)
+        update = await client.post(
+            "/settings",
+            data={
+                "csrf_token": csrf_token,
+                "ip_enrichment_static_map_path": "",
+                "ip_enrichment_country_mmdb_path": "",
+                "ip_enrichment_asn_mmdb_path": "",
+                "ip_enrichment_rdns_timeout_ms": "300",
+                "events_default_limit": "100",
+                "alerts_default_limit": "100",
+                "sources_default_limit": "100",
+                "modbus_response_delay_min_ms": "20",
+                "modbus_response_delay_max_ms": "75",
+                "login_campaign_aggregation_enabled": "on",
+                "login_credential_capture_enabled": "on",
+                "login_password_capture_enabled": "on",
+                "login_password_display_enabled": "on",
+                "login_credential_export_enabled": "on",
+                "login_capture_sample_attempts": "5",
+                "login_capture_summary_interval_seconds": "60",
+                "login_campaign_idle_timeout_minutes": "10",
+                "login_capture_max_unique_passwords": "1000000",
+                "login_capture_max_credential_length": "256",
+            },
+            follow_redirects=False,
+        )
+        saved_page = await client.get("/settings")
+
+    stored_settings = store.fetch_ops_settings()
+    settings_event = next(event for event in store.fetch_events() if event.event_type == "ops.settings.updated")
+
+    assert settings_page.status_code == 200
+    assert "Protocol Timing" in settings_page.text
+    assert 'name="modbus_response_delay_min_ms"' in settings_page.text
+    assert 'name="modbus_response_delay_max_ms"' in settings_page.text
+    assert update.status_code == 303
+    assert stored_settings["modbus_response_delay_min_ms"] == 20
+    assert stored_settings["modbus_response_delay_max_ms"] == 75
+    assert 'name="modbus_response_delay_min_ms" type="number" min="0" max="2000" value="20"' in saved_page.text
+    assert 'name="modbus_response_delay_max_ms" type="number" min="0" max="2000" value="75"' in saved_page.text
+    assert settings_event.requested_value["changed"]["modbus_response_delay_min_ms"]["after"] == 20
+    assert settings_event.requested_value["changed"]["modbus_response_delay_max_ms"]["after"] == 75
+
+
+@pytest.mark.asyncio
+async def test_ops_settings_rejects_invalid_modbus_response_timing(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-invalid-modbus-timing-settings.db")
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        settings_page = await client.get("/settings")
+        csrf_token = _extract_csrf_token(settings_page.text)
+        response = await client.post(
+            "/settings",
+            data={
+                "csrf_token": csrf_token,
+                "ip_enrichment_static_map_path": "",
+                "ip_enrichment_country_mmdb_path": "",
+                "ip_enrichment_asn_mmdb_path": "",
+                "ip_enrichment_rdns_timeout_ms": "300",
+                "events_default_limit": "100",
+                "alerts_default_limit": "100",
+                "sources_default_limit": "100",
+                "modbus_response_delay_min_ms": "90",
+                "modbus_response_delay_max_ms": "20",
+                "login_capture_sample_attempts": "5",
+                "login_capture_summary_interval_seconds": "60",
+                "login_campaign_idle_timeout_minutes": "10",
+                "login_capture_max_unique_passwords": "1000000",
+                "login_capture_max_credential_length": "256",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 400
+    assert "modbus_response_delay_min_ms darf modbus_response_delay_max_ms nicht ueberschreiten" in response.text
+    assert "modbus_response_delay_min_ms" not in store.fetch_ops_settings()
 
 
 @pytest.mark.asyncio

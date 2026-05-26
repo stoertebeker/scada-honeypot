@@ -21,15 +21,18 @@ Supported core functions:
 ### Response Timing
 
 Modbus responses are immediate by default. Optional response timing can be
-enabled with `MODBUS_RESPONSE_DELAY_MIN_MS` and
-`MODBUS_RESPONSE_DELAY_MAX_MS`.
+enabled in the protected Ops backend under `/settings`, section
+`Protocol Timing`. The legacy `.env` keys `MODBUS_RESPONSE_DELAY_MIN_MS` and
+`MODBUS_RESPONSE_DELAY_MAX_MS` remain a boot fallback until Ops settings are
+saved.
 
 - Default `0/0` disables the delay.
 - Values are validated in the range `0..2000` milliseconds.
-- `MODBUS_RESPONSE_DELAY_MIN_MS` must not exceed
-  `MODBUS_RESPONSE_DELAY_MAX_MS`.
+- The minimum must not exceed the maximum.
 - When enabled, the server applies a deterministic bounded delay per response
   before sending the Modbus ADU. It does not create background peer traffic.
+- Bind hosts, ports, and exposure approvals remain deployment settings and are
+  not writable from Ops.
 
 ## Unit Intent
 

@@ -80,6 +80,21 @@
   </section>
 
   <section>
+    <h2>Protocol Timing</h2>
+    <p class="muted">Bounded Modbus response timing. Keep 0/0 to disable; binds and ports remain deployment settings.</p>
+    <div class="settings-grid">
+      <div class="field">
+        <label for="modbus_response_delay_min_ms">Modbus delay min ms</label>
+        <input id="modbus_response_delay_min_ms" name="modbus_response_delay_min_ms" type="number" min="0" max="2000" value="{{ settings.modbus_response_delay_min_ms }}">
+      </div>
+      <div class="field">
+        <label for="modbus_response_delay_max_ms">Modbus delay max ms</label>
+        <input id="modbus_response_delay_max_ms" name="modbus_response_delay_max_ms" type="number" min="0" max="2000" value="{{ settings.modbus_response_delay_max_ms }}">
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>Login Credential Capture</h2>
     <div class="settings-grid">
       <label class="checkbox">

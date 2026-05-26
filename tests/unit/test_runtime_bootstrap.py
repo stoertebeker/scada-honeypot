@@ -228,6 +228,34 @@ def test_build_local_runtime_wires_deterministic_weather_provider(tmp_path: Path
     assert runtime.evolution_service.weather_elevation_m == 34
 
 
+def test_build_local_runtime_uses_ops_modbus_timing_with_env_fallback(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "MODBUS_RESPONSE_DELAY_MIN_MS=15\n"
+            "MODBUS_RESPONSE_DELAY_MAX_MS=40\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    provider = runtime.modbus_service.response_timing_provider
+    assert provider is not None
+    assert provider() == (15, 40)
+
+    runtime.event_store.upsert_ops_settings(
+        {
+            "modbus_response_delay_min_ms": 20,
+            "modbus_response_delay_max_ms": 75,
+        },
+        updated_at=runtime.event_recorder.clock.now(),
+    )
+
+    assert provider() == (20, 75)
+
+
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

@@ -29,6 +29,7 @@ from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
 from honeypot.monitoring import BackgroundRuntimeStatusService, RuntimeStatusWriter
 from honeypot.ops_web import create_ops_app
+from honeypot.ops_web.settings import OpsBackendSettings
 from honeypot.plant_sim import PlantSimulator
 from honeypot.protocol_modbus import READ_HOLDING_REGISTERS, ReadOnlyModbusTcpService, ReadOnlyRegisterMap
 from honeypot.runtime_reset import reset_local_runtime_artifacts
@@ -281,6 +282,10 @@ def build_local_runtime(
         event_recorder=event_recorder,
         response_delay_min_ms=config.modbus_response_delay_min_ms,
         response_delay_max_ms=config.modbus_response_delay_max_ms,
+        response_timing_provider=_modbus_response_timing_provider(
+            event_store=event_store,
+            config=config,
+        ),
     )
     hmi_service = LocalHmiHttpService(
         app=hmi_app,
@@ -423,6 +428,25 @@ def _build_history_weather_provider(config: RuntimeConfig) -> WeatherObservation
             timeout_seconds=float(config.weather_request_timeout_seconds),
         )
     return PlausibleHistoricalWeatherProvider()
+
+
+def _modbus_response_timing_provider(
+    *,
+    event_store: SQLiteEventStore,
+    config: RuntimeConfig,
+):
+    def provider() -> tuple[int, int]:
+        stored_settings = event_store.fetch_ops_settings()
+        has_modbus_timing_settings = (
+            "modbus_response_delay_min_ms" in stored_settings
+            or "modbus_response_delay_max_ms" in stored_settings
+        )
+        if not has_modbus_timing_settings:
+            return config.modbus_response_delay_min_ms, config.modbus_response_delay_max_ms
+        settings = OpsBackendSettings.from_mapping(stored_settings)
+        return settings.modbus_response_delay_min_ms, settings.modbus_response_delay_max_ms
+
+    return provider
 
 
 def _merged_trend_history(

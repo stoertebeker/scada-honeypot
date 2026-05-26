@@ -22,6 +22,8 @@ class OpsBackendSettings:
     events_default_limit: int = 100
     alerts_default_limit: int = 100
     sources_default_limit: int = 100
+    modbus_response_delay_min_ms: int = 0
+    modbus_response_delay_max_ms: int = 0
     login_campaign_aggregation_enabled: bool = True
     login_credential_capture_enabled: bool = True
     login_password_capture_enabled: bool = True
@@ -78,6 +80,16 @@ class OpsBackendSettings:
                 field_name="sources_default_limit",
                 minimum=1,
                 maximum=500,
+            ),
+            modbus_response_delay_min_ms=_int_value(
+                merged["modbus_response_delay_min_ms"],
+                field_name="modbus_response_delay_min_ms",
+                minimum=0,
+                maximum=2000,
+            ),
+            modbus_response_delay_max_ms=_bounded_modbus_response_delay_max_ms(
+                merged["modbus_response_delay_min_ms"],
+                merged["modbus_response_delay_max_ms"],
             ),
             login_campaign_aggregation_enabled=_bool_value(merged["login_campaign_aggregation_enabled"]),
             login_credential_capture_enabled=_bool_value(merged["login_credential_capture_enabled"]),
@@ -139,6 +151,16 @@ class OpsBackendSettings:
             "events_default_limit": _first_form_value(values, "events_default_limit"),
             "alerts_default_limit": _first_form_value(values, "alerts_default_limit"),
             "sources_default_limit": _first_form_value(values, "sources_default_limit"),
+            "modbus_response_delay_min_ms": _first_form_value(
+                values,
+                "modbus_response_delay_min_ms",
+                str(defaults.modbus_response_delay_min_ms),
+            ),
+            "modbus_response_delay_max_ms": _first_form_value(
+                values,
+                "modbus_response_delay_max_ms",
+                str(defaults.modbus_response_delay_max_ms),
+            ),
             "login_campaign_aggregation_enabled": "login_campaign_aggregation_enabled" in values,
             "login_credential_capture_enabled": "login_credential_capture_enabled" in values,
             "login_password_capture_enabled": "login_password_capture_enabled" in values,
@@ -232,3 +254,21 @@ def _int_value(value: Any, *, field_name: str, minimum: int, maximum: int) -> in
     if parsed < minimum or parsed > maximum:
         raise ValueError(f"{field_name} muss zwischen {minimum} und {maximum} liegen")
     return parsed
+
+
+def _bounded_modbus_response_delay_max_ms(min_value: Any, max_value: Any) -> int:
+    parsed_min = _int_value(
+        min_value,
+        field_name="modbus_response_delay_min_ms",
+        minimum=0,
+        maximum=2000,
+    )
+    parsed_max = _int_value(
+        max_value,
+        field_name="modbus_response_delay_max_ms",
+        minimum=0,
+        maximum=2000,
+    )
+    if parsed_min > parsed_max:
+        raise ValueError("modbus_response_delay_min_ms darf modbus_response_delay_max_ms nicht ueberschreiten")
+    return parsed_max

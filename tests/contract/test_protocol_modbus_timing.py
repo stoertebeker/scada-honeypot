@@ -100,11 +100,46 @@ def test_fixed_modbus_timing_profile_applies_exact_delay_to_exception_response(t
     assert delays == [pytest.approx(0.025)]
 
 
+def test_modbus_timing_profile_can_be_supplied_by_ops_settings_provider(tmp_path: Path) -> None:
+    delays: list[float] = []
+    timing_bounds = (0, 0)
+
+    def response_timing_provider() -> tuple[int, int]:
+        return timing_bounds
+
+    service = build_service(
+        tmp_path,
+        response_delay=delays.append,
+        response_timing_provider=response_timing_provider,
+    ).start_in_thread()
+    try:
+        send_request(
+            service.address,
+            transaction_id=5,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 1),
+        )
+        timing_bounds = (10, 10)
+        send_request(
+            service.address,
+            transaction_id=6,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 1),
+        )
+    finally:
+        service.stop()
+
+    assert delays == [pytest.approx(0.010)]
+
+
 def build_service(
     tmp_path: Path,
     *,
     response_delay_min_ms: int = 0,
     response_delay_max_ms: int = 0,
+    response_timing_provider: Callable[[], tuple[int, int]] | None = None,
     response_delay: Callable[[float], None],
 ) -> ReadOnlyModbusTcpService:
     snapshot = build_snapshot()
@@ -117,6 +152,7 @@ def build_service(
         event_recorder=recorder,
         response_delay_min_ms=response_delay_min_ms,
         response_delay_max_ms=response_delay_max_ms,
+        response_timing_provider=response_timing_provider,
         response_delay=response_delay,
     )
 

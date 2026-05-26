@@ -77,6 +77,11 @@ The HMI service-login credentials are lure credentials. Set them in the Ops
 backend under `/settings`, section `Service Login Lure`; do not put real
 passwords there.
 
+Low-change runtime defaults that are safe to change after startup are managed
+in Ops `/settings`. Deployment-critical values such as ports, bind policy,
+egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
+`.env`.
+
 ## Components
 
 - `config_core`: runtime configuration and safety validation
@@ -117,6 +122,7 @@ docker compose run --rm honeypot python -m honeypot.main --verify-exposed-resear
 ## Further Reading
 
 - [SCADA primer and module guide](docs/scada-primer-and-module-guide.md)
+- [Configuration surface](docs/configuration-surface.md)
 - [Attacker test guide](docs/test-attacker-guide.md)
 - [Security operations](docs/security-operations.md)
 - [Exposed research runbook](docs/exposed-research-runbook.md)

@@ -31,3 +31,8 @@
 `.env` should stay small and focused on initial deployment. Low-change defaults
 should move to the protected Ops settings UI when this is safe and does not
 affect boot-time security.
+
+Current boundary: deployment, ingress, egress, evidence paths, exporter targets,
+weather startup tuning, and boot-only services remain in `.env`. Service-login
+lure settings, source enrichment, table limits, credential capture, and bounded
+Modbus response timing are Ops settings.

@@ -50,6 +50,7 @@ class ReadOnlyModbusTcpService:
     event_recorder: EventRecorder | None = None
     response_delay_min_ms: int = 0
     response_delay_max_ms: int = 0
+    response_timing_provider: Callable[[], tuple[int, int]] | None = field(default=None, repr=False)
     response_delay: Callable[[float], None] = field(default=sleep, repr=False)
     _server: _ModbusThreadingServer | None = field(default=None, init=False, repr=False)
     _thread: Thread | None = field(default=None, init=False, repr=False)
@@ -65,6 +66,7 @@ class ReadOnlyModbusTcpService:
             self.event_recorder,
             response_delay_min_ms=self.response_delay_min_ms,
             response_delay_max_ms=self.response_delay_max_ms,
+            response_timing_provider=self.response_timing_provider,
             response_delay=self.response_delay,
         )
         server = _ModbusThreadingServer((self.bind_host, self.port), handler_cls)
@@ -101,6 +103,7 @@ def _build_handler(
     *,
     response_delay_min_ms: int = 0,
     response_delay_max_ms: int = 0,
+    response_timing_provider: Callable[[], tuple[int, int]] | None = None,
     response_delay: Callable[[float], None] = sleep,
 ) -> type[BaseRequestHandler]:
     class ModbusTcpHandler(BaseRequestHandler):
@@ -183,9 +186,14 @@ def _build_handler(
                         message=f"Funktionscode {function_code} ist im ersten Slice nicht aktiv",
                     )
 
+                timing_min_ms, timing_max_ms = _response_timing_bounds(
+                    response_timing_provider,
+                    fallback_min_ms=response_delay_min_ms,
+                    fallback_max_ms=response_delay_max_ms,
+                )
                 delay_seconds = _bounded_response_delay_seconds(
-                    min_ms=response_delay_min_ms,
-                    max_ms=response_delay_max_ms,
+                    min_ms=timing_min_ms,
+                    max_ms=timing_max_ms,
                     transaction_id=transaction_id,
                     unit_id=unit_id,
                     function_code=function_code,
@@ -201,6 +209,23 @@ def _build_handler(
                 pass
 
     return ModbusTcpHandler
+
+
+def _response_timing_bounds(
+    provider: Callable[[], tuple[int, int]] | None,
+    *,
+    fallback_min_ms: int,
+    fallback_max_ms: int,
+) -> tuple[int, int]:
+    if provider is None:
+        return fallback_min_ms, fallback_max_ms
+    try:
+        min_ms, max_ms = provider()
+    except Exception:
+        return fallback_min_ms, fallback_max_ms
+    if 0 <= min_ms <= max_ms <= 2000:
+        return min_ms, max_ms
+    return fallback_min_ms, fallback_max_ms
 
 
 def _bounded_response_delay_seconds(

@@ -13,6 +13,7 @@ The project has moved beyond initial scaffolding. The current baseline includes:
 - runtime evolution and plant history
 - deterministic and Open-Meteo weather providers
 - Ops backend
+- protected Ops settings for safe low-change runtime defaults
 - Docker Compose production path
 - Docker Hub publishing workflow
 
@@ -33,11 +34,11 @@ HONEYPOT_LOCAL_DEBUG=1 uv run python -m honeypot.main
 
 ## Future Work
 
-1. Migrate low-change `.env` defaults into the Ops settings UI where safe.
-2. Keep `.env.example` focused on initial deployment requirements.
-3. Add more HMI/Modbus slices only when shared-truth tests exist.
-4. Expand realistic plant behavior without leaking real location data.
-5. Improve operator runbooks as deployments become repeatable.
+1. Add more HMI/Modbus slices only when shared-truth tests exist.
+2. Expand realistic plant behavior without leaking real location data.
+3. Move additional `.env` defaults into Ops only after a safe runtime refresh
+   path exists.
+4. Improve operator runbooks as deployments become repeatable.
 
 ## Rule For New Work
 

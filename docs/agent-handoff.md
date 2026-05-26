@@ -16,6 +16,8 @@ Current baseline:
 
 The HMI service-login lure defaults to `admin` / `sunshine` and can be changed
 in the protected Ops backend under `/settings`.
+Bounded Modbus response timing is also controlled in Ops `/settings`; `.env`
+values remain only as boot fallback before Ops settings are saved.
 
 ## Start Commands
 
@@ -65,11 +67,12 @@ docker compose run --rm honeypot python -m honeypot.main --verify-exposed-resear
 - `runtime_ingress`, `runtime_exposure`, `runtime_egress`: safety gates
 - `exporter_runner`: Webhook, SMTP, and Telegram delivery
 
-## Open Tracker Item
+## Tracker State
 
-`bd` currently keeps one forward-looking task open:
-
-- migrate low-change `.env` defaults into the Ops settings UI where safe
+Use `bd ready` before starting the next work item. At this handoff, the
+low-change `.env` defaults task has been implemented for the safe runtime
+surface, and additional candidates must remain in `.env` until a safe runtime
+refresh path exists.
 
 Keep `.beads/issues.jsonl` in sync with `bd export --no-memories -o .beads/issues.jsonl`
 before committing tracker changes.
