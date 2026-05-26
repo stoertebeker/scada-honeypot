@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.16",
+    "released_at": "2026-05-26",
+    "category": "Feature",
+    "title": "Protected versions API",
+    "summary": "Adds a protected JSON endpoint for the backend version log so operators and deployment automation can verify the shipped backend without scraping HTML.",
+    "areas": ["ops-web", "versions", "documentation", "tests"],
+    "changes": [
+      "Expose the backend version log at /api/versions behind the existing Ops authentication dependency.",
+      "Return latest version metadata, total version count and structured version rows for automation-friendly checks.",
+      "Cover the endpoint with integration tests, including route-specific Basic Auth enforcement."
+    ],
+    "security_notes": [
+      "The API is read-only, hidden from OpenAPI output and available only through the protected Ops backend surface.",
+      "The payload contains release metadata only and does not expose host paths, secrets, credentials or attacker-facing debug detail."
+    ]
+  },
+  {
     "version": "v1.4.15",
     "released_at": "2026-05-26",
     "category": "Feature",

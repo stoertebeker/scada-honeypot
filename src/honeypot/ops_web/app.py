@@ -471,6 +471,18 @@ def create_ops_app(
         )
         return templates.TemplateResponse(request=request, name="versions.html", context=context)
 
+    @app.get("/api/versions", include_in_schema=False)
+    async def api_versions(_: None = Depends(require_ops_auth)) -> dict[str, Any]:
+        versions = _load_backend_versions()
+        latest = versions[0] if versions else None
+        return {
+            "latest_version": latest.version if latest else None,
+            "latest_title": latest.title if latest else None,
+            "released_at": latest.released_at if latest else None,
+            "version_count": len(versions),
+            "versions": [_backend_version_api_row(version) for version in versions],
+        }
+
     @app.get("/settings", response_class=HTMLResponse, include_in_schema=False)
     async def settings_page(request: Request, _: None = Depends(require_ops_auth)) -> HTMLResponse:
         context = _settings_context(
@@ -1241,6 +1253,19 @@ def _backend_version_from_mapping(value: Any) -> BackendVersionRow:
         changes=_required_version_tuple(value, "changes"),
         security_notes=_required_version_tuple(value, "security_notes"),
     )
+
+
+def _backend_version_api_row(version: BackendVersionRow) -> dict[str, Any]:
+    return {
+        "version": version.version,
+        "released_at": version.released_at,
+        "category": version.category,
+        "title": version.title,
+        "summary": version.summary,
+        "areas": list(version.areas),
+        "changes": list(version.changes),
+        "security_notes": list(version.security_notes),
+    }
 
 
 def _required_version_text(value: dict[str, Any], key: str) -> str:

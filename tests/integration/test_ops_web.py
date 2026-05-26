@@ -386,10 +386,16 @@ async def test_ops_basic_auth_rejects_missing_and_wrong_credentials(tmp_path: Pa
         missing = await client.get("/")
         wrong = await client.get("/", auth=("watch", "wrong"))
         ok = await client.get("/", auth=("watch", "correct-horse"))
+        versions_missing = await client.get("/api/versions")
+        versions_wrong = await client.get("/api/versions", auth=("watch", "wrong"))
+        versions_ok = await client.get("/api/versions", auth=("watch", "correct-horse"))
 
     assert missing.status_code == 401
     assert wrong.status_code == 401
     assert ok.status_code == 200
+    assert versions_missing.status_code == 401
+    assert versions_wrong.status_code == 401
+    assert versions_ok.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -406,6 +412,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.16" in versions.text
+    assert "Protected versions API" in versions.text
     assert "v1.4.15" in versions.text
     assert "Ops-managed Modbus timing defaults" in versions.text
     assert "v1.4.14" in versions.text
@@ -475,6 +483,40 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "v0.9.0" in versions.text
     assert "Credential campaign aggregation" in versions.text
     assert "The version log is only reachable through the protected Ops backend surface." in versions.text
+
+
+@pytest.mark.asyncio
+async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-versions-api.db")
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        response = await client.get("/api/versions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["latest_version"] == "v1.4.16"
+    assert payload["latest_title"] == "Protected versions API"
+    assert payload["released_at"] == "2026-05-26"
+    assert payload["version_count"] == len(payload["versions"])
+    assert payload["versions"][0] == {
+        "version": "v1.4.16",
+        "released_at": "2026-05-26",
+        "category": "Feature",
+        "title": "Protected versions API",
+        "summary": "Adds a protected JSON endpoint for the backend version log so operators and deployment automation can verify the shipped backend without scraping HTML.",
+        "areas": ["ops-web", "versions", "documentation", "tests"],
+        "changes": [
+            "Expose the backend version log at /api/versions behind the existing Ops authentication dependency.",
+            "Return latest version metadata, total version count and structured version rows for automation-friendly checks.",
+            "Cover the endpoint with integration tests, including route-specific Basic Auth enforcement.",
+        ],
+        "security_notes": [
+            "The API is read-only, hidden from OpenAPI output and available only through the protected Ops backend surface.",
+            "The payload contains release metadata only and does not expose host paths, secrets, credentials or attacker-facing debug detail.",
+        ],
+    }
 
 
 @pytest.mark.asyncio

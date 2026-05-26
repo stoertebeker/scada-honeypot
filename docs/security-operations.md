@@ -40,7 +40,7 @@ Ops contains:
 - credential analysis
 - runtime status
 - event and alert views
-- version log
+- version log, including the read-only `/api/versions` JSON surface
 - reset and maintenance controls
 
 Protect Ops with loopback, VPN, SSH tunnel, or a hardened proxy path.
