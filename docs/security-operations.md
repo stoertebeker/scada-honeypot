@@ -50,6 +50,17 @@ Protect Ops with loopback, VPN, SSH tunnel, or a hardened proxy path.
 Weather coordinates may be real internally. They must not appear in HMI pages,
 events, findings, or public documentation.
 
+## Fingerprint Hygiene
+
+The hardening gate checks public documentation and attacker-facing HMI
+templates/locales for private path leaks, framework/debug fingerprints, real
+vendor clone terms, and deployable-looking secret material.
+
+Do not add background network traffic, extra listeners, or outbound synthetic OT
+peers for realism. HMI and Modbus remain the intended exposed surfaces. A
+backend-only simulated local source marker needs an explicit design decision
+before implementation.
+
 ## Incident Triggers
 
 - public Ops exposure

@@ -106,9 +106,13 @@ docker compose run --rm honeypot python -m honeypot.main --verify-exposed-resear
 - Do not enter real OEM names, real credentials, real plant paths, or real site names.
 - Docker Compose is the production path; exposure is not hidden behind an optional switch.
 - HMI and Modbus are the intended attack surface; Ops stays local.
+- Do not add background network traffic or extra synthetic OT peers for realism.
 - Exporters are deny-by-default and need approved targets and recipients.
 - Weather coordinates may be real internally but are never shown in the HMI.
 - The honeypot must not control or contact real OT systems.
+- `uv run pytest tests/unit/test_repo_hardening.py` checks public docs and
+  attacker-facing HMI files for path leaks, debug fingerprints, vendor clone
+  terms, and deployable-looking secrets.
 
 ## Further Reading
 
