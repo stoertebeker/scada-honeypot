@@ -13,6 +13,7 @@
 uv run pytest
 uv run pytest tests/unit/test_repo_hardening.py
 uv run pytest tests/contract/test_honeypot_fingerprint_realism.py
+uv run pytest tests/contract/test_protocol_modbus_timing.py
 uv run pytest tests/contract
 uv run pytest tests/integration
 uv run pytest tests/e2e
@@ -41,6 +42,8 @@ lifecycle, stop behavior, and findings output.
   real vendor clone terms, private paths, or deployable-looking secrets.
 - Modbus fingerprint contract tests lock the intentional function-code matrix,
   identity-block consistency, write readback effects, and quiet exception paths.
+- Modbus timing contract tests verify bounded optional response delays through
+  an injected delay callback, not wall-clock sleeps.
 
 ## Documentation Checks
 

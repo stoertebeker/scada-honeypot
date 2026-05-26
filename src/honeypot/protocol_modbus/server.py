@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from socket import SHUT_RDWR
 from socketserver import BaseRequestHandler, ThreadingTCPServer
 from struct import pack, unpack
 from threading import Thread
+from time import sleep
 from typing import Any
 from uuid import uuid4
 
@@ -46,6 +48,9 @@ class ReadOnlyModbusTcpService:
     bind_host: str
     port: int
     event_recorder: EventRecorder | None = None
+    response_delay_min_ms: int = 0
+    response_delay_max_ms: int = 0
+    response_delay: Callable[[float], None] = field(default=sleep, repr=False)
     _server: _ModbusThreadingServer | None = field(default=None, init=False, repr=False)
     _thread: Thread | None = field(default=None, init=False, repr=False)
 
@@ -55,7 +60,13 @@ class ReadOnlyModbusTcpService:
         if self._server is not None:
             raise RuntimeError("Modbus-Server laeuft bereits")
 
-        handler_cls = _build_handler(self.register_map, self.event_recorder)
+        handler_cls = _build_handler(
+            self.register_map,
+            self.event_recorder,
+            response_delay_min_ms=self.response_delay_min_ms,
+            response_delay_max_ms=self.response_delay_max_ms,
+            response_delay=self.response_delay,
+        )
         server = _ModbusThreadingServer((self.bind_host, self.port), handler_cls)
         thread = Thread(target=server.serve_forever, name="modbus-readonly-server", daemon=True)
         thread.start()
@@ -87,6 +98,10 @@ class ReadOnlyModbusTcpService:
 def _build_handler(
     register_map: ReadOnlyRegisterMap,
     event_recorder: EventRecorder | None,
+    *,
+    response_delay_min_ms: int = 0,
+    response_delay_max_ms: int = 0,
+    response_delay: Callable[[float], None] = sleep,
 ) -> type[BaseRequestHandler]:
     class ModbusTcpHandler(BaseRequestHandler):
         def handle(self) -> None:
@@ -168,6 +183,15 @@ def _build_handler(
                         message=f"Funktionscode {function_code} ist im ersten Slice nicht aktiv",
                     )
 
+                delay_seconds = _bounded_response_delay_seconds(
+                    min_ms=response_delay_min_ms,
+                    max_ms=response_delay_max_ms,
+                    transaction_id=transaction_id,
+                    unit_id=unit_id,
+                    function_code=function_code,
+                )
+                if delay_seconds > 0:
+                    response_delay(delay_seconds)
                 self.request.sendall(response)
 
         def finish(self) -> None:
@@ -177,6 +201,27 @@ def _build_handler(
                 pass
 
     return ModbusTcpHandler
+
+
+def _bounded_response_delay_seconds(
+    *,
+    min_ms: int,
+    max_ms: int,
+    transaction_id: int,
+    unit_id: int,
+    function_code: int,
+) -> float:
+    if max_ms <= 0:
+        return 0.0
+    if min_ms >= max_ms:
+        return max_ms / 1000
+    spread_ms = max_ms - min_ms
+    jitter_ms = (
+        (transaction_id * 31)
+        + (unit_id * 17)
+        + (function_code * 13)
+    ) % (spread_ms + 1)
+    return (min_ms + jitter_ms) / 1000
 
 
 def _handle_fc03_request(

@@ -22,6 +22,8 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.enable_service_login is True
     assert config.enable_tracker is False
     assert config.modbus_port == 1502
+    assert config.modbus_response_delay_min_ms == 0
+    assert config.modbus_response_delay_max_ms == 0
     assert config.ops_enabled is True
     assert config.ops_bind_host == "127.0.0.1"
     assert config.ops_port == 9090
@@ -56,13 +58,18 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
 def test_load_runtime_config_reads_env_file(monkeypatch, tmp_path: Path) -> None:
     write_locale_bundle(tmp_path, "en")
     env_file = tmp_path / ".env"
-    env_file.write_text("SITE_CODE=test-77\nMODBUS_PORT=1502\n", encoding="utf-8")
+    env_file.write_text(
+        "SITE_CODE=test-77\nMODBUS_PORT=1502\nMODBUS_RESPONSE_DELAY_MIN_MS=25\nMODBUS_RESPONSE_DELAY_MAX_MS=80\n",
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     config = load_runtime_config(env_file=env_file)
 
     assert config.site_code == "test-77"
     assert config.modbus_port == 1502
+    assert config.modbus_response_delay_min_ms == 25
+    assert config.modbus_response_delay_max_ms == 80
 
 
 def test_invalid_locale_code_is_rejected(monkeypatch, tmp_path: Path) -> None:
@@ -230,6 +237,21 @@ def test_runtime_config_reads_nonlocal_bind_gate(monkeypatch, tmp_path: Path) ->
     config = RuntimeConfig(_env_file=None, allow_nonlocal_bind=True)
 
     assert config.allow_nonlocal_bind is True
+
+
+def test_runtime_config_rejects_invalid_modbus_timing_profile(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError, match="MODBUS_RESPONSE_DELAY_MIN_MS"):
+        RuntimeConfig(
+            _env_file=None,
+            modbus_response_delay_min_ms=80,
+            modbus_response_delay_max_ms=25,
+        )
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, modbus_response_delay_max_ms=2001)
 
 
 def test_runtime_config_reads_cookie_secure_flags(monkeypatch, tmp_path: Path) -> None:

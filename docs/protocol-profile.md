@@ -18,6 +18,19 @@ Supported core functions:
 
 `FC04` remains disabled by default.
 
+### Response Timing
+
+Modbus responses are immediate by default. Optional response timing can be
+enabled with `MODBUS_RESPONSE_DELAY_MIN_MS` and
+`MODBUS_RESPONSE_DELAY_MAX_MS`.
+
+- Default `0/0` disables the delay.
+- Values are validated in the range `0..2000` milliseconds.
+- `MODBUS_RESPONSE_DELAY_MIN_MS` must not exceed
+  `MODBUS_RESPONSE_DELAY_MAX_MS`.
+- When enabled, the server applies a deterministic bounded delay per response
+  before sending the Modbus ADU. It does not create background peer traffic.
+
 ## Unit Intent
 
 - Unit `1`: plant controller values and setpoints

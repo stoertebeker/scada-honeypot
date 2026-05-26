@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.13",
+    "released_at": "2026-05-26",
+    "category": "Feature",
+    "title": "Bounded Modbus response timing",
+    "summary": "Adds an optional bounded Modbus response timing profile so exposed protocol replies can look less perfectly instantaneous while keeping safe defaults.",
+    "areas": ["modbus", "configuration", "fingerprint", "tests"],
+    "changes": [
+      "Add validated MODBUS_RESPONSE_DELAY_MIN_MS and MODBUS_RESPONSE_DELAY_MAX_MS settings with disabled 0/0 defaults.",
+      "Apply deterministic bounded response delays before Modbus ADUs are sent.",
+      "Cover the timing profile with contract tests that use an injected delay callback instead of wall-clock assertions."
+    ],
+    "security_notes": [
+      "The timing profile is bounded to 0..2000 milliseconds and refuses min values above max values.",
+      "The feature does not create background peer traffic or broaden the exposed protocol surface."
+    ]
+  },
+  {
     "version": "v1.4.12",
     "released_at": "2026-05-26",
     "category": "Security",

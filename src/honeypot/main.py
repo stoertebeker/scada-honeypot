@@ -279,6 +279,8 @@ def build_local_runtime(
         bind_host=config.modbus_bind_host,
         port=effective_modbus_port,
         event_recorder=event_recorder,
+        response_delay_min_ms=config.modbus_response_delay_min_ms,
+        response_delay_max_ms=config.modbus_response_delay_max_ms,
     )
     hmi_service = LocalHmiHttpService(
         app=hmi_app,

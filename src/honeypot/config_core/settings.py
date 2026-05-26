@@ -89,6 +89,8 @@ class RuntimeConfig(BaseSettings):
 
     modbus_bind_host: str = "127.0.0.1"
     modbus_port: int = Field(default=1502, ge=1, le=65535)
+    modbus_response_delay_min_ms: int = Field(default=0, ge=0, le=2000)
+    modbus_response_delay_max_ms: int = Field(default=0, ge=0, le=2000)
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
     ops_enabled: bool = True
@@ -264,6 +266,12 @@ class RuntimeConfig(BaseSettings):
         if non_loopback_binds:
             joined_settings = ", ".join(non_loopback_binds)
             raise ValueError(f"HONEYPOT_LOCAL_DEBUG erlaubt nur Loopback-Bindings: {joined_settings}")
+        return self
+
+    @model_validator(mode="after")
+    def validate_modbus_timing_profile(self) -> "RuntimeConfig":
+        if self.modbus_response_delay_min_ms > self.modbus_response_delay_max_ms:
+            raise ValueError("MODBUS_RESPONSE_DELAY_MIN_MS darf MODBUS_RESPONSE_DELAY_MAX_MS nicht ueberschreiten")
         return self
 
     @model_validator(mode="after")
