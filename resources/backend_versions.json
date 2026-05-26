@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.17",
+    "released_at": "2026-05-26",
+    "category": "Fix",
+    "title": "Package version metadata sync",
+    "summary": "Synchronizes Python package metadata with the protected backend version history so Docker builds no longer report stale package versions.",
+    "areas": ["packaging", "versions", "tests"],
+    "changes": [
+      "Update pyproject.toml and uv.lock package metadata to 1.4.17.",
+      "Update honeypot.__version__ to 1.4.17.",
+      "Add regression coverage that package metadata, lockfile metadata and the backend version history stay aligned."
+    ],
+    "security_notes": [
+      "The change is metadata-only and does not alter attacker-facing HMI, Modbus behavior, Ops authentication, bind hosts or ports.",
+      "Keeping shipped package metadata aligned with the protected Ops version log reduces operator confusion during deployment verification."
+    ]
+  },
+  {
     "version": "v1.4.16",
     "released_at": "2026-05-26",
     "category": "Feature",

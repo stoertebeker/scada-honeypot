@@ -412,6 +412,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.17" in versions.text
+    assert "Package version metadata sync" in versions.text
     assert "v1.4.16" in versions.text
     assert "Protected versions API" in versions.text
     assert "v1.4.15" in versions.text
@@ -496,25 +498,25 @@ async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["latest_version"] == "v1.4.16"
-    assert payload["latest_title"] == "Protected versions API"
+    assert payload["latest_version"] == "v1.4.17"
+    assert payload["latest_title"] == "Package version metadata sync"
     assert payload["released_at"] == "2026-05-26"
     assert payload["version_count"] == len(payload["versions"])
     assert payload["versions"][0] == {
-        "version": "v1.4.16",
+        "version": "v1.4.17",
         "released_at": "2026-05-26",
-        "category": "Feature",
-        "title": "Protected versions API",
-        "summary": "Adds a protected JSON endpoint for the backend version log so operators and deployment automation can verify the shipped backend without scraping HTML.",
-        "areas": ["ops-web", "versions", "documentation", "tests"],
+        "category": "Fix",
+        "title": "Package version metadata sync",
+        "summary": "Synchronizes Python package metadata with the protected backend version history so Docker builds no longer report stale package versions.",
+        "areas": ["packaging", "versions", "tests"],
         "changes": [
-            "Expose the backend version log at /api/versions behind the existing Ops authentication dependency.",
-            "Return latest version metadata, total version count and structured version rows for automation-friendly checks.",
-            "Cover the endpoint with integration tests, including route-specific Basic Auth enforcement.",
+            "Update pyproject.toml and uv.lock package metadata to 1.4.17.",
+            "Update honeypot.__version__ to 1.4.17.",
+            "Add regression coverage that package metadata, lockfile metadata and the backend version history stay aligned.",
         ],
         "security_notes": [
-            "The API is read-only, hidden from OpenAPI output and available only through the protected Ops backend surface.",
-            "The payload contains release metadata only and does not expose host paths, secrets, credentials or attacker-facing debug detail.",
+            "The change is metadata-only and does not alter attacker-facing HMI, Modbus behavior, Ops authentication, bind hosts or ports.",
+            "Keeping shipped package metadata aligned with the protected Ops version log reduces operator confusion during deployment verification.",
         ],
     }
 
