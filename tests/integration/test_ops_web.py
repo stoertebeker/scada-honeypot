@@ -406,6 +406,12 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.12" in versions.text
+    assert "Fictional Modbus identity profile" in versions.text
+    assert "v1.4.11" in versions.text
+    assert "Modbus fingerprint contract QA" in versions.text
+    assert "v1.4.10" in versions.text
+    assert "Attacker-facing leakage gate" in versions.text
     assert "v1.4.9" in versions.text
     assert "SQL-backed Ops dashboard" in versions.text
     assert "v1.4.8" in versions.text

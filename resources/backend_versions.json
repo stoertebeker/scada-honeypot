@@ -1,5 +1,56 @@
 [
   {
+    "version": "v1.4.12",
+    "released_at": "2026-05-26",
+    "category": "Security",
+    "title": "Fictional Modbus identity profile",
+    "summary": "Replaces generic Modbus identity values with an internally consistent fictional device profile that looks operational without cloning a real OEM.",
+    "areas": ["modbus", "fingerprint", "documentation", "tests"],
+    "changes": [
+      "Expose fictional device-class, family, model, hardware, firmware, serial and capability values in the Modbus identity block.",
+      "Update Modbus unit, contract and runtime assertions to the new identity profile.",
+      "Document the identity block and no-OEM rule in the register matrix."
+    ],
+    "security_notes": [
+      "Identity values avoid real manufacturer names, order-code schemes, firmware strings, module IDs, MAC/OUI values and exact OEM register maps.",
+      "The exposed-research sweep validates the fictional PPC identity without depending on a real vendor fingerprint."
+    ]
+  },
+  {
+    "version": "v1.4.11",
+    "released_at": "2026-05-26",
+    "category": "Test",
+    "title": "Modbus fingerprint contract QA",
+    "summary": "Adds contract coverage for Modbus fingerprint realism so protocol behavior, identity consistency and quiet exception paths remain intentional.",
+    "areas": ["modbus", "contract-tests", "fingerprint", "security"],
+    "changes": [
+      "Add fingerprint contract tests for the intentional function-code matrix.",
+      "Verify identity-block consistency across active Modbus units.",
+      "Assert write-readback process effects and quiet Modbus exceptions for unknown units or gaps."
+    ],
+    "security_notes": [
+      "The tests reduce accidental emulator tells such as overbroad function-code support or unrealistic write behavior.",
+      "Rejected protocol paths remain observable in Ops events without exposing attacker-facing debug detail."
+    ]
+  },
+  {
+    "version": "v1.4.10",
+    "released_at": "2026-05-26",
+    "category": "Security",
+    "title": "Attacker-facing leakage gate",
+    "summary": "Adds a repository hardening gate for attacker-facing content and documents the no-background-network realism decision.",
+    "areas": ["hardening", "hmi", "documentation", "tests"],
+    "changes": [
+      "Scan attacker-facing templates and locale files for private path leaks, debug/framework fingerprints, real vendor clone terms and deployable-looking secrets.",
+      "Keep public documentation under the absolute-path leak check.",
+      "Document that background peer traffic is not simulated for realism; HMI and Modbus remain the intended exposed surfaces."
+    ],
+    "security_notes": [
+      "The gate helps prevent accidental disclosure of host paths, framework internals, real OEM clone terms or secret-looking material.",
+      "Avoiding fake background peer traffic keeps the honeypot's attack surface bounded and auditable."
+    ]
+  },
+  {
     "version": "v1.4.9",
     "released_at": "2026-05-11",
     "category": "Fix",
