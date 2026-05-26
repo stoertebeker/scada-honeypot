@@ -44,6 +44,33 @@ def test_apply_curtailment_reduces_power_and_sets_alarm() -> None:
     assert curtailed_snapshot.active_alarm_codes == ("PLANT_CURTAILED",)
 
 
+def test_planned_maintenance_window_changes_visible_state_and_clears_reversibly() -> None:
+    snapshot = build_snapshot()
+    simulator = PlantSimulator.from_snapshot(snapshot)
+
+    maintenance_snapshot = simulator.apply_planned_maintenance_window(snapshot, active_power_limit_pct=35)
+    restored_snapshot = simulator.clear_planned_maintenance_window(maintenance_snapshot)
+
+    serviced_block = maintenance_snapshot.inverter_blocks[0]
+    active_blocks = maintenance_snapshot.inverter_blocks[1:]
+    assert maintenance_snapshot.site.operating_mode == "maintenance"
+    assert maintenance_snapshot.site.availability_state == "partially_available"
+    assert maintenance_snapshot.site.plant_power_limit_pct == 35
+    assert maintenance_snapshot.power_plant_controller.active_power_limit_pct == 35
+    assert maintenance_snapshot.site.plant_power_mw == pytest.approx(2.03)
+    assert maintenance_snapshot.revenue_meter.export_power_kw == pytest.approx(2030.0)
+    assert serviced_block.status == "offline"
+    assert serviced_block.communication_state == "healthy"
+    assert serviced_block.block_power_kw == pytest.approx(0.0)
+    assert all(block.status == "online" for block in active_blocks)
+    assert maintenance_snapshot.active_alarm_codes == ()
+    assert restored_snapshot.site.operating_mode == "normal"
+    assert restored_snapshot.site.availability_state == "available"
+    assert restored_snapshot.power_plant_controller.active_power_limit_pct == 100
+    assert restored_snapshot.site.plant_power_mw == pytest.approx(5.8)
+    assert restored_snapshot.active_alarm_codes == ()
+
+
 def test_open_breaker_zeroes_export_and_sets_fault_alarm() -> None:
     snapshot = build_snapshot()
     simulator = PlantSimulator.from_snapshot(snapshot)

@@ -38,6 +38,8 @@ lifecycle, stop behavior, and findings output.
 - Exporter failures do not break core runtime behavior.
 - Weather provider failures degrade safely.
 - Docker Compose keeps Ops on host loopback.
+- Generated plant history may include only rare, bounded maintenance windows,
+  and HMI trends must derive that context from shared history.
 - Attacker-facing templates/locales do not expose debug/framework fingerprints,
   real vendor clone terms, private paths, or deployable-looking secrets.
 - Modbus fingerprint contract tests lock the intentional function-code matrix,

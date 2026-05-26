@@ -215,6 +215,7 @@
   "trends.context.stable_live_history": "Current generation values remain stable across the selected history window.",
   "trends.context.live_history_visible": "The trace shows recent live movement across output and generation.",
   "trends.context.curtailment_visible": "The live trace shows curtailed output across the recent history window.",
+  "trends.context.maintenance_visible": "The selected history contains a short planned maintenance window.",
   "trends.context.breaker_open": "The trace ends with an isolated export path caused by an open breaker.",
   "trends.context.comms_degraded": "Trend confidence is reduced because communications are degraded.",
   "service.login_hint": "Service access is limited to the documented V1 control paths. Use the service panel logout when the session is no longer needed.",

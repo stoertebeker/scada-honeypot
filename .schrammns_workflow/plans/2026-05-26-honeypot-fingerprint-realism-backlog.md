@@ -28,7 +28,7 @@ The selected backlog follows the approved course: no background network realism.
 | `tests/contract/test_protocol_modbus_timing.py` | **NEW** - Verify timing bounds without creating flaky tests. |
 | `src/honeypot/asset_domain/models.py` | Add bounded maintenance/shift fields if needed by the visible state. |
 | `src/honeypot/plant_sim/core.py` | Model scheduled maintenance effects and degraded/stale transitions. |
-| `src/honeypot/runtime_evolution.py` | Drive maintenance windows from clock/timezone without extra services. |
+| `src/honeypot/runtime_evolution.py` | Seed a rare historical maintenance window without extra services. |
 | `src/honeypot/hmi_web/app.py` | Surface maintenance/shift state in existing HMI view models. |
 | `resources/locales/attacker-ui/en.json` | Add attacker-facing labels for maintenance/shift context. |
 | `tests/unit/test_plant_sim.py` | Cover maintenance process effects and edge cases. |
@@ -51,7 +51,7 @@ The selected backlog follows the approved course: no background network realism.
 | Background realism | Exclude from implementation | Synthetic traffic or extra listeners | Avoids added attack surface and keeps the project within current safety boundaries. |
 | Identity realism | Fictional, internally consistent profile | Specific OEM mimicry | Plausibility improves without copying a real device family. |
 | Timing realism | Bounded optional jitter with deterministic test mode | Unbounded sleeps or random failures | Reduces perfect-response signal without harming reliability. |
-| Operations rhythm | Model local maintenance/shift state in existing domain and HMI paths | Separate fake subsystem | Keeps one shared truth and avoids inconsistent surfaces. |
+| Operations rhythm | Model rare historical maintenance in existing domain and HMI paths | Separate fake subsystem or live scheduler | Keeps one shared truth and avoids inconsistent surfaces or added attack surface. |
 | QA first | Add release-gate tests before behavior changes where possible | Manual-only review | Makes fingerprint regressions visible and repeatable. |
 
 ## Baseline Audit
@@ -147,8 +147,9 @@ In `src/honeypot/plant_sim/core.py`:
 
 In `src/honeypot/runtime_evolution.py`:
 
-- Add a scheduler function based on configured timezone and clock.
-- Keep it deterministic in tests.
+- Add a deterministic pseudo-random maintenance marker to freshly generated
+  historical data only.
+- Keep maintenance rare and away from the newest samples.
 
 In `src/honeypot/hmi_web/app.py` and `resources/locales/attacker-ui/en.json`:
 

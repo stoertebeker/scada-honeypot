@@ -23,6 +23,8 @@ The simulator makes operator actions visible:
 - inverter communication loss reduces availability
 - block power limits reduce block contribution
 - PV/DC disconnect separates a block from DC input
+- rare planned maintenance reduces historical output and marks
+  `operating_mode="maintenance"` on stored trend samples
 - reset can recover simulated block communication loss
 
 ## Time and Weather
@@ -30,6 +32,11 @@ The simulator makes operator actions visible:
 The runtime evolves over time. The model uses the configured timezone and can use
 deterministic weather or Open-Meteo weather providers. Exact configured
 coordinates are never shown in the attacker-facing HMI.
+
+On a freshly generated 30-day plant history, the seeding path adds at most one
+short deterministic pseudo-random maintenance window away from the newest
+samples. This is historical context only; no separate live maintenance scheduler
+or attacker-facing route is created.
 
 ## Alarm Intent
 

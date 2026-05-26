@@ -35,6 +35,22 @@ def _json_blob(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True)
 
 
+def _ensure_plant_history_operating_mode_column(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(plant_history)").fetchall()
+    }
+    if "operating_mode" not in columns:
+        connection.execute("ALTER TABLE plant_history ADD COLUMN operating_mode TEXT NOT NULL DEFAULT 'normal'")
+
+
+def _normalize_operating_mode(value: object) -> str:
+    normalized = str(value or "normal").strip().lower()
+    if normalized in {"normal", "curtailed", "maintenance", "faulted"}:
+        return normalized
+    return "normal"
+
+
 @dataclass(frozen=True, slots=True)
 class LoginCampaignRecord:
     campaign_id: str
@@ -181,6 +197,7 @@ class SQLiteEventStore:
 
                 CREATE TABLE IF NOT EXISTS plant_history (
                     observed_at TEXT PRIMARY KEY,
+                    operating_mode TEXT NOT NULL DEFAULT 'normal',
                     plant_power_mw REAL NOT NULL,
                     active_power_limit_pct REAL NOT NULL,
                     irradiance_w_m2 REAL NOT NULL,
@@ -251,6 +268,7 @@ class SQLiteEventStore:
                 ON login_credential_counts(scope_type, scope_id, value_type, count DESC, last_seen DESC);
                 """
             )
+            _ensure_plant_history_operating_mode_column(connection)
 
     def journal_mode(self) -> str:
         with self._connect() as connection:
@@ -651,10 +669,11 @@ class SQLiteEventStore:
             connection.executemany(
                 """
                 INSERT INTO plant_history (
-                    observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                    observed_at, operating_mode, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
                     export_power_mw, export_energy_mwh_total, block_power_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(observed_at) DO UPDATE SET
+                    operating_mode = excluded.operating_mode,
                     plant_power_mw = excluded.plant_power_mw,
                     active_power_limit_pct = excluded.active_power_limit_pct,
                     irradiance_w_m2 = excluded.irradiance_w_m2,
@@ -689,7 +708,7 @@ class SQLiteEventStore:
             if limit is None:
                 rows = connection.execute(
                     f"""
-                    SELECT observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                    SELECT observed_at, operating_mode, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
                            export_power_mw, export_energy_mwh_total, block_power_json
                     FROM plant_history
                     {where}
@@ -700,10 +719,10 @@ class SQLiteEventStore:
             else:
                 rows = connection.execute(
                     f"""
-                    SELECT observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                    SELECT observed_at, operating_mode, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
                            export_power_mw, export_energy_mwh_total, block_power_json
                     FROM (
-                        SELECT observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                        SELECT observed_at, operating_mode, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
                                export_power_mw, export_energy_mwh_total, block_power_json
                         FROM plant_history
                         {where}
@@ -1161,6 +1180,7 @@ def _source_activity_from_row(row: sqlite3.Row) -> SourceActivityRecord:
 def _plant_history_params(sample: PlantHistorySample) -> tuple[Any, ...]:
     return (
         _iso_timestamp(sample.observed_at),
+        sample.operating_mode,
         sample.plant_power_mw,
         sample.active_power_limit_pct,
         sample.irradiance_w_m2,
@@ -1174,6 +1194,7 @@ def _plant_history_sample_from_row(row: sqlite3.Row) -> PlantHistorySample:
     block_power = json.loads(str(row["block_power_json"]))
     return PlantHistorySample(
         observed_at=_parse_timestamp(str(row["observed_at"])),
+        operating_mode=_normalize_operating_mode(row["operating_mode"]),
         plant_power_mw=float(row["plant_power_mw"]),
         active_power_limit_pct=float(row["active_power_limit_pct"]),
         irradiance_w_m2=float(row["irradiance_w_m2"]),

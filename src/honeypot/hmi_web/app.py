@@ -4325,6 +4325,8 @@ def _trends_context(
         return texts["trends.context.comms_degraded"], "warn"
     if snapshot.power_plant_controller.active_power_limit_pct < 100:
         return texts["trends.context.curtailment_visible"], "warn"
+    if any(sample.operating_mode == "maintenance" for sample in history):
+        return texts["trends.context.maintenance_visible"], "warn"
     if len(history) >= 2 and (
         abs(history[-1].plant_power_mw - history[0].plant_power_mw) >= 0.1
         or abs(history[-1].irradiance_w_m2 - history[0].irradiance_w_m2) >= 25

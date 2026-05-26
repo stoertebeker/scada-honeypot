@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from honeypot.asset_domain import PlantSnapshot
+from honeypot.asset_domain.models import OperatingMode
 from honeypot.time_core import ensure_utc_datetime
 
 
@@ -20,6 +21,7 @@ class PlantHistorySample:
     export_power_mw: float
     block_power_kw: tuple[tuple[str, float], ...]
     export_energy_mwh_total: float | None = None
+    operating_mode: OperatingMode = "normal"
 
     @classmethod
     def from_snapshot(cls, snapshot: PlantSnapshot) -> "PlantHistorySample":
@@ -31,6 +33,7 @@ class PlantHistorySample:
             export_power_mw=snapshot.revenue_meter.export_power_kw / 1000,
             block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
             export_energy_mwh_total=snapshot.revenue_meter.export_energy_mwh_total,
+            operating_mode=snapshot.site.operating_mode,
         )
 
 
@@ -46,6 +49,12 @@ def apply_history_sample_to_snapshot(snapshot: PlantSnapshot, sample: PlantHisto
                 update={
                     "plant_power_mw": sample.plant_power_mw,
                     "plant_power_limit_pct": sample.active_power_limit_pct,
+                    "operating_mode": sample.operating_mode,
+                    "availability_state": (
+                        "partially_available"
+                        if sample.operating_mode == "maintenance"
+                        else snapshot.site.availability_state
+                    ),
                 }
             ),
             "power_plant_controller": snapshot.power_plant_controller.model_copy(

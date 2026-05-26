@@ -245,6 +245,130 @@ class PlantSimulator:
             alarms=alarms,
         )
 
+    def apply_planned_maintenance_window(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        active_power_limit_pct: float,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Markiert ein kurzes geplantes Wartungsfenster mit reduzierter Einspeisung."""
+
+        if not 0 <= active_power_limit_pct <= 100:
+            raise PlantSimulationError("active_power_limit_pct muss im Bereich 0..100 liegen")
+        normalized_limit_pct = round(active_power_limit_pct, 1)
+
+        base_snapshot = self.simulate_normal_operation(snapshot)
+        total_power_kw = round(
+            self.estimate_available_power_kw(base_snapshot) * (normalized_limit_pct / 100),
+            1,
+        )
+        inverter_blocks = _with_maintenance_block_power(base_snapshot, total_power_kw)
+        effective_power_kw = round(sum(block.block_power_kw for block in inverter_blocks), 1)
+        available_count = sum(1 for block in inverter_blocks if block.availability_pct > 0)
+        availability_state = (
+            "unavailable"
+            if available_count == 0
+            else ("available" if available_count == len(inverter_blocks) else "partially_available")
+        )
+        site = base_snapshot.site.model_copy(
+            update={
+                "operating_mode": "maintenance",
+                "availability_state": availability_state,
+                "plant_power_mw": round(effective_power_kw / 1000, 3),
+                "plant_power_limit_pct": normalized_limit_pct,
+            }
+        )
+        power_plant_controller = base_snapshot.power_plant_controller.model_copy(
+            update={
+                "active_power_limit_pct": normalized_limit_pct,
+            }
+        )
+        revenue_meter = base_snapshot.revenue_meter.model_copy(
+            update={
+                "export_power_kw": effective_power_kw,
+                "power_factor": _estimate_power_factor(
+                    reactive_power_target=base_snapshot.power_plant_controller.reactive_power_target,
+                    export_power_kw=effective_power_kw,
+                    nominal_capacity_kw=self.nominal_capacity_kw,
+                ),
+                "grid_voltage_v": _estimate_grid_voltage_v(
+                    export_power_kw=effective_power_kw,
+                    nominal_capacity_kw=self.nominal_capacity_kw,
+                    reactive_power_target=base_snapshot.power_plant_controller.reactive_power_target,
+                ),
+                "grid_frequency_hz": _estimate_grid_frequency_hz(
+                    export_power_kw=effective_power_kw,
+                    nominal_capacity_kw=self.nominal_capacity_kw,
+                    wind_speed_m_s=base_snapshot.weather_station.wind_speed_m_s,
+                ),
+            }
+        )
+        resulting_snapshot = _build_snapshot(
+            base_snapshot,
+            site=site,
+            power_plant_controller=power_plant_controller,
+            inverter_blocks=inverter_blocks,
+            revenue_meter=revenue_meter,
+            alarms=_replace_scenario_alarms(base_snapshot.alarms),
+        )
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.maintenance.window_entered",
+            category="process",
+            severity="low",
+            asset_id=resulting_snapshot.power_plant_controller.asset_id,
+            action="enter_planned_maintenance",
+            requested_value={"active_power_limit_pct": normalized_limit_pct},
+            previous_value=snapshot.site.operating_mode,
+            resulting_value=resulting_snapshot.site.operating_mode,
+            resulting_state={
+                "operating_mode": resulting_snapshot.site.operating_mode,
+                "availability_state": resulting_snapshot.site.availability_state,
+                "active_power_limit_pct": resulting_snapshot.power_plant_controller.active_power_limit_pct,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=None,
+            tags=("process", "maintenance", "planned"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
+    def clear_planned_maintenance_window(
+        self,
+        snapshot: PlantSnapshot,
+        *,
+        event_context: SimulationEventContext | None = None,
+    ) -> PlantSnapshot:
+        """Stellt nach einem geplanten Wartungsfenster den Normalbetrieb wieder her."""
+
+        resulting_snapshot = self.simulate_normal_operation(snapshot)
+        self._record_snapshot_transition(
+            snapshot,
+            resulting_snapshot,
+            event_type="process.maintenance.window_cleared",
+            category="process",
+            severity="low",
+            asset_id=resulting_snapshot.power_plant_controller.asset_id,
+            action="clear_planned_maintenance",
+            requested_value="normal_operation",
+            previous_value=snapshot.site.operating_mode,
+            resulting_value=resulting_snapshot.site.operating_mode,
+            resulting_state={
+                "operating_mode": resulting_snapshot.site.operating_mode,
+                "availability_state": resulting_snapshot.site.availability_state,
+                "active_power_limit_pct": resulting_snapshot.power_plant_controller.active_power_limit_pct,
+                "plant_power_mw": resulting_snapshot.site.plant_power_mw,
+                "active_alarm_codes": list(resulting_snapshot.active_alarm_codes),
+            },
+            alarm_code=None,
+            tags=("process", "maintenance", "planned"),
+            event_context=event_context,
+        )
+        return resulting_snapshot
+
     def apply_curtailment(
         self,
         snapshot: PlantSnapshot,
@@ -1024,6 +1148,37 @@ def _with_rebalanced_block_power(snapshot: PlantSnapshot, total_power_kw: float)
         )
         for index, block in enumerate(snapshot.inverter_blocks)
     )
+
+
+def _with_maintenance_block_power(snapshot: PlantSnapshot, total_power_kw: float) -> tuple:
+    if len(snapshot.inverter_blocks) <= 1:
+        return _with_rebalanced_block_power(snapshot, total_power_kw)
+
+    service_block_id = snapshot.inverter_blocks[0].asset_id
+    active_blocks = tuple(block for block in snapshot.inverter_blocks if block.asset_id != service_block_id)
+    active_distribution = _distribute_power_kw(active_blocks, total_power_kw)
+    power_by_asset = {
+        block.asset_id: active_distribution[index]
+        for index, block in enumerate(active_blocks)
+    }
+
+    maintenance_blocks = []
+    for block in snapshot.inverter_blocks:
+        is_service_block = block.asset_id == service_block_id
+        is_isolated = is_service_block or _is_dc_disconnected(block)
+        status = "offline" if is_service_block else "online"
+        maintenance_blocks.append(
+            block.model_copy(
+                update={
+                    "status": status,
+                    "communication_state": "healthy",
+                    "quality": determine_data_quality(status=status, communication_state="healthy"),
+                    "availability_pct": 0 if is_isolated else 100,
+                    "block_power_kw": 0.0 if is_isolated else power_by_asset[block.asset_id],
+                }
+            )
+        )
+    return tuple(maintenance_blocks)
 
 
 def _distribute_power_kw_for_controls(

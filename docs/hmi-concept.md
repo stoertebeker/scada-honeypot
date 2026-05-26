@@ -18,6 +18,10 @@ honeypot frontend. It is separate from the protected Ops backend.
 - `/service/panel`: bounded service controls after login
 - `/robots.txt`: quiet service-login lure
 
+The `/trends` page may show a short planned-maintenance context when the stored
+history contains a seeded maintenance sample. This is derived from the shared
+plant history and does not add a new HMI route or a live scheduler.
+
 ## Service Panel
 
 The service panel supports bounded actions only:

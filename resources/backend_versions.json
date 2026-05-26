@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.14",
+    "released_at": "2026-05-26",
+    "category": "Feature",
+    "title": "Rare historical maintenance windows",
+    "summary": "Adds a rare planned-maintenance marker to generated plant history so trend data contains a bounded operational interruption without a live maintenance scheduler.",
+    "areas": ["simulation", "history", "hmi", "storage", "tests"],
+    "changes": [
+      "Persist operating_mode on plant history samples with a backward-compatible SQLite migration.",
+      "Seed at most one short deterministic pseudo-random maintenance window in fresh 30-day generation history.",
+      "Surface historical maintenance context on the existing HMI trends page."
+    ],
+    "security_notes": [
+      "The feature does not add attacker-facing routes, public ports, peer traffic, or a live runtime scheduler.",
+      "Maintenance realism stays bounded to generated historical data and avoids real plant schedules or OEM-specific behavior."
+    ]
+  },
+  {
     "version": "v1.4.13",
     "released_at": "2026-05-26",
     "category": "Feature",

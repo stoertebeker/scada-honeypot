@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, date, datetime, timedelta
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
@@ -287,6 +288,55 @@ def test_seed_plant_history_creates_one_month_generation_history(tmp_path) -> No
     assert history[-1].export_energy_mwh_total > history[0].export_energy_mwh_total
     assert any(sample.export_power_mw > 0 for sample in history)
     assert all(sample.observed_at >= clock.now() - timedelta(days=30) for sample in history)
+    maintenance_samples = tuple(sample for sample in history if sample.operating_mode == "maintenance")
+    assert 1 <= len(maintenance_samples) <= 3
+    assert all(sample.active_power_limit_pct == 35.0 for sample in maintenance_samples)
+    assert all(sample.observed_at < clock.now() - timedelta(days=3) for sample in maintenance_samples)
+    assert history[-1].operating_mode == "normal"
+
+
+def test_plant_history_operating_mode_migrates_existing_store(tmp_path) -> None:
+    db_path = tmp_path / "events" / "legacy-history.db"
+    db_path.parent.mkdir(parents=True)
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE plant_history (
+                observed_at TEXT PRIMARY KEY,
+                plant_power_mw REAL NOT NULL,
+                active_power_limit_pct REAL NOT NULL,
+                irradiance_w_m2 REAL NOT NULL,
+                export_power_mw REAL NOT NULL,
+                export_energy_mwh_total REAL,
+                block_power_json TEXT NOT NULL
+            );
+            INSERT INTO plant_history (
+                observed_at, plant_power_mw, active_power_limit_pct, irradiance_w_m2,
+                export_power_mw, export_energy_mwh_total, block_power_json
+            ) VALUES (
+                '2026-04-26T12:00:00Z', 5.1, 100.0, 780.0, 5.08, 88.4, '[["invb-01", 1700.0]]'
+            );
+            """
+        )
+
+    store = SQLiteEventStore(db_path)
+    migrated_history = store.fetch_plant_history()
+    store.append_plant_history_sample(
+        PlantHistorySample(
+            observed_at=datetime(2026, 4, 26, 13, 0, tzinfo=UTC),
+            plant_power_mw=2.0,
+            active_power_limit_pct=35.0,
+            irradiance_w_m2=740.0,
+            export_power_mw=1.98,
+            export_energy_mwh_total=90.38,
+            block_power_kw=(("invb-01", 0.0),),
+            operating_mode="maintenance",
+        )
+    )
+    updated_history = store.fetch_plant_history()
+
+    assert migrated_history[0].operating_mode == "normal"
+    assert updated_history[-1].operating_mode == "maintenance"
 
 
 def test_seed_plant_history_uses_plausible_weather_variation(tmp_path) -> None:

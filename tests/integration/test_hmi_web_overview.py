@@ -48,6 +48,7 @@ def _trend_sample(
     irradiance_w_m2: float,
     export_power_mw: float,
     export_energy_mwh_total: float | None = None,
+    operating_mode: str = "normal",
 ) -> TrendSample:
     return TrendSample(
         observed_at=observed_at,
@@ -56,6 +57,7 @@ def _trend_sample(
         irradiance_w_m2=irradiance_w_m2,
         export_power_mw=export_power_mw,
         export_energy_mwh_total=export_energy_mwh_total,
+        operating_mode=operating_mode,
         block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
     )
 
@@ -907,6 +909,48 @@ async def test_trends_page_uses_live_history_without_location_leak(tmp_path: Pat
     assert "Current values stay aligned with the baseline operating trace." not in response.text
     assert "52.52" not in response.text
     assert "13.405" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_trends_page_surfaces_rare_historical_maintenance_window(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    history = (
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time,
+            plant_power_mw=5.8,
+            irradiance_w_m2=840,
+            export_power_mw=5.79,
+        ),
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time + timedelta(hours=1),
+            plant_power_mw=2.03,
+            irradiance_w_m2=820,
+            export_power_mw=2.03,
+            operating_mode="maintenance",
+        ),
+        _trend_sample(
+            snapshot,
+            observed_at=snapshot.start_time + timedelta(hours=2),
+            plant_power_mw=5.6,
+            irradiance_w_m2=805,
+            export_power_mw=5.55,
+        ),
+    )
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot.model_copy(update={"observed_at": history[-1].observed_at}),
+        trend_history_provider=lambda: history,
+        config=build_config(tmp_path),
+        event_recorder=None,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/trends")
+
+    assert response.status_code == 200
+    assert "The selected history contains a short planned maintenance window." in response.text
 
 
 @pytest.mark.asyncio

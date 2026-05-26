@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -19,6 +20,8 @@ from honeypot.weather_core import PlausibleHistoricalWeatherProvider, WeatherObs
 PLANT_HISTORY_RETENTION_DAYS = 30
 PLANT_HISTORY_SEED_STEP_MINUTES = 60
 PLANT_HISTORY_LIVE_SAMPLE_SECONDS = 60
+HISTORY_SEED_MAINTENANCE_LIMIT_PCT = 35.0
+HISTORY_SEED_MAINTENANCE_MIN_SPAN_DAYS = 7
 
 
 TrendSample = PlantHistorySample
@@ -188,6 +191,7 @@ class BackgroundPlantEvolutionService:
                 export_power_mw=sample.export_power_mw,
                 block_power_kw=sample.block_power_kw,
                 export_energy_mwh_total=0.0,
+                operating_mode=sample.operating_mode,
             )
 
         latest_sample = latest_history[-1]
@@ -204,6 +208,7 @@ class BackgroundPlantEvolutionService:
             export_power_mw=sample.export_power_mw,
             block_power_kw=sample.block_power_kw,
             export_energy_mwh_total=round(base_total + max(sample.export_power_mw, 0.0) * interval_hours, 4),
+            operating_mode=sample.operating_mode,
         )
 
 
@@ -243,6 +248,13 @@ def seed_plant_history_if_empty(
     previous_observed_at = start - step
     export_energy_mwh_total = 0.0
     samples: list[TrendSample] = []
+    maintenance_window = _history_seed_maintenance_window(
+        snapshot=snapshot,
+        start_at=start,
+        end_at=now,
+        step=step,
+        timezone=timezone,
+    )
     observed_at = start
 
     while observed_at <= now:
@@ -263,14 +275,115 @@ def seed_plant_history_if_empty(
             observed_at=observed_at,
             weather_observation=observation,
         )
+        if _is_history_seed_maintenance_sample(observed_at, maintenance_window):
+            working_snapshot = simulator.apply_planned_maintenance_window(
+                working_snapshot,
+                active_power_limit_pct=HISTORY_SEED_MAINTENANCE_LIMIT_PCT,
+            )
+        export_energy_mwh_total = _integrate_history_seed_export_energy(
+            previous_total_mwh=export_energy_mwh_total,
+            previous_observed_at=previous_observed_at,
+            observed_at=observed_at,
+            export_power_mw=working_snapshot.revenue_meter.export_power_kw / 1000,
+        )
+        working_snapshot = _snapshot_with_export_energy_total(
+            working_snapshot,
+            export_energy_mwh_total=export_energy_mwh_total,
+        )
         samples.append(TrendSample.from_snapshot(working_snapshot))
-        export_energy_mwh_total = working_snapshot.revenue_meter.export_energy_mwh_total or export_energy_mwh_total
         previous_observed_at = observed_at
         observed_at += step
 
     history_store.append_plant_history_samples(samples)
     history_store.prune_plant_history(before=now - timedelta(days=retention_days))
     return len(samples)
+
+
+def _history_seed_maintenance_window(
+    *,
+    snapshot: PlantSnapshot,
+    start_at: datetime,
+    end_at: datetime,
+    step: timedelta,
+    timezone: str,
+) -> tuple[datetime, datetime] | None:
+    if step.total_seconds() <= 0:
+        return None
+
+    total_seconds = max((end_at - start_at).total_seconds(), 0.0)
+    if total_seconds < timedelta(days=HISTORY_SEED_MAINTENANCE_MIN_SPAN_DAYS).total_seconds():
+        return None
+
+    digest = hashlib.sha256(
+        "|".join(
+            (
+                snapshot.fixture_name,
+                timezone,
+                start_at.date().isoformat(),
+                end_at.date().isoformat(),
+                str(len(snapshot.inverter_blocks)),
+                str(int(step.total_seconds())),
+            )
+        ).encode("utf-8")
+    ).digest()
+    total_steps = int(total_seconds // step.total_seconds()) + 1
+    duration_hours = 2 + (digest[4] % 2)
+    duration_steps = max(1, round(timedelta(hours=duration_hours).total_seconds() / step.total_seconds()))
+    if total_steps <= duration_steps:
+        return None
+
+    default_edge_steps = max(1, int(timedelta(hours=72).total_seconds() // step.total_seconds()))
+    edge_steps = min(default_edge_steps, max((total_steps - duration_steps) // 4, 1))
+    available_span = total_steps - duration_steps - (edge_steps * 2)
+    if available_span <= 0:
+        edge_steps = 0
+        available_span = total_steps - duration_steps
+    if available_span <= 0:
+        return None
+
+    start_offset_steps = edge_steps + (int.from_bytes(digest[:4], "big") % available_span)
+    window_start = ensure_utc_datetime(start_at + step * start_offset_steps)
+    window_end = ensure_utc_datetime(window_start + step * duration_steps)
+    return window_start, window_end
+
+
+def _is_history_seed_maintenance_sample(
+    observed_at: datetime,
+    maintenance_window: tuple[datetime, datetime] | None,
+) -> bool:
+    if maintenance_window is None:
+        return False
+    window_start, window_end = maintenance_window
+    observed_at = ensure_utc_datetime(observed_at)
+    return window_start <= observed_at < window_end
+
+
+def _integrate_history_seed_export_energy(
+    *,
+    previous_total_mwh: float,
+    previous_observed_at: datetime,
+    observed_at: datetime,
+    export_power_mw: float,
+) -> float:
+    interval_hours = max(
+        (ensure_utc_datetime(observed_at) - ensure_utc_datetime(previous_observed_at)).total_seconds(),
+        0.0,
+    ) / 3600
+    return round(previous_total_mwh + max(export_power_mw, 0.0) * interval_hours, 4)
+
+
+def _snapshot_with_export_energy_total(
+    snapshot: PlantSnapshot,
+    *,
+    export_energy_mwh_total: float,
+) -> PlantSnapshot:
+    return snapshot.model_copy(
+        update={
+            "revenue_meter": snapshot.revenue_meter.model_copy(
+                update={"export_energy_mwh_total": export_energy_mwh_total}
+            )
+        }
+    )
 
 
 def _prepared_history_weather_provider(
@@ -336,6 +449,7 @@ def _trend_sample_for_minute(snapshot: PlantSnapshot) -> TrendSample:
         export_power_mw=sample.export_power_mw,
         block_power_kw=sample.block_power_kw,
         export_energy_mwh_total=sample.export_energy_mwh_total,
+        operating_mode=sample.operating_mode,
     )
 
 
