@@ -91,7 +91,8 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert transaction_id == 0x4321
     assert protocol_id == 0
     assert unit_id == 1
-    assert registers == (100, 1001, 1, 0, 28784, 25389, 12337, 8224)
+    assert registers[:4] == (124, 4103, 1, 1)
+    assert decode_ascii_registers(registers[4:8]) == "PPC-A01"
     assert overview_response.status_code == 200
     assert "Plant Overview" in overview_response.text
     assert "5.80 MW" in overview_response.text
@@ -252,7 +253,8 @@ def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enab
     assert transaction_id == 0x5331
     assert protocol_id == 0
     assert unit_id == 1
-    assert registers == (100, 1001, 1, 0, 28784, 25389, 12337, 8224)
+    assert registers[:4] == (124, 4103, 1, 1)
+    assert decode_ascii_registers(registers[4:8]) == "PPC-A01"
     assert overview_response.status_code == 200
     assert "Plant Overview" in overview_response.text
     assert len(events) == 2
@@ -2035,6 +2037,11 @@ def recv_exact(connection: socket.socket, size: int) -> bytes:
             raise RuntimeError("Socket geschlossen, bevor die Antwort komplett war")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+def decode_ascii_registers(registers: tuple[int, ...]) -> str:
+    raw = b"".join(pack(">H", value) for value in registers)
+    return raw.decode("ascii").strip()
 
 
 def assert_port_closed(address: tuple[str, int]) -> None:

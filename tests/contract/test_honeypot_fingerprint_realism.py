@@ -102,34 +102,38 @@ def test_modbus_function_code_matrix_is_intentional(running_service) -> None:
 def test_identity_blocks_are_consistent_across_units(running_service) -> None:
     service, _ = running_service
     expected_identity = {
-        1: (100, 1001, 1, 0, "ppc-01"),
-        11: (100, 1101, 11, 1, "invb-01"),
-        12: (100, 1101, 12, 2, "invb-02"),
-        13: (100, 1101, 13, 3, "invb-03"),
-        21: (100, 1201, 21, 0, "wx-01"),
-        31: (100, 1301, 31, 0, "meter-01"),
-        41: (100, 1401, 41, 0, "grid-01"),
+        1: ((124, 4103, 1, 1), "PPC-A01", (7100, 7112, 213, 3, 7, 4, 1182, 51026, 1001, 7)),
+        11: ((124, 4211, 11, 1), "INV-B01", (7200, 7206, 209, 2, 9, 6, 904, 51026, 2111, 15)),
+        12: ((124, 4211, 12, 2), "INV-B02", (7200, 7206, 209, 2, 9, 6, 904, 51026, 2112, 15)),
+        13: ((124, 4211, 13, 3), "INV-B03", (7200, 7206, 209, 2, 9, 6, 904, 51026, 2113, 15)),
+        21: ((124, 4307, 21, 1), "MET-A01", (7300, 7314, 104, 1, 8, 2, 441, 51026, 3021, 1)),
+        31: ((124, 4419, 31, 1), "MTR-R01", (7400, 7421, 315, 4, 2, 1, 226, 51026, 4031, 1)),
+        41: ((124, 4523, 41, 1), "GRD-T01", (7500, 7508, 226, 3, 4, 8, 1009, 51026, 5041, 5)),
     }
 
     observed_tags: set[str] = set()
+    observed_serials: set[tuple[int, int]] = set()
     for transaction_id, (unit_id, expected) in enumerate(expected_identity.items(), start=10):
         response = send_request(
             service.address,
             transaction_id=transaction_id,
             unit_id=unit_id,
             function_code=READ_HOLDING_REGISTERS,
-            body=pack(">HH", 0, 8),
+            body=pack(">HH", 0, 18),
         )
         _, _, response_unit, pdu = parse_response(response)
-        registers = unpack(">8H", pdu[2:])
-        profile_version, device_class, identity_unit, instance, tag = expected
+        registers = unpack(">18H", pdu[2:])
+        identity_header, tag, metadata = expected
 
         assert response_unit == unit_id
         assert pdu[0] == READ_HOLDING_REGISTERS
-        assert registers[:4] == (profile_version, device_class, identity_unit, instance)
-        assert decode_ascii_registers(registers[4:]) == tag
+        assert registers[:4] == identity_header
+        assert decode_ascii_registers(registers[4:8]) == tag
+        assert registers[8:18] == metadata
         assert tag not in observed_tags
+        assert registers[15:17] not in observed_serials
         observed_tags.add(tag)
+        observed_serials.add(registers[15:17])
 
 
 def test_write_readback_has_visible_process_effect_and_event_trail(running_service) -> None:

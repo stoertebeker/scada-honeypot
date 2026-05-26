@@ -50,7 +50,7 @@ def test_fc03_returns_identity_block_with_correct_mbap_header(running_service) -
         transaction_id=0x1234,
         unit_id=1,
         function_code=READ_HOLDING_REGISTERS,
-        body=pack(">HH", 0, 8),
+        body=pack(">HH", 0, 18),
     )
 
     transaction_id, protocol_id, unit_id, pdu = parse_response(response)
@@ -62,11 +62,13 @@ def test_fc03_returns_identity_block_with_correct_mbap_header(running_service) -
     assert protocol_id == 0
     assert unit_id == 1
     assert pdu[0] == READ_HOLDING_REGISTERS
-    assert registers == (100, 1001, 1, 0, 28784, 25389, 12337, 8224)
+    assert registers[:4] == (124, 4103, 1, 1)
+    assert decode_ascii_registers(registers[4:8]) == "PPC-A01"
+    assert registers[8:18] == (7100, 7112, 213, 3, 7, 4, 1182, 51026, 1001, 7)
     assert len(events) == 1
     assert events[0].event_type == "protocol.modbus.holding_registers_read"
     assert events[0].requested_value["register_start"] == 40001
-    assert events[0].requested_value["register_count"] == 8
+    assert events[0].requested_value["register_count"] == 18
 
 
 def test_reserved_identity_registers_read_as_zero(running_service) -> None:
@@ -76,7 +78,7 @@ def test_reserved_identity_registers_read_as_zero(running_service) -> None:
         transaction_id=2,
         unit_id=1,
         function_code=READ_HOLDING_REGISTERS,
-        body=pack(">HH", 8, 4),
+        body=pack(">HH", 18, 4),
     )
 
     _, _, _, pdu = parse_response(response)
@@ -351,12 +353,16 @@ def test_unit_11_and_13_fc03_return_distinct_inverter_identity_and_status(runnin
     assert unit_11_tx == 39
     assert unit_11_protocol == 0
     assert unit_11_unit == 11
-    assert unpack(">8H", unit_11_identity_pdu[2:])[:4] == (100, 1101, 11, 1)
+    unit_11_identity = unpack(">8H", unit_11_identity_pdu[2:])
+    assert unit_11_identity[:4] == (124, 4211, 11, 1)
+    assert decode_ascii_registers(unit_11_identity[4:8]) == "INV-B01"
     assert unpack(">12H", unit_11_status_pdu[2:]) == (0, 0, 0, 1000, 0, 1935, 0, 0, 0, 0, 0, 0)
     assert unit_13_tx == 41
     assert unit_13_protocol == 0
     assert unit_13_unit == 13
-    assert unpack(">8H", unit_13_identity_pdu[2:])[:4] == (100, 1101, 13, 3)
+    unit_13_identity = unpack(">8H", unit_13_identity_pdu[2:])
+    assert unit_13_identity[:4] == (124, 4211, 13, 3)
+    assert decode_ascii_registers(unit_13_identity[4:8]) == "INV-B03"
     assert unpack(">12H", unit_13_status_pdu[2:]) == (0, 0, 0, 1000, 0, 1945, 0, 0, 0, 0, 0, 0)
     assert any(event.asset_id == "invb-01" and event.requested_value["register_start"] == 40001 for event in events)
     assert any(event.asset_id == "invb-03" and event.requested_value["register_start"] == 40100 for event in events)
@@ -649,7 +655,8 @@ def test_unit_21_fc03_returns_weather_station_identity_and_status(running_servic
     assert identity_protocol == 0
     assert identity_unit == 21
     assert identity_pdu[0] == READ_HOLDING_REGISTERS
-    assert identity_registers[:4] == (100, 1201, 21, 0)
+    assert identity_registers[:4] == (124, 4307, 21, 1)
+    assert decode_ascii_registers(identity_registers[4:8]) == "MET-A01"
     assert status_registers == (0, 0, 0, 840, 315, 220, 42, 1000)
     assert any(event.requested_value["register_start"] == 40001 for event in events)
     assert any(event.requested_value["register_start"] == 40100 for event in events)
@@ -718,7 +725,8 @@ def test_unit_31_fc03_returns_revenue_meter_identity_and_status(running_service)
     assert identity_protocol == 0
     assert identity_unit == 31
     assert identity_pdu[0] == READ_HOLDING_REGISTERS
-    assert identity_registers[:4] == (100, 1301, 31, 0)
+    assert identity_registers[:4] == (124, 4419, 31, 1)
+    assert decode_ascii_registers(identity_registers[4:8]) == "MTR-R01"
     assert status_registers == (0, 0, 0, 0, 5790, 0, 0, 0, 0, 990, 1)
     assert any(event.requested_value["register_start"] == 40001 for event in events)
     assert any(event.requested_value["register_start"] == 40100 for event in events)
@@ -787,7 +795,8 @@ def test_unit_41_fc03_returns_grid_identity_and_status(running_service) -> None:
     assert identity_protocol == 0
     assert identity_unit == 41
     assert identity_pdu[0] == READ_HOLDING_REGISTERS
-    assert identity_registers[:4] == (100, 1401, 41, 0)
+    assert identity_registers[:4] == (124, 4523, 41, 1)
+    assert decode_ascii_registers(identity_registers[4:8]) == "GRD-T01"
     assert status_registers == (0, 0, 0, 1, 0)
     assert any(event.requested_value["register_start"] == 40001 for event in events)
     assert any(event.requested_value["register_start"] == 40100 for event in events)
@@ -1003,3 +1012,8 @@ def recv_exact(connection: socket.socket, size: int) -> bytes:
             raise RuntimeError("Socket geschlossen, bevor die Antwort komplett war")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+def decode_ascii_registers(registers: tuple[int, ...]) -> str:
+    raw = b"".join(pack(">H", value) for value in registers)
+    return raw.decode("ascii").strip()

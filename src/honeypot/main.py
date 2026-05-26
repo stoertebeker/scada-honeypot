@@ -507,9 +507,10 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
     _, protocol_id, unit_id, pdu = _parse_modbus_response(modbus_response)
     byte_count = pdu[1]
     registers = unpack(f">{byte_count // 2}H", pdu[2:])
+    identity_tag = b"".join(value.to_bytes(2, byteorder="big") for value in registers[4:8]).decode("ascii").strip()
     alerts = runtime.event_store.fetch_alerts()
     breaker_alerts = [alert for alert in alerts if alert.alarm_code == "BREAKER_OPEN"]
-    if protocol_id != 0 or unit_id != 1 or registers[:2] != (100, 1001):
+    if protocol_id != 0 or unit_id != 1 or registers[:4] != (124, 4103, 1, 1) or identity_tag != "PPC-A01":
         raise RuntimeError("exposed-research-Sweep: Modbus-Antwort stimmt nicht mit dem erwarteten Profil ueberein")
     if overview_response.status_code != 200 or "Plant Overview" not in overview_response.text:
         raise RuntimeError("exposed-research-Sweep: HMI-/overview antwortet nicht mit dem erwarteten Profil")

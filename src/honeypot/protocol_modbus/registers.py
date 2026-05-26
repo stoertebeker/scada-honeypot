@@ -9,7 +9,27 @@ from honeypot.asset_domain import PlantAlarm, PlantSnapshot
 from honeypot.event_core import EventRecorder
 from honeypot.plant_sim import PlantSimulationError, PlantSimulator, SimulationEventContext
 
-PROFILE_VERSION = 100
+
+@dataclass(frozen=True, slots=True)
+class IdentityProfile:
+    """Fiktives, aber konsistentes Modbus-Identitaetsprofil ohne OEM-Kopie."""
+
+    device_class_code: int
+    instance: int
+    asset_tag: str
+    family_code: int
+    model_code: int
+    hardware_revision: int
+    firmware_major: int
+    firmware_minor: int
+    firmware_patch: int
+    firmware_build: int
+    serial_prefix: int
+    serial_number: int
+    capability_bits: int
+
+
+PROFILE_VERSION = 124
 READ_HOLDING_REGISTERS = 3
 READ_INPUT_REGISTERS = 4
 WRITE_SINGLE_REGISTER = 6
@@ -42,32 +62,14 @@ UNIT_41_ALARM_BLOCK = range(299, 303)
 UNIT_41_BREAKER_OPEN_REQUEST_OFFSET = 199
 UNIT_41_BREAKER_CLOSE_REQUEST_OFFSET = 200
 
-DEVICE_CLASS_CODE = {
-    1: 1001,
-    11: 1101,
-    12: 1101,
-    13: 1101,
-    21: 1201,
-    31: 1301,
-    41: 1401,
-}
-ASSET_INSTANCE = {
-    1: 0,
-    11: 1,
-    12: 2,
-    13: 3,
-    21: 0,
-    31: 0,
-    41: 0,
-}
-ASSET_TAG = {
-    1: "ppc-01",
-    11: "invb-01",
-    12: "invb-02",
-    13: "invb-03",
-    21: "wx-01",
-    31: "meter-01",
-    41: "grid-01",
+IDENTITY_PROFILE = {
+    1: IdentityProfile(4103, 1, "PPC-A01", 7100, 7112, 213, 3, 7, 4, 1182, 51026, 1001, 0x0007),
+    11: IdentityProfile(4211, 1, "INV-B01", 7200, 7206, 209, 2, 9, 6, 904, 51026, 2111, 0x000F),
+    12: IdentityProfile(4211, 2, "INV-B02", 7200, 7206, 209, 2, 9, 6, 904, 51026, 2112, 0x000F),
+    13: IdentityProfile(4211, 3, "INV-B03", 7200, 7206, 209, 2, 9, 6, 904, 51026, 2113, 0x000F),
+    21: IdentityProfile(4307, 1, "MET-A01", 7300, 7314, 104, 1, 8, 2, 441, 51026, 3021, 0x0001),
+    31: IdentityProfile(4419, 1, "MTR-R01", 7400, 7421, 315, 4, 2, 1, 226, 51026, 4031, 0x0001),
+    41: IdentityProfile(4523, 1, "GRD-T01", 7500, 7508, 226, 3, 4, 8, 1009, 51026, 5041, 0x0005),
 }
 ASSET_ID = {
     1: "ppc-01",
@@ -921,13 +923,24 @@ def _build_registers_for_unit(
 
 
 def _build_identity_registers(unit_id: int) -> dict[int, int]:
+    profile = IDENTITY_PROFILE[unit_id]
     registers: dict[int, int] = {
         0: PROFILE_VERSION,
-        1: DEVICE_CLASS_CODE[unit_id],
+        1: profile.device_class_code,
         2: unit_id,
-        3: ASSET_INSTANCE[unit_id],
+        3: profile.instance,
+        8: profile.family_code,
+        9: profile.model_code,
+        10: profile.hardware_revision,
+        11: profile.firmware_major,
+        12: profile.firmware_minor,
+        13: profile.firmware_patch,
+        14: profile.firmware_build,
+        15: profile.serial_prefix,
+        16: profile.serial_number,
+        17: profile.capability_bits,
     }
-    registers.update(_ascii_registers(4, ASSET_TAG[unit_id], register_count=4))
+    registers.update(_ascii_registers(4, profile.asset_tag, register_count=4))
     return registers
 
 

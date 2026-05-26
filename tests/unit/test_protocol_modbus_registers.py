@@ -11,14 +11,20 @@ def build_snapshot() -> PlantSnapshot:
     return PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
 
 
+def _decode_ascii_registers(registers: tuple[int, ...]) -> str:
+    raw = b"".join(value.to_bytes(2, byteorder="big") for value in registers)
+    return raw.decode("ascii").strip()
+
+
 def test_unit_1_identity_block_maps_documented_values() -> None:
     register_map = ReadOnlyRegisterMap(build_snapshot())
 
-    result = register_map.read_holding_registers(unit_id=1, start_offset=0, quantity=8)
+    result = register_map.read_holding_registers(unit_id=1, start_offset=0, quantity=18)
 
     assert result.asset_id == "ppc-01"
-    assert result.values[:4] == (100, 1001, 1, 0)
-    assert result.values[4:] == (28784, 25389, 12337, 8224)
+    assert result.values[:4] == (124, 4103, 1, 1)
+    assert _decode_ascii_registers(result.values[4:8]) == "PPC-A01"
+    assert result.values[8:18] == (7100, 7112, 213, 3, 7, 4, 1182, 51026, 1001, 7)
 
 
 def test_unit_1_status_block_maps_core_runtime_values() -> None:
@@ -53,10 +59,12 @@ def test_unit_11_and_13_identity_and_status_blocks_distinguish_inverter_blocks()
     unit_13_status = register_map.read_holding_registers(unit_id=13, start_offset=99, quantity=12)
 
     assert unit_11_identity.asset_id == "invb-01"
-    assert unit_11_identity.values[:4] == (100, 1101, 11, 1)
+    assert unit_11_identity.values[:4] == (124, 4211, 11, 1)
+    assert _decode_ascii_registers(unit_11_identity.values[4:8]) == "INV-B01"
     assert unit_11_status.values == (0, 0, 0, 1000, 0, 1935, 0, 0, 0, 0, 0, 0)
     assert unit_13_identity.asset_id == "invb-03"
-    assert unit_13_identity.values[:4] == (100, 1101, 13, 3)
+    assert unit_13_identity.values[:4] == (124, 4211, 13, 3)
+    assert _decode_ascii_registers(unit_13_identity.values[4:8]) == "INV-B03"
     assert unit_13_status.values == (0, 0, 0, 1000, 0, 1945, 0, 0, 0, 0, 0, 0)
 
 
@@ -91,7 +99,8 @@ def test_unit_21_identity_status_and_alarm_blocks_map_weather_station_values() -
     alarm_result = register_map.read_holding_registers(unit_id=21, start_offset=299, quantity=3)
 
     assert identity_result.asset_id == "wx-01"
-    assert identity_result.values[:4] == (100, 1201, 21, 0)
+    assert identity_result.values[:4] == (124, 4307, 21, 1)
+    assert _decode_ascii_registers(identity_result.values[4:8]) == "MET-A01"
     assert status_result.values == (0, 0, 0, 840, 315, 220, 42, 1000)
     assert alarm_result.values == (0, 0, 0)
 
@@ -104,7 +113,8 @@ def test_unit_31_identity_status_and_alarm_blocks_map_revenue_meter_values() -> 
     alarm_result = register_map.read_holding_registers(unit_id=31, start_offset=299, quantity=4)
 
     assert identity_result.asset_id == "meter-01"
-    assert identity_result.values[:4] == (100, 1301, 31, 0)
+    assert identity_result.values[:4] == (124, 4419, 31, 1)
+    assert _decode_ascii_registers(identity_result.values[4:8]) == "MTR-R01"
     assert status_result.values == (0, 0, 0, 0, 5790, 0, 0, 0, 0, 990, 1)
     assert alarm_result.values == (0, 0, 0, 0)
 
@@ -117,7 +127,8 @@ def test_unit_41_identity_and_status_blocks_map_grid_values() -> None:
     alarm_result = register_map.read_holding_registers(unit_id=41, start_offset=299, quantity=4)
 
     assert identity_result.asset_id == "grid-01"
-    assert identity_result.values[:4] == (100, 1401, 41, 0)
+    assert identity_result.values[:4] == (124, 4523, 41, 1)
+    assert _decode_ascii_registers(identity_result.values[4:8]) == "GRD-T01"
     assert status_result.values == (0, 0, 0, 1, 0)
     assert alarm_result.values == (0, 0, 0, 0)
 
@@ -125,7 +136,7 @@ def test_unit_41_identity_and_status_blocks_map_grid_values() -> None:
 def test_reserved_registers_within_active_blocks_read_as_zero() -> None:
     register_map = ReadOnlyRegisterMap(build_snapshot())
 
-    result = register_map.read_holding_registers(unit_id=1, start_offset=8, quantity=4)
+    result = register_map.read_holding_registers(unit_id=1, start_offset=18, quantity=4)
 
     assert result.values == (0, 0, 0, 0)
 
