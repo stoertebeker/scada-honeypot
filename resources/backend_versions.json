@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.19",
+    "released_at": "2026-05-27",
+    "category": "Fix",
+    "title": "Bounded Ops alerts views",
+    "summary": "Moves the protected Ops Alerts page and Alerts API off full alert-log loading and onto bounded recent-alert queries.",
+    "areas": ["ops-web", "event-store", "performance", "tests"],
+    "changes": [
+      "Render /alerts from fetch_recent_alerts with the requested Ops limit instead of reversing the full alert log.",
+      "Return /api/alerts from the same bounded recent-alert query path.",
+      "Add regression coverage that protected Ops alert views do not call the full alert-log fetch path."
+    ],
+    "security_notes": [
+      "The protected Ops alert surface remains read-only and behind the existing Ops authentication dependency.",
+      "The change reduces observer-surface load from large alert logs without altering HMI, Modbus, bind hosts, ports or authentication."
+    ]
+  },
+  {
     "version": "v1.4.18",
     "released_at": "2026-05-27",
     "category": "Fix",

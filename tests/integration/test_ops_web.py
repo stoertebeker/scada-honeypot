@@ -173,6 +173,46 @@ def seed_many_event_store(store: SQLiteEventStore, *, count: int) -> None:
         clock.advance(timedelta(seconds=1))
 
 
+def seed_many_alert_store(store: SQLiteEventStore, *, count: int) -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 20, 0, tzinfo=UTC))
+    recorder = EventRecorder(store=store, clock=clock)
+    for index in range(count):
+        event = recorder.build_event(
+            event_type="hmi.auth.service_login_failed",
+            category="auth",
+            severity="medium",
+            source_ip="203.0.113.44",
+            actor_type="remote_client",
+            component="hmi-web",
+            asset_id="hmi-web",
+            action=f"service_login_failure_{index:03d}",
+            result="rejected",
+            session_id=f"alert_page_{index:03d}",
+            protocol="http",
+            service="web-hmi",
+            endpoint_or_register="/service/login",
+            requested_value={"index": index},
+            resulting_value={"http_status": 401},
+            error_code="invalid_credentials",
+            message="Synthetic login failure",
+            tags=("auth", "alerts-page"),
+        )
+        alert = AlertRecord(
+            alert_id=f"alt_synthetic_{index:03d}",
+            event_id=event.event_id,
+            correlation_id=event.correlation_id,
+            alarm_code=f"SYNTHETIC_ALERT_{index:03d}",
+            severity="medium",
+            state="active_unacknowledged",
+            component="hmi-web",
+            asset_id="hmi-web",
+            message=f"Synthetic alert {index:03d}",
+            created_at=clock.now(),
+        )
+        recorder.record(event, alert=alert)
+        clock.advance(timedelta(seconds=1))
+
+
 @pytest.mark.asyncio
 async def test_ops_dashboard_renders_events_alerts_and_sources(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "ops.db")
@@ -249,6 +289,35 @@ async def test_ops_dashboard_and_summary_api_do_not_fetch_full_event_snapshots(
     assert "view_event_029" in dashboard.text
     assert "view_event_005" in dashboard.text
     assert "view_event_004" not in dashboard.text
+
+
+@pytest.mark.asyncio
+async def test_ops_alerts_page_and_api_use_bounded_recent_alert_rows(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-alerts-bounded.db")
+    seed_many_alert_store(store, count=5)
+
+    def fail_full_alert_fetch():
+        raise AssertionError("Ops alerts views must not load the full alert log")
+
+    monkeypatch.setattr(store, "fetch_alerts", fail_full_alert_fetch)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        alerts_page = await client.get("/alerts?limit=2")
+        alerts_api = await client.get("/api/alerts?limit=2")
+
+    assert alerts_page.status_code == 200
+    assert "SYNTHETIC_ALERT_004" in alerts_page.text
+    assert "SYNTHETIC_ALERT_003" in alerts_page.text
+    assert "SYNTHETIC_ALERT_002" not in alerts_page.text
+
+    assert alerts_api.status_code == 200
+    alert_ids = [alert["alert_id"] for alert in alerts_api.json()["alerts"]]
+    assert alert_ids == ["alt_synthetic_004", "alt_synthetic_003"]
 
 
 @pytest.mark.asyncio
@@ -412,6 +481,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.19" in versions.text
+    assert "Bounded Ops alerts views" in versions.text
     assert "v1.4.18" in versions.text
     assert "SQL-backed Ops sources page" in versions.text
     assert "v1.4.17" in versions.text
@@ -500,25 +571,25 @@ async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["latest_version"] == "v1.4.18"
-    assert payload["latest_title"] == "SQL-backed Ops sources page"
+    assert payload["latest_version"] == "v1.4.19"
+    assert payload["latest_title"] == "Bounded Ops alerts views"
     assert payload["released_at"] == "2026-05-27"
     assert payload["version_count"] == len(payload["versions"])
     assert payload["versions"][0] == {
-        "version": "v1.4.18",
+        "version": "v1.4.19",
         "released_at": "2026-05-27",
         "category": "Fix",
-        "title": "SQL-backed Ops sources page",
-        "summary": "Moves the protected Ops Sources page off full event-log loading and onto bounded SQLite source-activity aggregates.",
+        "title": "Bounded Ops alerts views",
+        "summary": "Moves the protected Ops Alerts page and Alerts API off full alert-log loading and onto bounded recent-alert queries.",
         "areas": ["ops-web", "event-store", "performance", "tests"],
         "changes": [
-            "Add a bounded fetch_source_activity query for source counts, sessions, first/last seen values and top activity fields.",
-            "Render /sources from SQL-backed source activity rows instead of materializing every raw event JSON record.",
-            "Add regression coverage that the Sources page does not call the full event-log fetch path.",
+            "Render /alerts from fetch_recent_alerts with the requested Ops limit instead of reversing the full alert log.",
+            "Return /api/alerts from the same bounded recent-alert query path.",
+            "Add regression coverage that protected Ops alert views do not call the full alert-log fetch path.",
         ],
         "security_notes": [
-            "Source sorting remains allowlisted and does not introduce request-controlled SQL fragments.",
-            "The change is limited to the protected Ops backend and does not alter HMI, Modbus, bind hosts, ports or authentication.",
+            "The protected Ops alert surface remains read-only and behind the existing Ops authentication dependency.",
+            "The change reduces observer-surface load from large alert logs without altering HMI, Modbus, bind hosts, ports or authentication.",
         ],
     }
 

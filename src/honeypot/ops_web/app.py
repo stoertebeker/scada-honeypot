@@ -338,12 +338,11 @@ def create_ops_app(
     ) -> HTMLResponse:
         settings = load_ops_settings(event_store)
         resolved_limit = settings.alerts_default_limit if limit is None else limit
-        alerts = tuple(reversed(event_store.fetch_alerts()))
         context = _template_context(
             request=request,
             config=config,
             current_path="/alerts",
-            alerts=_alert_rows(alerts[:resolved_limit]),
+            alerts=_alert_rows(event_store.fetch_recent_alerts(limit=resolved_limit)),
             limit=resolved_limit,
         )
         return templates.TemplateResponse(request=request, name="alerts.html", context=context)
@@ -614,8 +613,8 @@ def create_ops_app(
     ) -> dict[str, Any]:
         settings = load_ops_settings(event_store)
         resolved_limit = settings.alerts_default_limit if limit is None else limit
-        alerts = tuple(reversed(event_store.fetch_alerts()))
-        return {"alerts": [alert.model_dump(mode="json") for alert in alerts[:resolved_limit]]}
+        alerts = event_store.fetch_recent_alerts(limit=resolved_limit)
+        return {"alerts": [alert.model_dump(mode="json") for alert in alerts]}
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz(_: None = Depends(require_ops_auth)) -> dict[str, str]:
