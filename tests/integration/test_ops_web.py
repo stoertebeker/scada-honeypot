@@ -412,6 +412,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.18" in versions.text
+    assert "SQL-backed Ops sources page" in versions.text
     assert "v1.4.17" in versions.text
     assert "Package version metadata sync" in versions.text
     assert "v1.4.16" in versions.text
@@ -498,25 +500,25 @@ async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["latest_version"] == "v1.4.17"
-    assert payload["latest_title"] == "Package version metadata sync"
-    assert payload["released_at"] == "2026-05-26"
+    assert payload["latest_version"] == "v1.4.18"
+    assert payload["latest_title"] == "SQL-backed Ops sources page"
+    assert payload["released_at"] == "2026-05-27"
     assert payload["version_count"] == len(payload["versions"])
     assert payload["versions"][0] == {
-        "version": "v1.4.17",
-        "released_at": "2026-05-26",
+        "version": "v1.4.18",
+        "released_at": "2026-05-27",
         "category": "Fix",
-        "title": "Package version metadata sync",
-        "summary": "Synchronizes Python package metadata with the protected backend version history so Docker builds no longer report stale package versions.",
-        "areas": ["packaging", "versions", "tests"],
+        "title": "SQL-backed Ops sources page",
+        "summary": "Moves the protected Ops Sources page off full event-log loading and onto bounded SQLite source-activity aggregates.",
+        "areas": ["ops-web", "event-store", "performance", "tests"],
         "changes": [
-            "Update pyproject.toml and uv.lock package metadata to 1.4.17.",
-            "Update honeypot.__version__ to 1.4.17.",
-            "Add regression coverage that package metadata, lockfile metadata and the backend version history stay aligned.",
+            "Add a bounded fetch_source_activity query for source counts, sessions, first/last seen values and top activity fields.",
+            "Render /sources from SQL-backed source activity rows instead of materializing every raw event JSON record.",
+            "Add regression coverage that the Sources page does not call the full event-log fetch path.",
         ],
         "security_notes": [
-            "The change is metadata-only and does not alter attacker-facing HMI, Modbus behavior, Ops authentication, bind hosts or ports.",
-            "Keeping shipped package metadata aligned with the protected Ops version log reduces operator confusion during deployment verification.",
+            "Source sorting remains allowlisted and does not introduce request-controlled SQL fragments.",
+            "The change is limited to the protected Ops backend and does not alter HMI, Modbus, bind hosts, ports or authentication.",
         ],
     }
 
@@ -780,6 +782,26 @@ async def test_ops_sources_page_sorts_columns_with_allowlisted_parameters(tmp_pa
     assert _source_ips(invalid_sort.text) == ["192.0.2.9", "198.51.100.10", "203.0.113.44"]
     assert 'name="sort" value="last_seen"' in invalid_sort.text
     assert 'name="direction" value="desc"' in invalid_sort.text
+
+
+@pytest.mark.asyncio
+async def test_ops_sources_page_uses_bounded_sql_activity_rows(monkeypatch, tmp_path: Path) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-source-sql.db")
+    seed_source_sort_store(store)
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    def fail_fetch_events():
+        raise AssertionError("/sources must not load the full event log")
+
+    monkeypatch.setattr(store, "fetch_events", fail_fetch_events)
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        response = await client.get("/sources?limit=2")
+
+    assert response.status_code == 200
+    assert _source_ips(response.text) == ["192.0.2.9", "198.51.100.10"]
+    assert "203.0.113.44" not in response.text
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,19 @@ from honeypot.event_core.models import AlertRecord, EventRecord, OutboxEntry
 from honeypot.history_core import PlantHistorySample
 from honeypot.time_core import ensure_utc_datetime
 
+_SOURCE_ACTIVITY_SORT_COLUMNS = {
+    "source_ip": "source_ip",
+    "events": "event_count",
+    "rejected": "rejected_count",
+    "sessions": "session_count",
+    "first_seen": "first_seen",
+    "last_seen": "last_seen",
+    "top_type": "top_event_type",
+    "top_endpoint": "top_endpoint",
+}
+_SOURCE_ACTIVITY_SORT_DIRECTIONS = {"asc", "desc"}
+_SOURCE_ACTIVITY_DERIVED_SORTS = {"top_type", "top_endpoint"}
+
 
 def _normalize_required_text(value: str, *, field_name: str) -> str:
     normalized = value.strip()
@@ -883,13 +896,111 @@ class SQLiteEventStore:
             last_event_at=None if last_event_at is None else _parse_timestamp(str(last_event_at)),
         )
 
-    def fetch_top_sources(self, *, limit: int) -> tuple[SourceActivityRecord, ...]:
+    def fetch_source_activity(
+        self,
+        *,
+        limit: int,
+        sort: str = "last_seen",
+        direction: str = "desc",
+    ) -> tuple[SourceActivityRecord, ...]:
         if limit <= 0:
             raise ValueError("limit muss groesser als 0 sein")
+        sort_key = sort.strip().lower()
+        if sort_key in _SOURCE_ACTIVITY_DERIVED_SORTS:
+            rows = self._fetch_source_activity_with_derived_sort(
+                limit=limit,
+                sort=sort_key,
+                direction=direction,
+            )
+        else:
+            rows = self._fetch_source_activity_with_base_sort(
+                limit=limit,
+                sort=sort_key,
+                direction=direction,
+            )
 
+        return tuple(_source_activity_from_row(row) for row in rows)
+
+    def _fetch_source_activity_with_base_sort(
+        self,
+        *,
+        limit: int,
+        sort: str,
+        direction: str,
+    ) -> tuple[sqlite3.Row, ...]:
+        grouped_order_by = _source_activity_order_by(sort=sort, direction=direction, table_alias="grouped")
+        ranked_order_by = _source_activity_order_by(sort=sort, direction=direction, table_alias="ranked")
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                f"""
+                WITH grouped AS (
+                    SELECT
+                        source_ip,
+                        COUNT(*) AS event_count,
+                        SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                        COUNT(DISTINCT NULLIF(session_id, '')) AS session_count,
+                        MIN(timestamp) AS first_seen,
+                        MAX(timestamp) AS last_seen
+                    FROM event_log
+                    GROUP BY source_ip
+                )
+                SELECT
+                    ranked.source_ip,
+                    ranked.event_count,
+                    ranked.rejected_count,
+                    ranked.session_count,
+                    ranked.first_seen,
+                    ranked.last_seen,
+                    (
+                        SELECT event_type
+                        FROM event_log AS type_events
+                        WHERE type_events.source_ip = ranked.source_ip
+                        GROUP BY event_type
+                        ORDER BY COUNT(*) DESC, MIN(rowid) ASC
+                        LIMIT 1
+                    ) AS top_event_type,
+                    (
+                        SELECT COALESCE(endpoint_or_register, '')
+                        FROM event_log AS endpoint_events
+                        WHERE endpoint_events.source_ip = ranked.source_ip
+                        GROUP BY COALESCE(endpoint_or_register, '')
+                        ORDER BY COUNT(*) DESC, MIN(rowid) ASC
+                        LIMIT 1
+                    ) AS top_endpoint
+                FROM (
+                    SELECT *
+                    FROM grouped
+                    ORDER BY {grouped_order_by}
+                    LIMIT ?
+                ) AS ranked
+                ORDER BY {ranked_order_by}
+                """,
+                (limit,),
+            ).fetchall()
+        return tuple(rows)
+
+    def _fetch_source_activity_with_derived_sort(
+        self,
+        *,
+        limit: int,
+        sort: str,
+        direction: str,
+    ) -> tuple[sqlite3.Row, ...]:
+        order_by = _source_activity_order_by(sort=sort, direction=direction, table_alias="grouped")
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                WITH grouped AS (
+                    SELECT
+                        source_ip,
+                        COUNT(*) AS event_count,
+                        SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                        COUNT(DISTINCT NULLIF(session_id, '')) AS session_count,
+                        MIN(timestamp) AS first_seen,
+                        MAX(timestamp) AS last_seen
+                    FROM event_log
+                    GROUP BY source_ip
+                )
                 SELECT
                     grouped.source_ip,
                     grouped.event_count,
@@ -913,24 +1024,16 @@ class SQLiteEventStore:
                         ORDER BY COUNT(*) DESC, MIN(rowid) ASC
                         LIMIT 1
                     ) AS top_endpoint
-                FROM (
-                    SELECT
-                        source_ip,
-                        COUNT(*) AS event_count,
-                        SUM(CASE WHEN result = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
-                        COUNT(DISTINCT session_id) AS session_count,
-                        MIN(timestamp) AS first_seen,
-                        MAX(timestamp) AS last_seen
-                    FROM event_log
-                    GROUP BY source_ip
-                ) AS grouped
-                ORDER BY grouped.event_count DESC, grouped.source_ip ASC
+                FROM grouped
+                ORDER BY {order_by}
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
+        return tuple(rows)
 
-        return tuple(_source_activity_from_row(row) for row in rows)
+    def fetch_top_sources(self, *, limit: int) -> tuple[SourceActivityRecord, ...]:
+        return self.fetch_source_activity(limit=limit, sort="events", direction="desc")
 
     def fetch_event(self, event_id: str) -> EventRecord | None:
         normalized_event_id = _normalize_required_text(event_id, field_name="event_id")
@@ -1147,6 +1250,26 @@ def _append_in_clause(
     operator = "NOT IN" if negated else "IN"
     clauses.append(f"{column} {operator} ({placeholders})")
     params.extend(normalized_values)
+
+
+def _source_activity_order_by(*, sort: str, direction: str, table_alias: str) -> str:
+    sort_key = sort.strip().lower()
+    sort_column = _SOURCE_ACTIVITY_SORT_COLUMNS.get(sort_key)
+    if sort_column is None:
+        raise ValueError("source activity sort is not supported")
+
+    normalized_direction = direction.strip().lower()
+    if normalized_direction not in _SOURCE_ACTIVITY_SORT_DIRECTIONS:
+        raise ValueError("source activity sort direction is not supported")
+
+    sort_expression = (
+        sort_column
+        if sort_key in _SOURCE_ACTIVITY_DERIVED_SORTS
+        else f"{table_alias}.{sort_column}"
+    )
+    if sort_key == "source_ip":
+        return f"{sort_expression} {normalized_direction.upper()}"
+    return f"{sort_expression} {normalized_direction.upper()}, {table_alias}.source_ip ASC"
 
 
 def _alert_from_row(row: sqlite3.Row) -> AlertRecord:

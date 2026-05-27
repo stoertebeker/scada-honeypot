@@ -6,7 +6,6 @@ import csv
 import io
 import json
 import secrets
-from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +40,7 @@ _OPS_SECURITY = HTTPBasic(auto_error=False)
 _OPS_FORM_MAX_BYTES = 16 * 1024
 _SOURCE_SORT_DEFAULT = "last_seen"
 _SOURCE_SORT_DIRECTIONS = {"asc", "desc"}
+_SOURCE_ENRICHED_SORT_KEYS = {"country", "rdns", "isp"}
 _SOURCE_SORT_ALIASES = {
     "event_count": "events",
     "request_count": "events",
@@ -360,17 +360,28 @@ def create_ops_app(
         resolved_limit = settings.sources_default_limit if limit is None else limit
         source_sort = _normalize_source_sort(sort)
         source_direction = _normalize_source_direction(direction, sort_key=source_sort)
+        activity_sort = _SOURCE_SORT_DEFAULT if source_sort in _SOURCE_ENRICHED_SORT_KEYS else source_sort
+        activity_direction = (
+            _SOURCE_SORT_DEFAULT_DIRECTIONS[_SOURCE_SORT_DEFAULT]
+            if source_sort in _SOURCE_ENRICHED_SORT_KEYS
+            else source_direction
+        )
+        sources = _source_rows_from_activity(
+            event_store.fetch_source_activity(
+                limit=resolved_limit,
+                sort=activity_sort,
+                direction=activity_direction,
+            ),
+            settings=settings,
+            ip_enricher=ip_enricher,
+        )
+        if source_sort in _SOURCE_ENRICHED_SORT_KEYS:
+            sources = _sort_enriched_source_rows(sources, sort=source_sort, direction=source_direction)
         context = _template_context(
             request=request,
             config=config,
             current_path="/sources",
-            sources=_source_rows(
-                event_store.fetch_events(),
-                settings=settings,
-                ip_enricher=ip_enricher,
-                sort=source_sort,
-                direction=source_direction,
-            )[:resolved_limit],
+            sources=sources,
             limit=resolved_limit,
             source_sort=source_sort,
             source_direction=source_direction,
@@ -969,55 +980,6 @@ def _alert_rows(alerts: tuple[AlertRecord, ...]) -> tuple[AlertRow, ...]:
     )
 
 
-def _source_rows(
-    events: tuple[EventRecord, ...],
-    *,
-    settings: OpsBackendSettings,
-    ip_enricher: IpEnricher,
-    sort: str = _SOURCE_SORT_DEFAULT,
-    direction: str = "desc",
-) -> tuple[SourceRow, ...]:
-    grouped: dict[str, list[EventRecord]] = defaultdict(list)
-    for event in events:
-        grouped[event.source_ip].append(event)
-
-    rows: list[tuple[SourceRow, datetime, datetime]] = []
-    for source_ip, source_events in grouped.items():
-        event_type_counts = Counter(event.event_type for event in source_events)
-        endpoint_counts = Counter(event.endpoint_or_register or "" for event in source_events)
-        sessions = {event.session_id for event in source_events if event.session_id}
-        first_seen = min(event.timestamp for event in source_events)
-        last_seen = max(event.timestamp for event in source_events)
-        enrichment = ip_enricher.enrich(source_ip, settings)
-        rows.append(
-            (
-                SourceRow(
-                    source_ip=source_ip,
-                    country_code=enrichment.country_code,
-                    rdns=enrichment.rdns,
-                    isp=enrichment.isp,
-                    event_count=len(source_events),
-                    rejected_count=sum(1 for event in source_events if event.result == "rejected"),
-                    session_count=len(sessions),
-                    first_seen=_format_dt_display(first_seen),
-                    last_seen=_format_dt_display(last_seen),
-                    top_event_type=event_type_counts.most_common(1)[0][0] if event_type_counts else "",
-                    top_endpoint=endpoint_counts.most_common(1)[0][0] if endpoint_counts else "",
-                ),
-                first_seen,
-                last_seen,
-            )
-        )
-    normalized_sort = _normalize_source_sort(sort)
-    normalized_direction = _normalize_source_direction(direction, sort_key=normalized_sort)
-    rows.sort(key=lambda item: item[0].source_ip)
-    rows.sort(
-        key=lambda item: _source_sort_value(item, normalized_sort),
-        reverse=normalized_direction == "desc",
-    )
-    return tuple(row for row, _, _ in rows)
-
-
 def _source_rows_from_activity(
     sources: tuple[Any, ...],
     *,
@@ -1043,6 +1005,22 @@ def _source_rows_from_activity(
             )
         )
     return tuple(rows)
+
+
+def _sort_enriched_source_rows(
+    rows: tuple[SourceRow, ...],
+    *,
+    sort: str,
+    direction: str,
+) -> tuple[SourceRow, ...]:
+    normalized_sort = _normalize_source_sort(sort)
+    normalized_direction = _normalize_source_direction(direction, sort_key=normalized_sort)
+    sorted_rows = sorted(rows, key=lambda row: row.source_ip)
+    sorted_rows.sort(
+        key=lambda row: _enriched_source_sort_value(row, normalized_sort),
+        reverse=normalized_direction == "desc",
+    )
+    return tuple(sorted_rows)
 
 
 def _normalize_source_sort(value: str | None) -> str:
@@ -1093,31 +1071,14 @@ def _source_sort_links(
     return tuple(links)
 
 
-def _source_sort_value(item: tuple[SourceRow, datetime, datetime], sort_key: str) -> Any:
-    row, first_seen, last_seen = item
-    if sort_key == "source_ip":
-        return row.source_ip
+def _enriched_source_sort_value(row: SourceRow, sort_key: str) -> Any:
     if sort_key == "country":
         return row.country_code.lower()
     if sort_key == "rdns":
         return row.rdns.lower()
     if sort_key == "isp":
         return row.isp.lower()
-    if sort_key == "events":
-        return row.event_count
-    if sort_key == "rejected":
-        return row.rejected_count
-    if sort_key == "sessions":
-        return row.session_count
-    if sort_key == "first_seen":
-        return first_seen
-    if sort_key == "last_seen":
-        return last_seen
-    if sort_key == "top_type":
-        return row.top_event_type.lower()
-    if sort_key == "top_endpoint":
-        return row.top_endpoint.lower()
-    return last_seen
+    return row.source_ip
 
 
 def _campaign_rows(campaigns: tuple[LoginCampaignRecord, ...]) -> tuple[CampaignRow, ...]:

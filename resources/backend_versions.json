@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.18",
+    "released_at": "2026-05-27",
+    "category": "Fix",
+    "title": "SQL-backed Ops sources page",
+    "summary": "Moves the protected Ops Sources page off full event-log loading and onto bounded SQLite source-activity aggregates.",
+    "areas": ["ops-web", "event-store", "performance", "tests"],
+    "changes": [
+      "Add a bounded fetch_source_activity query for source counts, sessions, first/last seen values and top activity fields.",
+      "Render /sources from SQL-backed source activity rows instead of materializing every raw event JSON record.",
+      "Add regression coverage that the Sources page does not call the full event-log fetch path."
+    ],
+    "security_notes": [
+      "Source sorting remains allowlisted and does not introduce request-controlled SQL fragments.",
+      "The change is limited to the protected Ops backend and does not alter HMI, Modbus, bind hosts, ports or authentication."
+    ]
+  },
+  {
     "version": "v1.4.17",
     "released_at": "2026-05-26",
     "category": "Fix",

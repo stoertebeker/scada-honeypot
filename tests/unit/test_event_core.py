@@ -298,6 +298,7 @@ def test_activity_summary_top_sources_and_recent_alerts_use_store_aggregates(tmp
 
     summary = recorder.store.fetch_activity_summary()
     top_sources = recorder.store.fetch_top_sources(limit=2)
+    source_activity = recorder.store.fetch_source_activity(limit=3, sort="events", direction="asc")
     recent_alerts = recorder.store.fetch_recent_alerts(limit=1)
 
     assert active_alert is not None
@@ -313,6 +314,12 @@ def test_activity_summary_top_sources_and_recent_alerts_use_store_aggregates(tmp
     assert top_sources[0].session_count == 3
     assert top_sources[0].top_event_type == "hmi.page.overview_viewed"
     assert top_sources[0].top_endpoint == "/overview"
+    assert [source.source_ip for source in source_activity] == ["203.0.113.24", "192.0.2.9", "198.51.100.10"]
+    assert source_activity[1].event_count == 3
+    assert source_activity[1].rejected_count == 0
+    assert source_activity[1].session_count == 3
+    assert source_activity[1].top_event_type == "hmi.page.overview_viewed"
+    assert source_activity[1].top_endpoint == "/overview"
     assert [alert.alert_id for alert in recent_alerts] == [cleared_alert.alert_id]
 
 
