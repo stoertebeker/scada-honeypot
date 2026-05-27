@@ -8,9 +8,10 @@ import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.config_core import RuntimeConfig
-from honeypot.event_core import EventRecorder
+from honeypot.event_core import AlertRecord, EventRecorder
 from honeypot.hmi_web import create_hmi_app
 from honeypot.hmi_web.app import (
+    HMI_ALARM_HISTORY_LIMIT,
     MAX_FORM_BODY_BYTES,
     SERVICE_CSRF_FIELD_NAME,
     SERVICE_LOGIN_FAILURE_LIMIT,
@@ -60,6 +61,46 @@ def _trend_sample(
         operating_mode=operating_mode,
         block_power_kw=tuple((block.asset_id, block.block_power_kw) for block in snapshot.inverter_blocks),
     )
+
+
+def seed_many_hmi_alerts(store: SQLiteEventStore, *, count: int, start_at: datetime) -> None:
+    clock = FrozenClock(start_at)
+    recorder = EventRecorder(store=store, clock=clock)
+    for index in range(count):
+        event = recorder.build_event(
+            event_type="hmi.auth.service_login_failed",
+            category="auth",
+            severity="medium",
+            source_ip="203.0.113.44",
+            actor_type="remote_client",
+            component="hmi-web",
+            asset_id="hmi-web",
+            action=f"service_login_failure_{index:03d}",
+            result="rejected",
+            session_id=f"hmi_alert_page_{index:03d}",
+            protocol="http",
+            service="web-hmi",
+            endpoint_or_register="/service/login",
+            requested_value={"index": index},
+            resulting_value={"http_status": 401},
+            error_code="invalid_credentials",
+            message="Synthetic login failure",
+            tags=("auth", "alarms-page"),
+        )
+        alert = AlertRecord(
+            alert_id=f"alt_hmi_synthetic_{index:03d}",
+            event_id=event.event_id,
+            correlation_id=event.correlation_id,
+            alarm_code=f"SYNTHETIC_HMI_ALERT_{index:03d}",
+            severity="medium",
+            state="active_unacknowledged",
+            component="hmi-web",
+            asset_id="hmi-web",
+            message=f"Synthetic HMI alert {index:03d}",
+            created_at=clock.now(),
+        )
+        recorder.record(event, alert=alert)
+        clock.advance(timedelta(seconds=1))
 
 
 def build_service_app(
@@ -830,6 +871,37 @@ async def test_alarms_page_filters_acknowledged_state(tmp_path: Path) -> None:
     assert "PLANT_CURTAILED" in response.text
     assert "BREAKER_OPEN" not in response.text
     assert "Acknowledged" in response.text
+
+
+@pytest.mark.asyncio
+async def test_alarms_page_uses_bounded_recent_alert_history(monkeypatch, tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-alarms-bounded.db")
+    seed_many_hmi_alerts(
+        store,
+        count=HMI_ALARM_HISTORY_LIMIT + 1,
+        start_at=snapshot.start_time,
+    )
+
+    def fail_full_alert_fetch():
+        raise AssertionError("HMI /alarms must not load the full alert log")
+
+    monkeypatch.setattr(store, "fetch_alerts", fail_full_alert_fetch)
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time + timedelta(minutes=30)))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/alarms")
+
+    assert response.status_code == 200
+    assert f"SYNTHETIC_HMI_ALERT_{HMI_ALARM_HISTORY_LIMIT:03d}" in response.text
+    assert "SYNTHETIC_HMI_ALERT_001" in response.text
+    assert "SYNTHETIC_HMI_ALERT_000" not in response.text
 
 
 @pytest.mark.asyncio

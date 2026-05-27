@@ -12,7 +12,7 @@ honeypot frontend. It is separate from the protected Ops backend.
 - `/inverters`: block state and power
 - `/weather`: current weather context
 - `/meter`: export and energy view
-- `/alarms`: active and historical alarms
+- `/alarms`: active alarms and recent historical alarm context
 - `/trends`: plant-history charts
 - `/service/login`: lure login
 - `/service/panel`: bounded service controls after login

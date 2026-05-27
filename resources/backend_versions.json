@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.20",
+    "released_at": "2026-05-27",
+    "category": "Fix",
+    "title": "Bounded HMI alarm history",
+    "summary": "Moves the attacker-facing HMI Alarms page off full alert-log loading and onto a bounded recent-alert history window.",
+    "areas": ["hmi-web", "event-store", "performance", "tests"],
+    "changes": [
+      "Limit the HMI alarm history read to the latest 100 alert records.",
+      "Keep snapshot-derived active alarms visible while using recent history only for first/last-seen context and history-only rows.",
+      "Add regression coverage that /alarms does not call the full alert-log fetch path."
+    ],
+    "security_notes": [
+      "The attacker-facing HMI no longer performs unbounded alert-log reads that could amplify request load.",
+      "The change does not alter public routes, authentication, HMI controls, Modbus behavior, bind hosts or ports."
+    ]
+  },
+  {
     "version": "v1.4.19",
     "released_at": "2026-05-27",
     "category": "Fix",

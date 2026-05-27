@@ -481,6 +481,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.20" in versions.text
+    assert "Bounded HMI alarm history" in versions.text
     assert "v1.4.19" in versions.text
     assert "Bounded Ops alerts views" in versions.text
     assert "v1.4.18" in versions.text
@@ -571,25 +573,25 @@ async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["latest_version"] == "v1.4.19"
-    assert payload["latest_title"] == "Bounded Ops alerts views"
+    assert payload["latest_version"] == "v1.4.20"
+    assert payload["latest_title"] == "Bounded HMI alarm history"
     assert payload["released_at"] == "2026-05-27"
     assert payload["version_count"] == len(payload["versions"])
     assert payload["versions"][0] == {
-        "version": "v1.4.19",
+        "version": "v1.4.20",
         "released_at": "2026-05-27",
         "category": "Fix",
-        "title": "Bounded Ops alerts views",
-        "summary": "Moves the protected Ops Alerts page and Alerts API off full alert-log loading and onto bounded recent-alert queries.",
-        "areas": ["ops-web", "event-store", "performance", "tests"],
+        "title": "Bounded HMI alarm history",
+        "summary": "Moves the attacker-facing HMI Alarms page off full alert-log loading and onto a bounded recent-alert history window.",
+        "areas": ["hmi-web", "event-store", "performance", "tests"],
         "changes": [
-            "Render /alerts from fetch_recent_alerts with the requested Ops limit instead of reversing the full alert log.",
-            "Return /api/alerts from the same bounded recent-alert query path.",
-            "Add regression coverage that protected Ops alert views do not call the full alert-log fetch path.",
+            "Limit the HMI alarm history read to the latest 100 alert records.",
+            "Keep snapshot-derived active alarms visible while using recent history only for first/last-seen context and history-only rows.",
+            "Add regression coverage that /alarms does not call the full alert-log fetch path.",
         ],
         "security_notes": [
-            "The protected Ops alert surface remains read-only and behind the existing Ops authentication dependency.",
-            "The change reduces observer-surface load from large alert logs without altering HMI, Modbus, bind hosts, ports or authentication.",
+            "The attacker-facing HMI no longer performs unbounded alert-log reads that could amplify request load.",
+            "The change does not alter public routes, authentication, HMI controls, Modbus behavior, bind hosts or ports.",
         ],
     }
 

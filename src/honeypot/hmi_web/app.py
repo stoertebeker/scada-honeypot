@@ -43,6 +43,7 @@ SERVICE_CSRF_FIELD_NAME = "service_csrf_token"
 SERVICE_CSRF_TOKEN_BYTES = 32
 DEFAULT_TREND_WINDOW = "30d"
 MAX_TREND_RENDER_POINTS = 180
+HMI_ALARM_HISTORY_LIMIT = 100
 TREND_WINDOWS: dict[str, tuple[str, timedelta]] = {
     "1h": ("1 h", timedelta(hours=1)),
     "6h": ("6 h", timedelta(hours=6)),
@@ -3934,7 +3935,7 @@ def _count_dc_isolated_blocks(snapshot: PlantSnapshot) -> int:
 def _alert_history(event_recorder: EventRecorder | None) -> tuple[AlertRecord, ...]:
     if event_recorder is None:
         return ()
-    return event_recorder.store.fetch_alerts()
+    return event_recorder.store.fetch_recent_alerts(limit=HMI_ALARM_HISTORY_LIMIT)
 
 
 def _normalize_alarm_filter(value: str | None, *, allowed: set[str]) -> str | None:
