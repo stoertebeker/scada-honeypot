@@ -30,6 +30,7 @@ from honeypot.protocol_modbus.registers import (
 DEFAULT_PROTOCOL = "modbus-tcp"
 DEFAULT_SERVICE = "holding-registers"
 DEFAULT_COMPONENT = "protocol-modbus"
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 2.0
 
 
 class _ModbusThreadingServer(ThreadingTCPServer):
@@ -50,6 +51,7 @@ class ReadOnlyModbusTcpService:
     event_recorder: EventRecorder | None = None
     response_delay_min_ms: int = 0
     response_delay_max_ms: int = 0
+    request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
     response_timing_provider: Callable[[], tuple[int, int]] | None = field(default=None, repr=False)
     response_delay: Callable[[float], None] = field(default=sleep, repr=False)
     _server: _ModbusThreadingServer | None = field(default=None, init=False, repr=False)
@@ -66,6 +68,7 @@ class ReadOnlyModbusTcpService:
             self.event_recorder,
             response_delay_min_ms=self.response_delay_min_ms,
             response_delay_max_ms=self.response_delay_max_ms,
+            request_timeout_seconds=self.request_timeout_seconds,
             response_timing_provider=self.response_timing_provider,
             response_delay=self.response_delay,
         )
@@ -103,11 +106,13 @@ def _build_handler(
     *,
     response_delay_min_ms: int = 0,
     response_delay_max_ms: int = 0,
+    request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     response_timing_provider: Callable[[], tuple[int, int]] | None = None,
     response_delay: Callable[[float], None] = sleep,
 ) -> type[BaseRequestHandler]:
     class ModbusTcpHandler(BaseRequestHandler):
         def handle(self) -> None:
+            self.request.settimeout(request_timeout_seconds)
             while True:
                 header = _recv_exact(self.request, 7)
                 if header is None:
@@ -551,7 +556,10 @@ def _exception_response(*, transaction_id: int, unit_id: int, function_code: int
 def _recv_exact(sock: Any, length: int) -> bytes | None:
     buffer = bytearray()
     while len(buffer) < length:
-        chunk = sock.recv(length - len(buffer))
+        try:
+            chunk = sock.recv(length - len(buffer))
+        except TimeoutError:
+            return None
         if not chunk:
             return None
         buffer.extend(chunk)

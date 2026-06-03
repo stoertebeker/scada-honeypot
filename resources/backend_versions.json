@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.21",
+    "released_at": "2026-06-03",
+    "category": "Fix",
+    "title": "Bounded Modbus request reads",
+    "summary": "Adds a Modbus/TCP request read timeout so partial or stalled frames cannot pin handler threads indefinitely.",
+    "areas": ["protocol-modbus", "security", "performance", "tests"],
+    "changes": [
+      "Apply a per-connection Modbus request read timeout before parsing MBAP frames.",
+      "Close incomplete or stalled Modbus requests cleanly instead of blocking a handler thread indefinitely.",
+      "Add contract coverage that a partial MBAP header times out while normal FC03 reads still succeed."
+    ],
+    "security_notes": [
+      "The exposed Modbus surface no longer lets unauthenticated partial-frame connections pin handler threads indefinitely.",
+      "The change preserves Modbus registers, function-code behavior, bind hosts, ports and response timing settings."
+    ]
+  },
+  {
     "version": "v1.4.20",
     "released_at": "2026-05-27",
     "category": "Fix",

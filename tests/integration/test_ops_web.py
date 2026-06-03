@@ -481,6 +481,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.21" in versions.text
+    assert "Bounded Modbus request reads" in versions.text
     assert "v1.4.20" in versions.text
     assert "Bounded HMI alarm history" in versions.text
     assert "v1.4.19" in versions.text
@@ -573,25 +575,25 @@ async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["latest_version"] == "v1.4.20"
-    assert payload["latest_title"] == "Bounded HMI alarm history"
-    assert payload["released_at"] == "2026-05-27"
+    assert payload["latest_version"] == "v1.4.21"
+    assert payload["latest_title"] == "Bounded Modbus request reads"
+    assert payload["released_at"] == "2026-06-03"
     assert payload["version_count"] == len(payload["versions"])
     assert payload["versions"][0] == {
-        "version": "v1.4.20",
-        "released_at": "2026-05-27",
+        "version": "v1.4.21",
+        "released_at": "2026-06-03",
         "category": "Fix",
-        "title": "Bounded HMI alarm history",
-        "summary": "Moves the attacker-facing HMI Alarms page off full alert-log loading and onto a bounded recent-alert history window.",
-        "areas": ["hmi-web", "event-store", "performance", "tests"],
+        "title": "Bounded Modbus request reads",
+        "summary": "Adds a Modbus/TCP request read timeout so partial or stalled frames cannot pin handler threads indefinitely.",
+        "areas": ["protocol-modbus", "security", "performance", "tests"],
         "changes": [
-            "Limit the HMI alarm history read to the latest 100 alert records.",
-            "Keep snapshot-derived active alarms visible while using recent history only for first/last-seen context and history-only rows.",
-            "Add regression coverage that /alarms does not call the full alert-log fetch path.",
+            "Apply a per-connection Modbus request read timeout before parsing MBAP frames.",
+            "Close incomplete or stalled Modbus requests cleanly instead of blocking a handler thread indefinitely.",
+            "Add contract coverage that a partial MBAP header times out while normal FC03 reads still succeed.",
         ],
         "security_notes": [
-            "The attacker-facing HMI no longer performs unbounded alert-log reads that could amplify request load.",
-            "The change does not alter public routes, authentication, HMI controls, Modbus behavior, bind hosts or ports.",
+            "The exposed Modbus surface no longer lets unauthenticated partial-frame connections pin handler threads indefinitely.",
+            "The change preserves Modbus registers, function-code behavior, bind hosts, ports and response timing settings.",
         ],
     }
 

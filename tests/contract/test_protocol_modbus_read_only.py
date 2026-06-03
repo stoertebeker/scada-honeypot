@@ -976,6 +976,38 @@ def test_unit_41_fc16_rejects_conflicting_breaker_pulses(running_service) -> Non
     assert rejected_event.error_code == "modbus_exception_03"
 
 
+def test_partial_modbus_header_times_out_without_blocking_service(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "tmp" / "partial-frame-timeout.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot, event_recorder=recorder),
+        bind_host="127.0.0.1",
+        port=0,
+        event_recorder=recorder,
+        request_timeout_seconds=0.1,
+    ).start_in_thread()
+
+    try:
+        with socket.create_connection(service.address, timeout=1) as connection:
+            connection.settimeout(1)
+            connection.sendall(b"\x12\x34")
+            assert_connection_closed(connection)
+
+        response = send_request(
+            service.address,
+            transaction_id=0x1235,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 1),
+        )
+    finally:
+        service.stop()
+
+    _, _, _, pdu = parse_response(response)
+    assert pdu[0] == READ_HOLDING_REGISTERS
+
+
 def send_request(
     address: tuple[str, int],
     *,
@@ -1012,6 +1044,13 @@ def recv_exact(connection: socket.socket, size: int) -> bytes:
             raise RuntimeError("Socket geschlossen, bevor die Antwort komplett war")
         chunks.extend(chunk)
     return bytes(chunks)
+
+
+def assert_connection_closed(connection: socket.socket) -> None:
+    try:
+        assert connection.recv(1) == b""
+    except ConnectionResetError:
+        return
 
 
 def decode_ascii_registers(registers: tuple[int, ...]) -> str:

@@ -18,6 +18,13 @@ Supported core functions:
 
 `FC04` remains disabled by default.
 
+### Request Timeout
+
+Modbus request reads use a bounded per-connection timeout. Incomplete or
+stalled MBAP/PDU frames are closed quietly so a client cannot hold a handler
+thread indefinitely. This timeout is internal hardening and is not an Ops or
+`.env` setting.
+
 ### Response Timing
 
 Modbus responses are immediate by default. Optional response timing can be
