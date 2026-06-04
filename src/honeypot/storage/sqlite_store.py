@@ -271,6 +271,9 @@ class SQLiteEventStore:
                 CREATE INDEX IF NOT EXISTS idx_alert_log_created_at
                 ON alert_log(created_at);
 
+                CREATE INDEX IF NOT EXISTS idx_alert_log_rule_context
+                ON alert_log(alarm_code, severity, component, asset_id, message, created_at);
+
                 CREATE INDEX IF NOT EXISTS idx_plant_history_observed_at
                 ON plant_history(observed_at);
 
@@ -1080,6 +1083,40 @@ class SQLiteEventStore:
                 LIMIT ?
                 """,
                 (limit,),
+            ).fetchall()
+
+        return tuple(_alert_from_row(row) for row in rows)
+
+    def fetch_rule_alert_context(self, *, alarm_codes: Sequence[str]) -> tuple[AlertRecord, ...]:
+        normalized_alarm_codes = tuple(
+            dict.fromkeys(
+                _normalize_required_text(alarm_code, field_name="alarm_code")
+                for alarm_code in alarm_codes
+            )
+        )
+        if not normalized_alarm_codes:
+            return ()
+
+        placeholders = ", ".join("?" for _ in normalized_alarm_codes)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT alert_id, event_id, correlation_id, alarm_code, severity, state,
+                       component, asset_id, message, created_at
+                FROM (
+                    SELECT alert_id, event_id, correlation_id, alarm_code, severity, state,
+                           component, asset_id, message, created_at,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY alarm_code, severity, component, asset_id, COALESCE(message, '')
+                               ORDER BY created_at DESC, rowid DESC
+                           ) AS rank
+                    FROM alert_log
+                    WHERE alarm_code IN ({placeholders})
+                )
+                WHERE rank = 1
+                ORDER BY created_at, alert_id
+                """,
+                normalized_alarm_codes,
             ).fetchall()
 
         return tuple(_alert_from_row(row) for row in rows)

@@ -17,8 +17,26 @@ from honeypot.event_core.models import (
     RecordedArtifacts,
 )
 from honeypot.rule_engine import DerivedAlert, RuleContext, RuleEngine
+from honeypot.rule_engine import (
+    COMM_LOSS_ALERT_CODE,
+    GRID_PATH_UNAVAILABLE_ALERT_CODE,
+    LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+    MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+    REPEATED_LOGIN_FAILURE_ALERT_CODE,
+    SETPOINT_ALERT_CODE,
+)
 from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import Clock, SystemClock
+
+RULE_ENGINE_ALERT_CONTEXT_CODES = (
+    "BREAKER_OPEN",
+    COMM_LOSS_ALERT_CODE,
+    GRID_PATH_UNAVAILABLE_ALERT_CODE,
+    LOW_SITE_OUTPUT_UNEXPECTED_ALERT_CODE,
+    MULTI_BLOCK_UNAVAILABLE_ALERT_CODE,
+    REPEATED_LOGIN_FAILURE_ALERT_CODE,
+    SETPOINT_ALERT_CODE,
+)
 
 
 def _prefixed_id(prefix: str) -> str:
@@ -178,7 +196,7 @@ class EventRecorder:
             event,
             context=RuleContext(
                 current_state={} if current_state_updates is None else dict(current_state_updates),
-                alert_history=self.store.fetch_alerts(),
+                alert_history=self.store.fetch_rule_alert_context(alarm_codes=RULE_ENGINE_ALERT_CONTEXT_CODES),
             ),
         )
         return tuple(self._build_alert_from_rule(event, derived_alert) for derived_alert in derived_alerts)

@@ -1,5 +1,22 @@
 [
   {
+    "version": "v1.4.22",
+    "released_at": "2026-06-04",
+    "category": "Fix",
+    "title": "Bounded rule-engine alert context",
+    "summary": "Moves event-time rule evaluation off full alert-log reads and onto a bounded rule-specific alert context query.",
+    "areas": ["event-store", "rule-engine", "security", "performance", "tests"],
+    "changes": [
+      "Add a SQLite query that returns only the latest rule-relevant alert rows per dedupe key.",
+      "Use the bounded rule alert context during EventRecorder rule evaluation instead of loading the full alert log.",
+      "Add regression coverage that attacker-reachable event recording does not call fetch_alerts, including a large alert-table smoke check."
+    ],
+    "security_notes": [
+      "HMI and Modbus-triggered event recording no longer amplifies request cost through full alert-history reads.",
+      "The change preserves rule-engine active and cleared alert transitions while reducing SQLite I/O on attacker-reachable paths."
+    ]
+  },
+  {
     "version": "v1.4.21",
     "released_at": "2026-06-03",
     "category": "Fix",

@@ -400,6 +400,98 @@ def test_record_derives_rule_based_alert_and_outbox_when_configured(tmp_path) ->
     assert outbox_entries[0].target_type == "webhook"
 
 
+def test_record_rule_engine_context_does_not_fetch_full_alert_log(tmp_path, monkeypatch) -> None:
+    recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
+    event = recorder.build_event(
+        event_type="process.setpoint.reactive_power_target_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="ppc-01",
+        action="set_reactive_power_target",
+        result="accepted",
+        resulting_state={"reactive_power_target": 0.25},
+        tags=("control-path", "ppc", "reactive-power"),
+    )
+
+    def fail_full_alert_fetch():
+        raise AssertionError("rule-engine event recording must not load the full alert log")
+
+    monkeypatch.setattr(recorder.store, "fetch_alerts", fail_full_alert_fetch)
+
+    recorded = recorder.record(event, outbox_targets=("webhook",))
+
+    assert recorded.alert is not None
+    assert recorded.alert.alarm_code == SETPOINT_ALERT_CODE
+
+
+def test_record_rule_engine_context_stays_bounded_with_large_alert_table(tmp_path, monkeypatch) -> None:
+    recorder = build_recorder(tmp_path)
+    for index in range(5000):
+        noise_event = recorder.build_event(
+            event_type="hmi.page.synthetic_event_viewed",
+            category="hmi",
+            severity="low",
+            source_ip="203.0.113.24",
+            actor_type="remote_client",
+            component="hmi-web",
+            asset_id="hmi-web",
+            action=f"view_noise_{index:04d}",
+            result="served",
+            event_id=f"evt_noise_{index:04d}",
+            correlation_id=f"corr_noise_{index:04d}",
+            protocol="http",
+            service="web-hmi",
+            endpoint_or_register="/overview",
+            requested_value={"index": index},
+        )
+        noise_alert = recorder.build_alert(
+            event=noise_event,
+            alarm_code=f"SYNTHETIC_NOISE_{index:04d}",
+            severity="low",
+            state="active_unacknowledged",
+            message=f"Synthetic noise alert {index:04d}",
+        )
+        recorder.record(noise_event, alert=noise_alert)
+
+    recorder.rule_engine = RuleEngine.default_v1()
+    setpoint_event = recorder.build_event(
+        event_type="process.setpoint.reactive_power_target_changed",
+        category="process",
+        severity="medium",
+        source_ip="203.0.113.24",
+        actor_type="remote_client",
+        component="plant-sim",
+        asset_id="ppc-01",
+        action="set_reactive_power_target",
+        result="accepted",
+        event_id="evt_setpoint_after_noise",
+        correlation_id="corr_setpoint_after_noise",
+        resulting_state={"reactive_power_target": 0.25},
+        tags=("control-path", "ppc", "reactive-power"),
+    )
+
+    def fail_full_alert_fetch():
+        raise AssertionError("large alert tables must not be read through fetch_alerts during recording")
+
+    monkeypatch.setattr(recorder.store, "fetch_alerts", fail_full_alert_fetch)
+
+    recorded = recorder.record(setpoint_event, outbox_targets=("webhook",))
+    rule_context_alerts = recorder.store.fetch_rule_alert_context(
+        alarm_codes=(SETPOINT_ALERT_CODE, "SYNTHETIC_NOISE_0001")
+    )
+
+    assert recorded.alert is not None
+    assert recorded.alert.alarm_code == SETPOINT_ALERT_CODE
+    assert recorder.store.count_rows("alert_log") == 5001
+    assert {alert.alarm_code for alert in rule_context_alerts} == {
+        SETPOINT_ALERT_CODE,
+        "SYNTHETIC_NOISE_0001",
+    }
+
+
 def test_record_keeps_explicit_process_alert_and_dedupes_matching_rule_alert(tmp_path) -> None:
     recorder = build_recorder(tmp_path, rule_engine=RuleEngine.default_v1())
     event = recorder.build_event(

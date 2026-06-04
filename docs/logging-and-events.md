@@ -46,6 +46,11 @@ The rule engine derives alerts from event and state chains. Examples:
 - inverter communication loss
 - multiple blocks unavailable
 
+Event-time rule evaluation reads a bounded rule-specific alert context from
+SQLite instead of loading the full alert log. This preserves active and cleared
+transitions while keeping attacker-triggered HMI and Modbus event recording from
+amplifying storage I/O as alert history grows.
+
 ## Exporter Outbox
 
 Exporter delivery is decoupled through the outbox. A failed exporter must not

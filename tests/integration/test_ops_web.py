@@ -481,6 +481,8 @@ async def test_ops_versions_page_renders_backend_change_log(tmp_path: Path) -> N
     assert "Versions" in dashboard.text
     assert versions.status_code == 200
     assert "Current backend version" in versions.text
+    assert "v1.4.22" in versions.text
+    assert "Bounded rule-engine alert context" in versions.text
     assert "v1.4.21" in versions.text
     assert "Bounded Modbus request reads" in versions.text
     assert "v1.4.20" in versions.text
@@ -575,25 +577,25 @@ async def test_ops_versions_api_returns_backend_change_log(tmp_path: Path) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["latest_version"] == "v1.4.21"
-    assert payload["latest_title"] == "Bounded Modbus request reads"
-    assert payload["released_at"] == "2026-06-03"
+    assert payload["latest_version"] == "v1.4.22"
+    assert payload["latest_title"] == "Bounded rule-engine alert context"
+    assert payload["released_at"] == "2026-06-04"
     assert payload["version_count"] == len(payload["versions"])
     assert payload["versions"][0] == {
-        "version": "v1.4.21",
-        "released_at": "2026-06-03",
+        "version": "v1.4.22",
+        "released_at": "2026-06-04",
         "category": "Fix",
-        "title": "Bounded Modbus request reads",
-        "summary": "Adds a Modbus/TCP request read timeout so partial or stalled frames cannot pin handler threads indefinitely.",
-        "areas": ["protocol-modbus", "security", "performance", "tests"],
+        "title": "Bounded rule-engine alert context",
+        "summary": "Moves event-time rule evaluation off full alert-log reads and onto a bounded rule-specific alert context query.",
+        "areas": ["event-store", "rule-engine", "security", "performance", "tests"],
         "changes": [
-            "Apply a per-connection Modbus request read timeout before parsing MBAP frames.",
-            "Close incomplete or stalled Modbus requests cleanly instead of blocking a handler thread indefinitely.",
-            "Add contract coverage that a partial MBAP header times out while normal FC03 reads still succeed.",
+            "Add a SQLite query that returns only the latest rule-relevant alert rows per dedupe key.",
+            "Use the bounded rule alert context during EventRecorder rule evaluation instead of loading the full alert log.",
+            "Add regression coverage that attacker-reachable event recording does not call fetch_alerts, including a large alert-table smoke check.",
         ],
         "security_notes": [
-            "The exposed Modbus surface no longer lets unauthenticated partial-frame connections pin handler threads indefinitely.",
-            "The change preserves Modbus registers, function-code behavior, bind hosts, ports and response timing settings.",
+            "HMI and Modbus-triggered event recording no longer amplifies request cost through full alert-history reads.",
+            "The change preserves rule-engine active and cleared alert transitions while reducing SQLite I/O on attacker-reachable paths.",
         ],
     }
 

@@ -562,7 +562,7 @@ wheels = [
 
 [[package]]
 name = "scada-honeypot"
-version = "1.4.21"
+version = "1.4.22"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
