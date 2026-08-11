@@ -24,6 +24,8 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.modbus_port == 1502
     assert config.modbus_response_delay_min_ms == 0
     assert config.modbus_response_delay_max_ms == 0
+    assert config.modbus_max_connections == 64
+    assert config.modbus_max_connections_per_source == 8
     assert config.ops_enabled is True
     assert config.ops_bind_host == "127.0.0.1"
     assert config.ops_port == 9090
@@ -252,6 +254,21 @@ def test_runtime_config_rejects_invalid_modbus_timing_profile(monkeypatch, tmp_p
 
     with pytest.raises(ValidationError):
         RuntimeConfig(_env_file=None, modbus_response_delay_max_ms=2001)
+
+
+def test_runtime_config_rejects_invalid_modbus_connection_limits(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError, match="MODBUS_MAX_CONNECTIONS_PER_SOURCE"):
+        RuntimeConfig(
+            _env_file=None,
+            modbus_max_connections=4,
+            modbus_max_connections_per_source=5,
+        )
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, modbus_max_connections=0)
 
 
 def test_runtime_config_reads_cookie_secure_flags(monkeypatch, tmp_path: Path) -> None:

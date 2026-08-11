@@ -256,6 +256,24 @@ def test_build_local_runtime_uses_ops_modbus_timing_with_env_fallback(tmp_path: 
     assert provider() == (20, 75)
 
 
+def test_build_local_runtime_wires_modbus_connection_limits(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "MODBUS_MAX_CONNECTIONS=12\n"
+            "MODBUS_MAX_CONNECTIONS_PER_SOURCE=3\n"
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+
+    assert runtime.modbus_service.max_connections == 12
+    assert runtime.modbus_service.max_connections_per_source == 3
+
+
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

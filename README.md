@@ -65,6 +65,10 @@ values usually need changes:
 - `HMI_PUBLISHED_PORT`: public host port for the HMI frontend, default `8080`
 - `MODBUS_PUBLISHED_PORT`: public host port for Modbus, default `1502`
 - `OPS_PUBLISHED_PORT`: local host port for Ops, default `9090`
+- `MODBUS_MAX_CONNECTIONS` / `MODBUS_MAX_CONNECTIONS_PER_SOURCE`: bounded
+  Modbus handler capacity, defaults `64` / `8`
+- `HONEYPOT_*_LIMIT`: optional finite overrides for container PIDs, memory,
+  CPU, and open file descriptors
 - `WEATHER_PROVIDER`: `disabled`, `deterministic`, `open_meteo_forecast`, or `open_meteo_satellite`
 - `WEATHER_LATITUDE` / `WEATHER_LONGITUDE`: real weather coordinates, never shown in the HMI
 - `OPS_BASIC_AUTH_ENABLED`: optional Basic Auth for the Ops backend

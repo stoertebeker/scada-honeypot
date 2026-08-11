@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from socket import SHUT_RDWR
 from socketserver import BaseRequestHandler, ThreadingTCPServer
 from struct import pack, unpack
-from threading import Thread
+from threading import Lock, Thread
 from time import sleep
 from typing import Any
 from uuid import uuid4
@@ -31,14 +31,80 @@ DEFAULT_PROTOCOL = "modbus-tcp"
 DEFAULT_SERVICE = "holding-registers"
 DEFAULT_COMPONENT = "protocol-modbus"
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 2.0
+DEFAULT_MAX_CONNECTIONS = 64
+DEFAULT_MAX_CONNECTIONS_PER_SOURCE = 8
+MAX_MBAP_LENGTH = 254
 
 
 class _ModbusThreadingServer(ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], handler_cls: type[BaseRequestHandler]):
+    def __init__(
+        self,
+        address: tuple[str, int],
+        handler_cls: type[BaseRequestHandler],
+        *,
+        max_connections: int,
+        max_connections_per_source: int,
+    ):
+        self._max_connections = max_connections
+        self._max_connections_per_source = max_connections_per_source
+        self._connection_lock = Lock()
+        self._active_connections = 0
+        self._active_connections_by_source: dict[str, int] = {}
+        self._rejected_connections = 0
         super().__init__(address, handler_cls)
+
+    def process_request(self, request: Any, client_address: tuple[str, int]) -> None:
+        source_ip = str(client_address[0])
+        with self._connection_lock:
+            source_connections = self._active_connections_by_source.get(source_ip, 0)
+            if (
+                self._active_connections >= self._max_connections
+                or source_connections >= self._max_connections_per_source
+            ):
+                self._rejected_connections += 1
+                self.shutdown_request(request)
+                return
+            self._active_connections += 1
+            self._active_connections_by_source[source_ip] = source_connections + 1
+
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._release_connection(source_ip)
+            raise
+
+    def process_request_thread(self, request: Any, client_address: tuple[str, int]) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._release_connection(str(client_address[0]))
+
+    def _release_connection(self, source_ip: str) -> None:
+        with self._connection_lock:
+            source_connections = self._active_connections_by_source[source_ip] - 1
+            self._active_connections -= 1
+            if source_connections == 0:
+                del self._active_connections_by_source[source_ip]
+            else:
+                self._active_connections_by_source[source_ip] = source_connections
+
+    @property
+    def active_connections(self) -> int:
+        with self._connection_lock:
+            return self._active_connections
+
+    @property
+    def active_connections_by_source(self) -> dict[str, int]:
+        with self._connection_lock:
+            return dict(self._active_connections_by_source)
+
+    @property
+    def rejected_connections(self) -> int:
+        with self._connection_lock:
+            return self._rejected_connections
 
 
 @dataclass(slots=True)
@@ -52,6 +118,8 @@ class ReadOnlyModbusTcpService:
     response_delay_min_ms: int = 0
     response_delay_max_ms: int = 0
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    max_connections: int = DEFAULT_MAX_CONNECTIONS
+    max_connections_per_source: int = DEFAULT_MAX_CONNECTIONS_PER_SOURCE
     response_timing_provider: Callable[[], tuple[int, int]] | None = field(default=None, repr=False)
     response_delay: Callable[[float], None] = field(default=sleep, repr=False)
     _server: _ModbusThreadingServer | None = field(default=None, init=False, repr=False)
@@ -72,7 +140,12 @@ class ReadOnlyModbusTcpService:
             response_timing_provider=self.response_timing_provider,
             response_delay=self.response_delay,
         )
-        server = _ModbusThreadingServer((self.bind_host, self.port), handler_cls)
+        server = _ModbusThreadingServer(
+            (self.bind_host, self.port),
+            handler_cls,
+            max_connections=self.max_connections,
+            max_connections_per_source=self.max_connections_per_source,
+        )
         thread = Thread(target=server.serve_forever, name="modbus-readonly-server", daemon=True)
         thread.start()
         self._server = server
@@ -99,6 +172,18 @@ class ReadOnlyModbusTcpService:
         host, port = self._server.server_address
         return str(host), int(port)
 
+    @property
+    def active_connections(self) -> int:
+        return 0 if self._server is None else self._server.active_connections
+
+    @property
+    def active_connections_by_source(self) -> dict[str, int]:
+        return {} if self._server is None else self._server.active_connections_by_source
+
+    @property
+    def rejected_connections(self) -> int:
+        return 0 if self._server is None else self._server.rejected_connections
+
 
 def _build_handler(
     register_map: ReadOnlyRegisterMap,
@@ -119,7 +204,7 @@ def _build_handler(
                     return
 
                 transaction_id, protocol_id, length, unit_id = unpack(">HHHB", header)
-                if length < 2:
+                if not 2 <= length <= MAX_MBAP_LENGTH:
                     return
 
                 pdu = _recv_exact(self.request, length - 1)

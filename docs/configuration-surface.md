@@ -26,6 +26,7 @@ These settings stay in `.env` because they affect deployment safety, startup
 wiring, or evidence paths:
 
 - public host ports, bind hosts, and nonlocal-bind approvals
+- Modbus global/per-source connection ceilings and container resource limits
 - Ops enablement, Ops Basic Auth, secure-cookie flags, and trusted proxies
 - weather provider, coordinates, and provider startup tuning
 - event store, JSONL archive, findings, runtime-status, and PCAP paths

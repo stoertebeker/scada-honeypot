@@ -91,6 +91,8 @@ class RuntimeConfig(BaseSettings):
     modbus_port: int = Field(default=1502, ge=1, le=65535)
     modbus_response_delay_min_ms: int = Field(default=0, ge=0, le=2000)
     modbus_response_delay_max_ms: int = Field(default=0, ge=0, le=2000)
+    modbus_max_connections: int = Field(default=64, ge=1, le=1024)
+    modbus_max_connections_per_source: int = Field(default=8, ge=1, le=1024)
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
     ops_enabled: bool = True
@@ -272,6 +274,12 @@ class RuntimeConfig(BaseSettings):
     def validate_modbus_timing_profile(self) -> "RuntimeConfig":
         if self.modbus_response_delay_min_ms > self.modbus_response_delay_max_ms:
             raise ValueError("MODBUS_RESPONSE_DELAY_MIN_MS darf MODBUS_RESPONSE_DELAY_MAX_MS nicht ueberschreiten")
+        return self
+
+    @model_validator(mode="after")
+    def validate_modbus_connection_limits(self) -> "RuntimeConfig":
+        if self.modbus_max_connections_per_source > self.modbus_max_connections:
+            raise ValueError("MODBUS_MAX_CONNECTIONS_PER_SOURCE darf MODBUS_MAX_CONNECTIONS nicht ueberschreiten")
         return self
 
     @model_validator(mode="after")

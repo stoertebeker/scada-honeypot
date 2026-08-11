@@ -8,6 +8,13 @@ x-honeypot-common: &honeypot-common
   init: true
   restart: unless-stopped
   stop_grace_period: 20s
+  pids_limit: ${HONEYPOT_PIDS_LIMIT:-256}
+  mem_limit: ${HONEYPOT_MEMORY_LIMIT:-768m}
+  cpus: ${HONEYPOT_CPU_LIMIT:-2.0}
+  ulimits:
+    nofile:
+      soft: ${HONEYPOT_NOFILE_SOFT_LIMIT:-1024}
+      hard: ${HONEYPOT_NOFILE_HARD_LIMIT:-2048}
   read_only: true
   security_opt:
     - no-new-privileges:true

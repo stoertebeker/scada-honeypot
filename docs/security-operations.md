@@ -21,6 +21,12 @@ Docker Compose publishes:
 - Modbus on `0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}`
 - Ops on `127.0.0.1:${OPS_PUBLISHED_PORT:-9090}`
 
+The Modbus listener rejects MBAP lengths outside `2..254` before reading the
+PDU. `MODBUS_MAX_CONNECTIONS` and `MODBUS_MAX_CONNECTIONS_PER_SOURCE` bound
+handler threads globally and per source. Compose additionally caps container
+PIDs, memory, CPU, and open file descriptors; deployment overrides must retain
+finite ceilings.
+
 ## Egress
 
 Exporters are deny-by-default. Active exporters require:

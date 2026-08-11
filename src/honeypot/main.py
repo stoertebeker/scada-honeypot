@@ -282,6 +282,8 @@ def build_local_runtime(
         event_recorder=event_recorder,
         response_delay_min_ms=config.modbus_response_delay_min_ms,
         response_delay_max_ms=config.modbus_response_delay_max_ms,
+        max_connections=config.modbus_max_connections,
+        max_connections_per_source=config.modbus_max_connections_per_source,
         response_timing_provider=_modbus_response_timing_provider(
             event_store=event_store,
             config=config,

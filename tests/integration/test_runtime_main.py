@@ -117,6 +117,51 @@ def test_build_local_runtime_starts_local_services_and_serves_shared_truth(tmp_p
     assert_port_closed(ops_address)
 
 
+def test_runtime_keeps_hmi_and_valid_modbus_responsive_under_partial_connection_pressure(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    event_store_path = tmp_path / "events" / "honeypot.db"
+    env_file.write_text(
+        (
+            f"EVENT_STORE_PATH={event_store_path}\n"
+            "MODBUS_MAX_CONNECTIONS=3\n"
+            "MODBUS_MAX_CONNECTIONS_PER_SOURCE=3\n"
+        ),
+        encoding="utf-8",
+    )
+    runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
+    held_connections: list[socket.socket] = []
+
+    try:
+        runtime.start()
+        for partial_header in (b"\x12", b"\x34"):
+            connection = socket.create_connection(runtime.modbus_service.address, timeout=1)
+            connection.sendall(partial_header)
+            held_connections.append(connection)
+        wait_for(lambda: runtime.modbus_service.active_connections == 2)
+
+        hmi_response = httpx.get(
+            f"http://{runtime.hmi_service.address[0]}:{runtime.hmi_service.address[1]}/overview",
+            timeout=5.0,
+            trust_env=False,
+        )
+        modbus_response = send_request(
+            runtime.modbus_service.address,
+            transaction_id=0x4322,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 1),
+        )
+    finally:
+        for connection in held_connections:
+            connection.close()
+        runtime.stop()
+
+    _, _, _, pdu = parse_response(modbus_response)
+    assert hmi_response.status_code == 200
+    assert "Plant Overview" in hmi_response.text
+    assert pdu[0] == READ_HOLDING_REGISTERS
+
+
 def test_build_local_runtime_background_evolution_advances_snapshot_in_runtime(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"

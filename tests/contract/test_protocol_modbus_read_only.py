@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 from pathlib import Path
 from struct import pack, unpack
+from time import monotonic, sleep
 
 import pytest
 
@@ -1008,6 +1009,163 @@ def test_partial_modbus_header_times_out_without_blocking_service(tmp_path: Path
     assert pdu[0] == READ_HOLDING_REGISTERS
 
 
+def test_modbus_per_source_limit_rejects_excess_without_blocking_valid_traffic(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "tmp" / "bounded-connections.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot, event_recorder=recorder),
+        bind_host="127.0.0.1",
+        port=0,
+        event_recorder=recorder,
+        request_timeout_seconds=2.0,
+        max_connections=3,
+        max_connections_per_source=2,
+    ).start_in_thread()
+    held_connections: list[socket.socket] = []
+
+    try:
+        first_connection = socket.create_connection(service.address, timeout=1)
+        first_connection.settimeout(1)
+        first_connection.sendall(b"\x12")
+        held_connections.append(first_connection)
+        wait_for(lambda: service.active_connections == 1)
+
+        response = send_request(
+            service.address,
+            transaction_id=0x1236,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 1),
+        )
+        _, _, _, pdu = parse_response(response)
+        assert pdu[0] == READ_HOLDING_REGISTERS
+
+        second_connection = socket.create_connection(service.address, timeout=1)
+        second_connection.settimeout(1)
+        second_connection.sendall(b"\x34")
+        held_connections.append(second_connection)
+        wait_for(lambda: service.active_connections == 2)
+
+        per_source_excess = socket.create_connection(
+            service.address,
+            timeout=1,
+            source_address=("127.0.0.1", 0),
+        )
+        per_source_excess.settimeout(1)
+        try:
+            assert_connection_closed(per_source_excess)
+        finally:
+            per_source_excess.close()
+        wait_for(lambda: service.rejected_connections == 1)
+
+        assert service.active_connections == 2
+        assert service.active_connections_by_source == {"127.0.0.1": 2}
+    finally:
+        for connection in held_connections:
+            connection.close()
+        service.stop()
+
+
+def test_modbus_global_connection_limit_rejects_excess(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot),
+        bind_host="127.0.0.1",
+        port=0,
+        request_timeout_seconds=2.0,
+        max_connections=2,
+        max_connections_per_source=3,
+    ).start_in_thread()
+    held_connections: list[socket.socket] = []
+
+    try:
+        for partial_header in (b"\x12", b"\x34"):
+            connection = socket.create_connection(service.address, timeout=1)
+            connection.settimeout(1)
+            connection.sendall(partial_header)
+            held_connections.append(connection)
+        wait_for(lambda: service.active_connections == 2)
+
+        excess = socket.create_connection(service.address, timeout=1)
+        excess.settimeout(1)
+        try:
+            assert_connection_closed(excess)
+        finally:
+            excess.close()
+
+        wait_for(lambda: service.rejected_connections == 1)
+        assert service.active_connections == 2
+    finally:
+        for connection in held_connections:
+            connection.close()
+        service.stop()
+
+
+def test_default_modbus_limit_caps_original_64_partial_connection_poc(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot),
+        bind_host="127.0.0.1",
+        port=0,
+        request_timeout_seconds=5.0,
+    ).start_in_thread()
+    held_connections: list[socket.socket] = []
+
+    try:
+        for attempt in range(64):
+            connection = socket.create_connection(service.address, timeout=1)
+            connection.settimeout(1)
+            connection.sendall(b"\x12")
+            if attempt < service.max_connections_per_source:
+                held_connections.append(connection)
+            else:
+                assert_connection_closed(connection)
+                connection.close()
+
+        wait_for(lambda: service.rejected_connections == 56)
+        assert service.active_connections == service.max_connections_per_source == 8
+
+        held_connections.pop().close()
+        wait_for(lambda: service.active_connections == 7)
+        response = send_request(
+            service.address,
+            transaction_id=0x1237,
+            unit_id=1,
+            function_code=READ_HOLDING_REGISTERS,
+            body=pack(">HH", 0, 1),
+        )
+        _, _, _, pdu = parse_response(response)
+        assert pdu[0] == READ_HOLDING_REGISTERS
+    finally:
+        for connection in held_connections:
+            connection.close()
+        service.stop()
+
+
+@pytest.mark.parametrize("length", (0, 1, 255, 65535))
+def test_modbus_rejects_mbap_lengths_outside_supported_adu_range(running_service, length: int) -> None:
+    service, _ = running_service
+
+    with socket.create_connection(service.address, timeout=1) as connection:
+        connection.settimeout(1)
+        connection.sendall(pack(">HHHB", 0x2233, 0, length, 1))
+        assert_connection_closed(connection)
+
+
+def test_modbus_accepts_maximum_supported_mbap_length_before_rejecting_function(running_service) -> None:
+    service, _ = running_service
+    pdu = bytes([0x7F]) + bytes(252)
+
+    with socket.create_connection(service.address, timeout=1) as connection:
+        connection.sendall(pack(">HHHB", 0x2234, 0, 254, 1) + pdu)
+        response_header = recv_exact(connection, 7)
+        _, _, response_length, _ = unpack(">HHHB", response_header)
+        response_pdu = recv_exact(connection, response_length - 1)
+
+    assert response_pdu == bytes([0xFF, ILLEGAL_FUNCTION])
+
+
 def send_request(
     address: tuple[str, int],
     *,
@@ -1051,6 +1209,15 @@ def assert_connection_closed(connection: socket.socket) -> None:
         assert connection.recv(1) == b""
     except ConnectionResetError:
         return
+
+
+def wait_for(predicate, *, timeout: float = 1.0) -> None:
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if predicate():
+            return
+        sleep(0.01)
+    raise AssertionError("Bedingung wurde nicht rechtzeitig erfuellt")
 
 
 def decode_ascii_registers(registers: tuple[int, ...]) -> str:

@@ -17,6 +17,8 @@ Edit `.env` only for deployment-specific values:
 
 - public HMI host port
 - public Modbus host port
+- Modbus connection ceilings and finite container resource limits, when the
+  deployment needs values other than the safe defaults
 - weather provider and coordinates
 - optional Ops Basic Auth
 - optional exporter targets and recipients

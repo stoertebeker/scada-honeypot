@@ -46,6 +46,8 @@ lifecycle, stop behavior, and findings output.
   identity-block consistency, write readback effects, and quiet exception paths.
 - Modbus timing contract tests verify bounded optional response delays through
   an injected delay callback, not wall-clock sleeps.
+- Modbus resource contract tests verify global/per-source connection ceilings,
+  strict MBAP length bounds, and valid traffic under partial-frame pressure.
 
 ## Documentation Checks
 
