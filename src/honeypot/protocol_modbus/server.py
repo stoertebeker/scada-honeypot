@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from ipaddress import ip_address
 from socket import SHUT_RDWR
 from socketserver import BaseRequestHandler, ThreadingTCPServer
 from struct import pack, unpack
@@ -34,6 +35,7 @@ DEFAULT_REQUEST_TIMEOUT_SECONDS = 2.0
 DEFAULT_MAX_CONNECTIONS = 64
 DEFAULT_MAX_CONNECTIONS_PER_SOURCE = 8
 MAX_MBAP_LENGTH = 254
+MAX_PROXY_V1_LINE_BYTES = 107
 
 
 class _ModbusThreadingServer(ThreadingTCPServer):
@@ -120,6 +122,7 @@ class ReadOnlyModbusTcpService:
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
     max_connections: int = DEFAULT_MAX_CONNECTIONS
     max_connections_per_source: int = DEFAULT_MAX_CONNECTIONS_PER_SOURCE
+    proxy_protocol_enabled: bool = False
     response_timing_provider: Callable[[], tuple[int, int]] | None = field(default=None, repr=False)
     response_delay: Callable[[float], None] = field(default=sleep, repr=False)
     _server: _ModbusThreadingServer | None = field(default=None, init=False, repr=False)
@@ -137,6 +140,7 @@ class ReadOnlyModbusTcpService:
             response_delay_min_ms=self.response_delay_min_ms,
             response_delay_max_ms=self.response_delay_max_ms,
             request_timeout_seconds=self.request_timeout_seconds,
+            proxy_protocol_enabled=self.proxy_protocol_enabled,
             response_timing_provider=self.response_timing_provider,
             response_delay=self.response_delay,
         )
@@ -192,12 +196,20 @@ def _build_handler(
     response_delay_min_ms: int = 0,
     response_delay_max_ms: int = 0,
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    proxy_protocol_enabled: bool = False,
     response_timing_provider: Callable[[], tuple[int, int]] | None = None,
     response_delay: Callable[[float], None] = sleep,
 ) -> type[BaseRequestHandler]:
     class ModbusTcpHandler(BaseRequestHandler):
         def handle(self) -> None:
             self.request.settimeout(request_timeout_seconds)
+            source_ip = str(self.client_address[0])
+            if proxy_protocol_enabled:
+                proxied_source_ip = _recv_proxy_v1_source(self.request)
+                if proxied_source_ip is None:
+                    return
+                source_ip = proxied_source_ip
+
             while True:
                 header = _recv_exact(self.request, 7)
                 if header is None:
@@ -212,8 +224,6 @@ def _build_handler(
                     return
 
                 function_code = pdu[0]
-                source_ip = str(self.client_address[0])
-
                 if protocol_id != 0:
                     _log_request(
                         event_recorder,
@@ -643,12 +653,57 @@ def _recv_exact(sock: Any, length: int) -> bytes | None:
     while len(buffer) < length:
         try:
             chunk = sock.recv(length - len(buffer))
-        except TimeoutError:
+        except OSError:
             return None
         if not chunk:
             return None
         buffer.extend(chunk)
     return bytes(buffer)
+
+
+def _recv_proxy_v1_source(sock: Any) -> str | None:
+    line = bytearray()
+    try:
+        while len(line) < MAX_PROXY_V1_LINE_BYTES:
+            chunk = sock.recv(1)
+            if not chunk:
+                return None
+            line.extend(chunk)
+            if line.endswith(b"\r\n"):
+                return _parse_proxy_v1_source(bytes(line))
+    except OSError:
+        return None
+    return None
+
+
+def _parse_proxy_v1_source(line: bytes) -> str | None:
+    try:
+        fields = line[:-2].decode("ascii").split(" ")
+    except UnicodeDecodeError:
+        return None
+    if len(fields) != 6 or fields[0] != "PROXY" or fields[1] not in {"TCP4", "TCP6"}:
+        return None
+
+    _, protocol, source_text, destination_text, source_port_text, destination_port_text = fields
+    try:
+        source = ip_address(source_text)
+        destination = ip_address(destination_text)
+    except ValueError:
+        return None
+
+    expected_version = 4 if protocol == "TCP4" else 6
+    if source.version != expected_version or destination.version != expected_version:
+        return None
+    if _parse_proxy_v1_port(source_port_text) is None or _parse_proxy_v1_port(destination_port_text) is None:
+        return None
+    return str(source)
+
+
+def _parse_proxy_v1_port(value: str) -> int | None:
+    if not value.isdecimal() or (len(value) > 1 and value.startswith("0")):
+        return None
+    port = int(value)
+    return port if 0 <= port <= 65535 else None
 
 
 def _asset_id_for_unit(unit_id: int) -> str:

@@ -284,6 +284,7 @@ def build_local_runtime(
         response_delay_max_ms=config.modbus_response_delay_max_ms,
         max_connections=config.modbus_max_connections,
         max_connections_per_source=config.modbus_max_connections_per_source,
+        proxy_protocol_enabled=config.modbus_proxy_protocol_enabled,
         response_timing_provider=_modbus_response_timing_provider(
             event_store=event_store,
             config=config,
@@ -512,6 +513,7 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
             unit_id=1,
             function_code=READ_HOLDING_REGISTERS,
             body=pack(">HH", 0, 8),
+            proxy_protocol_enabled=runtime.config.modbus_proxy_protocol_enabled,
         )
         overview_response = httpx.get(
             f"http://{hmi_address[0]}:{hmi_address[1]}/overview",
@@ -651,10 +653,18 @@ def _send_modbus_request(
     unit_id: int,
     function_code: int,
     body: bytes,
+    proxy_protocol_enabled: bool = False,
 ) -> bytes:
     payload = bytes([function_code]) + body
     request = pack(">HHHB", transaction_id, 0, len(payload) + 1, unit_id) + payload
     with socket.create_connection(address, timeout=5.0) as connection:
+        if proxy_protocol_enabled:
+            source_host, source_port = connection.getsockname()
+            destination_host, destination_port = connection.getpeername()
+            proxy_header = (
+                f"PROXY TCP4 {source_host} {destination_host} {source_port} {destination_port}\r\n"
+            ).encode("ascii")
+            connection.sendall(proxy_header)
         connection.sendall(request)
         return connection.recv(1024)
 

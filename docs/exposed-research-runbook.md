@@ -17,8 +17,9 @@ Edit `.env` only for deployment-specific values:
 
 - public HMI host port
 - public Modbus host port
-- Modbus connection ceilings and finite container resource limits, when the
-  deployment needs values other than the safe defaults
+- finite honeypot container resource limits, when the deployment needs values
+  other than the safe defaults
+- the patch-pinned `MODBUS_GATEWAY_IMAGE`, when updating HAProxy deliberately
 - weather provider and coordinates
 - optional Ops Basic Auth
 - optional exporter targets and recipients
@@ -45,18 +46,20 @@ The sweep checks:
 
 ```bash
 docker compose up -d
-docker compose logs -f honeypot
+docker compose logs -f honeypot modbus-gateway
 ```
 
 Expected:
 
 - HMI frontend reachable on the configured public host port
-- Modbus reachable on the configured public host port
+- Modbus reachable on the configured public host port through `modbus-gateway`
+- no host port published for the Python Modbus listener in `honeypot`
 - Ops reachable only on host loopback
 
 ## Operate
 
 - watch logs and findings
+- watch gateway rejection/connection logs for sustained rate-limit pressure
 - review Ops events, alerts, sources, credentials, and versions
 - keep exporter targets under change control
 - do not expose Ops directly to the internet

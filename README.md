@@ -14,7 +14,7 @@ operational technology.
 Production runs through Docker Compose. Defaults:
 
 - HMI frontend on host port `8080`
-- Modbus/TCP on host port `1502`
+- Modbus/TCP through a bounded HAProxy Layer-4 gateway on host port `1502`
 - Ops backend on host-loopback only at `127.0.0.1:9090`
 
 ```bash
@@ -64,6 +64,7 @@ values usually need changes:
 
 - `HMI_PUBLISHED_PORT`: public host port for the HMI frontend, default `8080`
 - `MODBUS_PUBLISHED_PORT`: public host port for Modbus, default `1502`
+- `MODBUS_GATEWAY_IMAGE`: HAProxy image for the public Modbus gateway
 - `OPS_PUBLISHED_PORT`: local host port for Ops, default `9090`
 - `MODBUS_MAX_CONNECTIONS` / `MODBUS_MAX_CONNECTIONS_PER_SOURCE`: bounded
   Modbus handler capacity, defaults `64` / `8`
@@ -91,6 +92,8 @@ egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
 - `config_core`: runtime configuration and safety validation
 - `asset_domain` / `plant_sim`: plant model, alarms, setpoints, weather, and time evolution
 - `protocol_modbus`: Modbus/TCP profile backed by the same plant truth as the HMI
+- `modbus-gateway`: public Layer-4 connection/rate limiter; the Python Modbus
+  listener remains private to the Compose network
 - `hmi_web`: attacker-facing HMI frontend, service-login lure, and audit trail
 - `event_core` / `storage`: SQLite/WAL event store, JSONL archive, alerts, and outbox
 - `runtime_ingress` / `runtime_exposure` / `runtime_egress`: bind, exposure, and egress gates
@@ -115,6 +118,8 @@ docker compose run --rm honeypot python -m honeypot.main --verify-exposed-resear
 - Do not enter real OEM names, real credentials, real plant paths, or real site names.
 - Docker Compose is the production path; exposure is not hidden behind an optional switch.
 - HMI and Modbus are the intended attack surface; Ops stays local.
+- Never publish the Python Modbus listener directly while PROXY protocol is
+  enabled; source metadata is trusted only from the Compose-managed gateway.
 - Do not add background network traffic or extra synthetic OT peers for realism.
 - Exporters are deny-by-default and need approved targets and recipients.
 - Weather coordinates may be real internally but are never shown in the HMI.

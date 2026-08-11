@@ -264,6 +264,7 @@ def test_build_local_runtime_wires_modbus_connection_limits(tmp_path: Path) -> N
             f"EVENT_STORE_PATH={event_store_path}\n"
             "MODBUS_MAX_CONNECTIONS=12\n"
             "MODBUS_MAX_CONNECTIONS_PER_SOURCE=3\n"
+            "MODBUS_PROXY_PROTOCOL_ENABLED=1\n"
         ),
         encoding="utf-8",
     )
@@ -272,6 +273,7 @@ def test_build_local_runtime_wires_modbus_connection_limits(tmp_path: Path) -> N
 
     assert runtime.modbus_service.max_connections == 12
     assert runtime.modbus_service.max_connections_per_source == 3
+    assert runtime.modbus_service.proxy_protocol_enabled is True
 
 
 def test_build_local_runtime_wires_webhook_outbox_runner_when_enabled(tmp_path: Path) -> None:

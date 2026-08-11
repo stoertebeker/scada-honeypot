@@ -48,6 +48,9 @@ lifecycle, stop behavior, and findings output.
   an injected delay callback, not wall-clock sleeps.
 - Modbus resource contract tests verify global/per-source connection ceilings,
   strict MBAP length bounds, and valid traffic under partial-frame pressure.
+- Modbus gateway tests verify sole public-port ownership, finite HAProxy
+  connection/rate tables, strict PROXY-v1 parsing, spoof rejection, source
+  attribution, rejection recovery, and continued HMI availability.
 
 ## Documentation Checks
 

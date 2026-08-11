@@ -1166,6 +1166,109 @@ def test_modbus_accepts_maximum_supported_mbap_length_before_rejecting_function(
     assert response_pdu == bytes([0xFF, ILLEGAL_FUNCTION])
 
 
+def test_modbus_proxy_protocol_preserves_source_attribution(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "tmp" / "proxy-source.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot, event_recorder=recorder),
+        bind_host="127.0.0.1",
+        port=0,
+        event_recorder=recorder,
+        proxy_protocol_enabled=True,
+    ).start_in_thread()
+    pdu = bytes([READ_HOLDING_REGISTERS]) + pack(">HH", 0, 1)
+    adu = pack(">HHHB", 0x3344, 0, len(pdu) + 1, 1) + pdu
+
+    try:
+        with socket.create_connection(service.address, timeout=1) as connection:
+            connection.sendall(b"PROXY TCP4 203.0.113.42 192.0.2.10 51000 1502\r")
+            connection.sendall(b"\n" + adu)
+            response_header = recv_exact(connection, 7)
+            _, _, response_length, _ = unpack(">HHHB", response_header)
+            response_pdu = recv_exact(connection, response_length - 1)
+    finally:
+        service.stop()
+
+    events = store.fetch_events()
+    assert response_pdu[0] == READ_HOLDING_REGISTERS
+    assert events[-1].source_ip == "203.0.113.42"
+
+
+@pytest.mark.parametrize(
+    "proxy_header",
+    (
+        b"",
+        b"PROXY UNKNOWN\r\n",
+        b"PROXY TCP4 999.0.0.1 192.0.2.10 51000 1502\r\n",
+        b"PROXY TCP6 203.0.113.42 192.0.2.10 51000 1502\r\n",
+        b"PROXY TCP4 203.0.113.42 192.0.2.10 051000 1502\r\n",
+    ),
+)
+def test_modbus_proxy_protocol_rejects_missing_or_invalid_metadata(tmp_path: Path, proxy_header: bytes) -> None:
+    snapshot = build_snapshot()
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot),
+        bind_host="127.0.0.1",
+        port=0,
+        request_timeout_seconds=0.1,
+        proxy_protocol_enabled=True,
+    ).start_in_thread()
+    pdu = bytes([READ_HOLDING_REGISTERS]) + pack(">HH", 0, 1)
+    adu = pack(">HHHB", 0x3345, 0, len(pdu) + 1, 1) + pdu
+
+    try:
+        with socket.create_connection(service.address, timeout=1) as connection:
+            connection.settimeout(1)
+            connection.sendall(proxy_header + adu)
+            assert_connection_closed(connection)
+    finally:
+        service.stop()
+
+
+def test_modbus_proxy_protocol_rejects_header_over_107_bytes(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot),
+        bind_host="127.0.0.1",
+        port=0,
+        proxy_protocol_enabled=True,
+    ).start_in_thread()
+
+    try:
+        with socket.create_connection(service.address, timeout=1) as connection:
+            connection.settimeout(1)
+            connection.sendall(b"PROXY " + (b"A" * 102) + b"\r\n")
+            assert_connection_closed(connection)
+    finally:
+        service.stop()
+
+
+def test_modbus_proxy_protocol_does_not_accept_nested_source_spoofing(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "tmp" / "proxy-spoof.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    service = ReadOnlyModbusTcpService(
+        register_map=ReadOnlyRegisterMap(snapshot, event_recorder=recorder),
+        bind_host="127.0.0.1",
+        port=0,
+        event_recorder=recorder,
+        proxy_protocol_enabled=True,
+    ).start_in_thread()
+    outer_proxy = b"PROXY TCP4 203.0.113.42 192.0.2.10 51000 1502\r\n"
+    forged_inner_proxy = b"PROXY TCP4 198.51.100.77 192.0.2.10 52000 1502\r\n"
+
+    try:
+        with socket.create_connection(service.address, timeout=1) as connection:
+            connection.settimeout(1)
+            connection.sendall(outer_proxy + forged_inner_proxy)
+            assert_connection_closed(connection)
+    finally:
+        service.stop()
+
+    assert store.fetch_events() == ()
+
+
 def send_request(
     address: tuple[str, int],
     *,

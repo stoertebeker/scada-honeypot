@@ -27,6 +27,8 @@ x-honeypot-common: &honeypot-common
   environment:
     HONEYPOT_FORCE_CONTAINER_BINDS: "1"
     MODBUS_PORT: "1502"
+    MODBUS_PROXY_PROTOCOL_ENABLED: "1"
+    MODBUS_MAX_CONNECTIONS_PER_SOURCE: "64"
     HMI_PORT: "8080"
     OPS_PORT: "9090"
     MODBUS_PUBLISHED_PORT: ${MODBUS_PUBLISHED_PORT:-1502}
@@ -56,8 +58,38 @@ services:
     <<: *honeypot-common
     ports:
       - "0.0.0.0:${HMI_PUBLISHED_PORT:-8080}:8080"
-      - "0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}:1502"
       - "127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:9090"
+
+  modbus-gateway:
+    image: ${MODBUS_GATEWAY_IMAGE:-haproxy:3.2.21-alpine}
+    restart: unless-stopped
+    depends_on:
+      honeypot:
+        condition: service_healthy
+    ports:
+      - "0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}:1502"
+    volumes:
+      - ./deploy/haproxy-modbus.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.5
+    ulimits:
+      nofile:
+        soft: 256
+        hard: 512
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 volumes:
   eventstore:

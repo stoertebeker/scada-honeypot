@@ -14,28 +14,34 @@ Modbus truth.
 
 ## Runtime Shape
 
-Production uses Docker Compose with a single service:
+Production uses Docker Compose with two runtime services:
 
 ```bash
 docker compose up -d
 ```
 
-The container uses fixed internal ports:
+- `honeypot` runs HMI, the private Modbus listener, and Ops.
+- `modbus-gateway` is the only public Modbus publisher and forwards source
+  addresses using PROXY v1 after applying connection/rate ceilings.
+
+The honeypot container uses fixed internal ports:
 
 - HMI: `8080`
 - Modbus: `1502`
 - Ops: `9090`
 
 Only host-published ports are deployment parameters. Ops is bound to
-`127.0.0.1` on the host.
+`127.0.0.1` on the host, while the Python Modbus port is reachable only inside
+the Compose network.
 
 ## Data Flow
 
-1. A client reads or writes through HMI or Modbus.
-2. The protocol layer validates and normalizes the action.
-3. The plant simulator updates the shared domain state.
-4. Events, alerts, and plant-history samples are persisted.
-5. HMI, Modbus, Ops, and exporters observe the same result.
+1. A client reads or writes through HMI or the public Modbus gateway.
+2. The gateway limits Modbus connection pressure and supplies source metadata.
+3. The protocol layer validates and normalizes the action.
+4. The plant simulator updates the shared domain state.
+5. Events, alerts, and plant-history samples are persisted.
+6. HMI, Modbus, Ops, and exporters observe the same result.
 
 ## Persistence
 

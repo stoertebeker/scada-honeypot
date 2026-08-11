@@ -93,6 +93,7 @@ class RuntimeConfig(BaseSettings):
     modbus_response_delay_max_ms: int = Field(default=0, ge=0, le=2000)
     modbus_max_connections: int = Field(default=64, ge=1, le=1024)
     modbus_max_connections_per_source: int = Field(default=8, ge=1, le=1024)
+    modbus_proxy_protocol_enabled: bool = False
     hmi_bind_host: str = "127.0.0.1"
     hmi_port: int = Field(default=8080, ge=1, le=65535)
     ops_enabled: bool = True

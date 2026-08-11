@@ -26,6 +26,7 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.modbus_response_delay_max_ms == 0
     assert config.modbus_max_connections == 64
     assert config.modbus_max_connections_per_source == 8
+    assert config.modbus_proxy_protocol_enabled is False
     assert config.ops_enabled is True
     assert config.ops_bind_host == "127.0.0.1"
     assert config.ops_port == 9090
@@ -61,7 +62,13 @@ def test_load_runtime_config_reads_env_file(monkeypatch, tmp_path: Path) -> None
     write_locale_bundle(tmp_path, "en")
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "SITE_CODE=test-77\nMODBUS_PORT=1502\nMODBUS_RESPONSE_DELAY_MIN_MS=25\nMODBUS_RESPONSE_DELAY_MAX_MS=80\n",
+        (
+            "SITE_CODE=test-77\n"
+            "MODBUS_PORT=1502\n"
+            "MODBUS_RESPONSE_DELAY_MIN_MS=25\n"
+            "MODBUS_RESPONSE_DELAY_MAX_MS=80\n"
+            "MODBUS_PROXY_PROTOCOL_ENABLED=1\n"
+        ),
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
@@ -72,6 +79,7 @@ def test_load_runtime_config_reads_env_file(monkeypatch, tmp_path: Path) -> None
     assert config.modbus_port == 1502
     assert config.modbus_response_delay_min_ms == 25
     assert config.modbus_response_delay_max_ms == 80
+    assert config.modbus_proxy_protocol_enabled is True
 
 
 def test_invalid_locale_code_is_rejected(monkeypatch, tmp_path: Path) -> None:

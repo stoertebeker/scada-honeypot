@@ -23,6 +23,7 @@ def test_example_env_files_load_with_inline_comments() -> None:
 
 def test_compose_uses_single_production_runtime() -> None:
     compose_yaml = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    gateway_config = (REPO_ROOT / "deploy" / "haproxy-modbus.cfg").read_text(encoding="utf-8")
     entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     healthcheck = (REPO_ROOT / "docker" / "healthcheck.sh").read_text(encoding="utf-8")
 
@@ -38,7 +39,17 @@ def test_compose_uses_single_production_runtime() -> None:
     assert 'OPS_PORT: "9090"' in compose_yaml
     assert "HMI_PUBLISHED_PORT: ${HMI_PUBLISHED_PORT:-8080}" in compose_yaml
     assert '"0.0.0.0:${HMI_PUBLISHED_PORT:-8080}:8080"' in compose_yaml
-    assert '"0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}:1502"' in compose_yaml
+    honeypot_section, gateway_section = compose_yaml.split("  modbus-gateway:", maxsplit=1)
+    assert '"0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}:1502"' not in honeypot_section
+    assert '"0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}:1502"' in gateway_section
+    assert 'MODBUS_PROXY_PROTOCOL_ENABLED: "1"' in honeypot_section
+    assert 'MODBUS_MAX_CONNECTIONS_PER_SOURCE: "64"' in honeypot_section
+    assert "cap_drop:" in gateway_section
+    assert "- ALL" in gateway_section
+    assert "stick-table type ip size 100k expire 30s store conn_cur,conn_rate(10s)" in gateway_config
+    assert "tcp-request connection reject if { sc_conn_cur(0) gt 8 }" in gateway_config
+    assert "tcp-request connection reject if { sc_conn_rate(0) gt 20 }" in gateway_config
+    assert "server honeypot honeypot:1502 check send-proxy" in gateway_config
     assert '"127.0.0.1:${OPS_PUBLISHED_PORT:-9090}:9090"' in compose_yaml
     assert "HMI_PUBLISHED_HOST" not in compose_yaml
     assert "MODBUS_PUBLISHED_HOST" not in compose_yaml
@@ -80,6 +91,7 @@ def test_example_env_keeps_only_host_ports_configurable_without_exposing_ops() -
     }
 
     assert "HONEYPOT_IMAGE=stoertebeker2k/scada-honeypot:latest" in env_text
+    assert "MODBUS_GATEWAY_IMAGE=haproxy:3.2.21-alpine" in env_text
     assert "HMI_PUBLISHED_PORT=8080" in env_text
     assert "MODBUS_PUBLISHED_PORT=1502" in env_text
     assert "OPS_PUBLISHED_PORT=9090" in env_text

@@ -18,14 +18,23 @@ only with loopback binds.
 Docker Compose publishes:
 
 - HMI on `0.0.0.0:${HMI_PUBLISHED_PORT:-8080}`
-- Modbus on `0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}`
+- the HAProxy Modbus gateway on `0.0.0.0:${MODBUS_PUBLISHED_PORT:-1502}`
 - Ops on `127.0.0.1:${OPS_PUBLISHED_PORT:-9090}`
 
-The Modbus listener rejects MBAP lengths outside `2..254` before reading the
-PDU. `MODBUS_MAX_CONNECTIONS` and `MODBUS_MAX_CONNECTIONS_PER_SOURCE` bound
-handler threads globally and per source. Compose additionally caps container
-PIDs, memory, CPU, and open file descriptors; deployment overrides must retain
-finite ceilings.
+Only the gateway publishes Modbus. It caps concurrent connections globally at
+`64`, concurrent connections per source at `8`, and new connections per source
+at `20` per `10s`. It forwards the original address using mandatory PROXY v1;
+the private Python listener rejects missing, malformed, oversized, or nested
+metadata before parsing Modbus or writing an event.
+
+The Modbus listener also rejects MBAP lengths outside `2..254` before reading
+the PDU and retains an application-level global handler ceiling. Compose caps
+both containers' PIDs, memory, CPU, and open file descriptors; deployment
+overrides must retain finite ceilings.
+
+`MODBUS_PROXY_PROTOCOL_ENABLED=1` creates a trust boundary: never publish the
+Python listener directly or connect an untrusted service to its private port.
+NATed clients share one per-source gateway quota by design.
 
 ## Egress
 
