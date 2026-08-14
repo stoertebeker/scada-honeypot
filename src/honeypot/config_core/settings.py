@@ -112,8 +112,25 @@ class RuntimeConfig(BaseSettings):
 
     event_store_backend: Literal["sqlite"] = "sqlite"
     event_store_path: Path = Path("./tmp/honeypot-events.db")
+    evidence_max_age_days: int = Field(default=30, ge=1, le=3650)
+    evidence_max_event_rows: int = Field(default=250_000, ge=1, le=10_000_000)
+    evidence_max_event_rows_per_source: int = Field(default=25_000, ge=1, le=10_000_000)
+    evidence_max_alert_rows: int = Field(default=50_000, ge=1, le=10_000_000)
+    evidence_max_outbox_rows: int = Field(default=50_000, ge=1, le=10_000_000)
+    evidence_max_campaign_rows: int = Field(default=10_000, ge=1, le=1_000_000)
+    evidence_max_campaign_rows_per_source: int = Field(default=1_000, ge=1, le=1_000_000)
+    evidence_max_credential_rows: int = Field(default=200_000, ge=1, le=10_000_000)
+    evidence_max_unique_usernames: int = Field(default=100_000, ge=1, le=1_000_000)
+    evidence_max_unique_usernames_per_source: int = Field(default=1_000, ge=1, le=1_000_000)
+    evidence_max_database_bytes: int = Field(default=512 * 1024 * 1024, ge=16 * 1024 * 1024)
+    evidence_reserved_health_bytes: int = Field(default=16 * 1024 * 1024, ge=0)
+    evidence_min_free_bytes: int = Field(default=256 * 1024 * 1024, ge=0)
+    evidence_sweep_interval_writes: int = Field(default=100, ge=1, le=100_000)
     jsonl_archive_enabled: bool = True
     jsonl_archive_path: Path = Path("./logs/events.jsonl")
+    jsonl_archive_max_file_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+    jsonl_archive_max_total_bytes: int = Field(default=512 * 1024 * 1024, ge=1024)
+    jsonl_archive_max_age_days: int = Field(default=30, ge=1, le=3650)
     runtime_status_enabled: bool = False
     runtime_status_path: Path = Path("./logs/runtime-status.json")
     runtime_status_interval_seconds: int = Field(default=5, ge=1, le=3600)
@@ -281,6 +298,30 @@ class RuntimeConfig(BaseSettings):
     def validate_modbus_connection_limits(self) -> "RuntimeConfig":
         if self.modbus_max_connections_per_source > self.modbus_max_connections:
             raise ValueError("MODBUS_MAX_CONNECTIONS_PER_SOURCE darf MODBUS_MAX_CONNECTIONS nicht ueberschreiten")
+        return self
+
+    @model_validator(mode="after")
+    def validate_evidence_retention_limits(self) -> "RuntimeConfig":
+        if self.evidence_max_event_rows_per_source > self.evidence_max_event_rows:
+            raise ValueError(
+                "EVIDENCE_MAX_EVENT_ROWS_PER_SOURCE darf EVIDENCE_MAX_EVENT_ROWS nicht ueberschreiten"
+            )
+        if self.evidence_max_campaign_rows_per_source > self.evidence_max_campaign_rows:
+            raise ValueError(
+                "EVIDENCE_MAX_CAMPAIGN_ROWS_PER_SOURCE darf EVIDENCE_MAX_CAMPAIGN_ROWS nicht ueberschreiten"
+            )
+        if self.evidence_max_unique_usernames_per_source > self.evidence_max_unique_usernames:
+            raise ValueError(
+                "EVIDENCE_MAX_UNIQUE_USERNAMES_PER_SOURCE darf EVIDENCE_MAX_UNIQUE_USERNAMES nicht ueberschreiten"
+            )
+        if self.evidence_reserved_health_bytes >= self.evidence_max_database_bytes:
+            raise ValueError(
+                "EVIDENCE_RESERVED_HEALTH_BYTES muss kleiner als EVIDENCE_MAX_DATABASE_BYTES sein"
+            )
+        if self.jsonl_archive_max_file_bytes > self.jsonl_archive_max_total_bytes:
+            raise ValueError(
+                "JSONL_ARCHIVE_MAX_FILE_BYTES darf JSONL_ARCHIVE_MAX_TOTAL_BYTES nicht ueberschreiten"
+            )
         return self
 
     @model_validator(mode="after")

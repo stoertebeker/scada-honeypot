@@ -149,8 +149,8 @@ class EventRecorder:
     ) -> RecordedArtifacts:
         """Persistiert Event, optional State-Updates, Alert und Outbox-Auftraege."""
 
-        self.store.append_event(event)
-        if self.archive is not None:
+        persisted = self.store.append_event(event)
+        if persisted and self.archive is not None:
             # Das JSONL-Archiv bleibt ein best-effort Analyseartefakt; SQLite ist die Primärwahrheit.
             self.archive.append_event(event)
         if current_state_updates:
@@ -158,30 +158,37 @@ class EventRecorder:
             for state_key, state_payload in current_state_updates.items():
                 self.store.upsert_current_state(state_key, state_payload, updated_at=updated_at)
 
+        if not persisted:
+            return RecordedArtifacts(event=event, persisted=False)
+
         derived_alerts = self._derive_rule_alerts(
             event,
             current_state_updates=current_state_updates,
         )
-        alerts = self._merge_alerts(alert=alert, derived_alerts=derived_alerts)
+        candidate_alerts = self._merge_alerts(alert=alert, derived_alerts=derived_alerts)
+        persisted_alerts = []
         outbox_entries = []
-        for resolved_alert in alerts:
-            self.store.append_alert(resolved_alert)
-            outbox_entries.extend(
-                self.store.enqueue_alert_targets(
-                    resolved_alert,
-                    target_types=tuple(outbox_targets),
-                    next_attempt_at=resolved_alert.created_at + timedelta(seconds=0),
-                )
+        for resolved_alert in candidate_alerts:
+            resolved_outbox = self.store.append_alert_with_targets(
+                resolved_alert,
+                target_types=tuple(outbox_targets),
+                next_attempt_at=resolved_alert.created_at + timedelta(seconds=0),
             )
+            if resolved_outbox is None:
+                continue
+            persisted_alerts.append(resolved_alert)
+            outbox_entries.extend(resolved_outbox)
+        alerts = tuple(persisted_alerts)
         if alerts:
             return RecordedArtifacts(
                 event=event,
+                persisted=True,
                 alert=alerts[0],
                 alerts=alerts,
                 outbox_entries=tuple(outbox_entries),
             )
 
-        return RecordedArtifacts(event=event)
+        return RecordedArtifacts(event=event, persisted=True)
 
     def _derive_rule_alerts(
         self,

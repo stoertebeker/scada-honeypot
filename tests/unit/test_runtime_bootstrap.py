@@ -396,6 +396,9 @@ def test_runtime_status_service_writes_local_status_file(tmp_path: Path) -> None
         assert payload["runtime"]["hmi"]["port"] == runtime.hmi_service.address[1]
         assert payload["runtime"]["ops"]["port"] == runtime.ops_service.address[1]
         assert payload["runtime"]["outbox_runner"]["enabled"] is True
+        assert payload["store"]["evidence_retention"]["max_database_bytes"] == 512 * 1024 * 1024
+        assert payload["store"]["evidence_retention"]["counters"]["events_dropped"] == 0
+        assert payload["store"]["jsonl_retention"]["retained_files"] >= 1
         assert payload["exporters"]["webhook"]["status"] == "healthy"
     finally:
         runtime.stop()

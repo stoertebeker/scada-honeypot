@@ -57,6 +57,14 @@ SQLite in WAL mode stores:
 
 JSONL archiving can mirror events for offline analysis.
 
+Attacker-driven SQLite tables are bounded by age, global rows, per-source event
+and credential cardinality, database bytes, and a filesystem free-space
+watermark. Ordinary evidence admission stops before a reserved budget needed by
+trusted `system` health events. Retention runs on startup and at a configured
+write interval; dependent alerts and outbox entries are removed transactionally
+before their parent events. JSONL files rotate into gzip archives and are
+bounded independently by file size, total bytes, and age.
+
 ## Safety Gates
 
 - `runtime_ingress`: non-loopback binds require explicit approval.

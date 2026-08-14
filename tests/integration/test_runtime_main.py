@@ -576,8 +576,10 @@ def test_cli_reset_runtime_clears_local_artifacts_and_supports_clean_restart(tmp
         pcap_path.write_bytes(b"pcap")
         wal_path = Path(f"{event_store_path}-wal")
         shm_path = Path(f"{event_store_path}-shm")
+        rotated_archive_path = archive_path.with_name("events.20260814T100000000000Z.jsonl.gz")
         wal_path.write_bytes(b"wal")
         shm_path.write_bytes(b"shm")
+        rotated_archive_path.write_bytes(b"gzip-test")
     finally:
         runtime.stop()
 
@@ -587,6 +589,7 @@ def test_cli_reset_runtime_clears_local_artifacts_and_supports_clean_restart(tmp
     assert pcap_path.exists()
     assert Path(f"{event_store_path}-wal").exists()
     assert Path(f"{event_store_path}-shm").exists()
+    assert rotated_archive_path.exists()
 
     assert cli(["--env-file", str(env_file), "--reset-runtime"]) == 0
 
@@ -596,6 +599,7 @@ def test_cli_reset_runtime_clears_local_artifacts_and_supports_clean_restart(tmp
     assert pcap_path.exists() is False
     assert Path(f"{event_store_path}-wal").exists() is False
     assert Path(f"{event_store_path}-shm").exists() is False
+    assert rotated_archive_path.exists() is False
 
     fresh_runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
     try:

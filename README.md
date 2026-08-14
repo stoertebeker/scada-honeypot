@@ -95,7 +95,7 @@ egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
 - `modbus-gateway`: public Layer-4 connection/rate limiter; the Python Modbus
   listener remains private to the Compose network
 - `hmi_web`: attacker-facing HMI frontend, service-login lure, and audit trail
-- `event_core` / `storage`: SQLite/WAL event store, JSONL archive, alerts, and outbox
+- `event_core` / `storage`: bounded SQLite/WAL evidence store, rotated JSONL archive, alerts, and outbox
 - `runtime_ingress` / `runtime_exposure` / `runtime_egress`: bind, exposure, and egress gates
 - `ops_web`: protected local operator backend for status, reset, settings, sources, and versions
 - `exporter_runner`: decoupled Webhook, SMTP, and Telegram exporters

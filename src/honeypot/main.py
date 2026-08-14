@@ -41,7 +41,12 @@ from honeypot.runtime_evolution import (
     trend_history_capacity,
 )
 from honeypot.rule_engine import RuleEngine
-from honeypot.storage import JsonlEventArchive, SQLiteEventStore
+from honeypot.storage import (
+    JsonlEventArchive,
+    JsonlRetentionPolicy,
+    SQLiteEventStore,
+    SQLiteRetentionPolicy,
+)
 from honeypot.time_core import Clock, SystemClock
 from honeypot.weather_core import (
     DeterministicDiurnalWeatherProvider,
@@ -217,11 +222,46 @@ def build_local_runtime(
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
     runtime_clock = SystemClock() if clock is None else clock
     weather_provider = _build_weather_provider(config)
-    event_store = SQLiteEventStore(config.event_store_path)
+    event_store = SQLiteEventStore(
+        config.event_store_path,
+        retention_policy=SQLiteRetentionPolicy(
+            max_age_days=config.evidence_max_age_days,
+            max_event_rows=config.evidence_max_event_rows,
+            max_event_rows_per_source=config.evidence_max_event_rows_per_source,
+            max_alert_rows=config.evidence_max_alert_rows,
+            max_outbox_rows=config.evidence_max_outbox_rows,
+            max_campaign_rows=config.evidence_max_campaign_rows,
+            max_campaign_rows_per_source=config.evidence_max_campaign_rows_per_source,
+            max_credential_rows=config.evidence_max_credential_rows,
+            max_unique_usernames=config.evidence_max_unique_usernames,
+            max_unique_usernames_per_source=config.evidence_max_unique_usernames_per_source,
+            max_database_bytes=config.evidence_max_database_bytes,
+            reserved_health_bytes=config.evidence_reserved_health_bytes,
+            min_free_bytes=config.evidence_min_free_bytes,
+            sweep_interval_writes=config.evidence_sweep_interval_writes,
+        ),
+        now_provider=runtime_clock.now,
+    )
+    event_archive = (
+        JsonlEventArchive(
+            config.jsonl_archive_path,
+            retention_policy=JsonlRetentionPolicy(
+                max_file_bytes=config.jsonl_archive_max_file_bytes,
+                max_total_bytes=config.jsonl_archive_max_total_bytes,
+                max_age_days=config.jsonl_archive_max_age_days,
+                min_free_bytes=(
+                    config.evidence_min_free_bytes + config.evidence_reserved_health_bytes
+                ),
+            ),
+            now_provider=runtime_clock.now,
+        )
+        if config.jsonl_archive_enabled
+        else None
+    )
     event_recorder = EventRecorder(
         store=event_store,
         clock=runtime_clock,
-        archive=(JsonlEventArchive(config.jsonl_archive_path) if config.jsonl_archive_enabled else None),
+        archive=event_archive,
         rule_engine=RuleEngine.default_v1(
             min_severity=config.alert_min_severity,
             capacity_mw=config.capacity_mw,
@@ -331,6 +371,7 @@ def build_local_runtime(
                 fixture_name=snapshot.fixture_name,
                 path=config.runtime_status_path,
                 event_store=event_store,
+                event_archive=event_archive,
                 modbus_service=modbus_service,
                 hmi_service=hmi_service,
                 ops_service=ops_service,

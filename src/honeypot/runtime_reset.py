@@ -46,11 +46,16 @@ def planned_runtime_artifact_paths(config: RuntimeConfig) -> tuple[Path, ...]:
     """Liefert alle bekannten lokalen Runtime-Artefakte fuer Reset und Doku."""
 
     event_store_path = config.event_store_path.expanduser()
+    archive_path = config.jsonl_archive_path.expanduser()
+    rotated_archives = tuple(
+        sorted(archive_path.parent.glob(f"{archive_path.stem}.*.jsonl.gz"))
+    )
     return (
         event_store_path,
         Path(f"{event_store_path}-wal"),
         Path(f"{event_store_path}-shm"),
-        config.jsonl_archive_path.expanduser(),
+        archive_path,
+        *rotated_archives,
         config.runtime_status_path.expanduser(),
         config.pcap_capture_path.expanduser(),
     )

@@ -64,6 +64,22 @@ Only bounded runtime-safe defaults belong in Ops settings. Bind hosts, ports,
 trusted proxies, egress approvals, exporter endpoints, evidence paths, and
 boot-only service toggles remain `.env` decisions.
 
+## Evidence Storage
+
+Do not disable or inflate evidence quotas without a volume-capacity review.
+SQLite events, alerts, outbox rows, login campaigns, and credential aggregates
+have age/row limits; events, campaigns, and usernames also have per-source
+ceilings. The database and WAL use a byte budget, and ordinary attacker writes
+stop at `EVIDENCE_MIN_FREE_BYTES + EVIDENCE_RESERVED_HEALTH_BYTES`. Only trusted
+events with both `category=system` and `actor_type=system` may consume the
+reserve down to the minimum-free watermark.
+
+JSONL is secondary evidence. It stops before the same health reserve, rotates
+to gzip, and enforces independent file, total-byte, and age bounds. Monitor
+`store.evidence_retention` and `store.jsonl_retention` in runtime status,
+especially dropped/pruned counters and `last_error`. Host or volume quotas are
+still required as an outer containment layer.
+
 ## Weather Privacy
 
 Weather coordinates may be real internally. They must not appear in HMI pages,
@@ -87,4 +103,5 @@ before implementation.
 - missing event trail for visible action
 - exporter traffic to unapproved targets
 - evidence persistence failure
+- sustained evidence drops, retention pruning, or reserve-watermark use
 - any sign of real OT reachability

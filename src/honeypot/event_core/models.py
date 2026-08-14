@@ -186,6 +186,7 @@ class RecordedArtifacts(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     event: EventRecord
+    persisted: bool = True
     alert: AlertRecord | None = None
     alerts: tuple[AlertRecord, ...] = ()
     outbox_entries: tuple[OutboxEntry, ...] = ()

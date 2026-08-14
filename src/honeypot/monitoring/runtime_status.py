@@ -11,7 +11,7 @@ from typing import Any, Mapping, Protocol
 
 from honeypot.exporter_runner import BackgroundOutboxRunnerService, OutboxDrainResult
 from honeypot.exporter_sdk import HoneypotExporter
-from honeypot.storage import SQLiteEventStore
+from honeypot.storage import JsonlEventArchive, SQLiteEventStore
 from honeypot.time_core import Clock, SystemClock, ensure_utc_datetime
 
 
@@ -49,6 +49,7 @@ class RuntimeStatusWriter:
     modbus_service: AddressableService
     hmi_service: AddressableService
     exporters: Mapping[str, HoneypotExporter]
+    event_archive: JsonlEventArchive | None = None
     ops_service: AddressableService | None = None
     outbox_runner_service: BackgroundOutboxRunnerService | None = None
     clock: Clock = field(default_factory=SystemClock)
@@ -120,6 +121,10 @@ class RuntimeStatusWriter:
                 "event_rows": self.event_store.count_rows("event_log"),
                 "alert_rows": self.event_store.count_rows("alert_log"),
                 "outbox_rows": self.event_store.count_rows("outbox"),
+                "evidence_retention": self.event_store.evidence_retention_status(),
+                "jsonl_retention": (
+                    None if self.event_archive is None else self.event_archive.retention_status()
+                ),
             },
             "alerts": {
                 "active_count": sum(1 for alert in alerts if alert.state.startswith("active")),

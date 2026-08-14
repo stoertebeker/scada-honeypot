@@ -10,6 +10,20 @@ process effects, alerts, exporter attempts, and operator-visible state changes.
 SQLite/WAL stores structured events and current state. JSONL archiving can be
 enabled for offline review.
 
+Persistent attacker evidence has mandatory retention controls:
+
+- age and row limits for events, alerts, outbox, campaigns, and credentials
+- global and per-source event, campaign, and username-cardinality limits
+- a SQLite byte ceiling plus WAL checkpointing
+- a free-space watermark with a separate reserve for trusted system-health events
+- gzip JSONL rotation with file, total-byte, and age ceilings
+
+When ordinary evidence reaches a quota or watermark, it is rejected instead of
+consuming the health reserve. Current-state updates remain bounded and continue
+independently. Runtime status exposes retained rows/bytes and cumulative dropped
+or pruned counters. JSONL remains best-effort; an archive failure never rolls
+back SQLite truth.
+
 ## Main Event Families
 
 - `protocol.modbus.*`
@@ -54,7 +68,9 @@ amplifying storage I/O as alert history grows.
 ## Exporter Outbox
 
 Exporter delivery is decoupled through the outbox. A failed exporter must not
-break HMI, Modbus, or core event recording.
+break HMI, Modbus, or core event recording. Oldest outbox rows, including
+undelivered rows, may be pruned when retention limits are reached; this is
+reported by the evidence-retention counters.
 
 ## Language
 

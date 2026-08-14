@@ -32,6 +32,9 @@ wiring, or evidence paths:
 - Ops enablement, Ops Basic Auth, secure-cookie flags, and trusted proxies
 - weather provider, coordinates, and provider startup tuning
 - event store, JSONL archive, findings, runtime-status, and PCAP paths
+- SQLite evidence age/row/byte quotas, per-source cardinality limits,
+  free-space watermark, health reserve, and sweep interval
+- JSONL file/total byte ceilings, maximum age, and compressed rotation
 - exporter enablement, endpoints, tokens, and explicit egress approvals
 - image source and GeoIP updater inputs
 - plant capacity and alert thresholds used to construct the rule engine

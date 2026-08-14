@@ -36,6 +36,14 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.allow_nonlocal_bind is False
     assert config.attacker_ui_locale_resolution_chain == ("en",)
     assert config.event_store_backend == "sqlite"
+    assert config.evidence_max_age_days == 30
+    assert config.evidence_max_event_rows == 250_000
+    assert config.evidence_max_event_rows_per_source == 25_000
+    assert config.evidence_max_database_bytes == 512 * 1024 * 1024
+    assert config.evidence_reserved_health_bytes == 16 * 1024 * 1024
+    assert config.evidence_min_free_bytes == 256 * 1024 * 1024
+    assert config.jsonl_archive_max_file_bytes == 64 * 1024 * 1024
+    assert config.jsonl_archive_max_total_bytes == 512 * 1024 * 1024
     assert config.runtime_status_enabled is False
     assert config.runtime_status_interval_seconds == 5
     assert config.approved_egress_targets == ()
@@ -165,6 +173,46 @@ def test_runtime_status_interval_must_be_positive(monkeypatch, tmp_path: Path) -
 
     with pytest.raises(ValidationError):
         RuntimeConfig(_env_file=None, runtime_status_interval_seconds=0)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        (
+            {"evidence_max_event_rows": 10, "evidence_max_event_rows_per_source": 11},
+            "EVIDENCE_MAX_EVENT_ROWS_PER_SOURCE",
+        ),
+        (
+            {"evidence_max_campaign_rows": 10, "evidence_max_campaign_rows_per_source": 11},
+            "EVIDENCE_MAX_CAMPAIGN_ROWS_PER_SOURCE",
+        ),
+        (
+            {
+                "evidence_max_unique_usernames": 10,
+                "evidence_max_unique_usernames_per_source": 11,
+            },
+            "EVIDENCE_MAX_UNIQUE_USERNAMES_PER_SOURCE",
+        ),
+        (
+            {
+                "jsonl_archive_max_file_bytes": 4096,
+                "jsonl_archive_max_total_bytes": 2048,
+            },
+            "JSONL_ARCHIVE_MAX_FILE_BYTES",
+        ),
+    ),
+)
+def test_runtime_config_rejects_inverted_evidence_limits(
+    monkeypatch,
+    tmp_path: Path,
+    overrides: dict[str, int],
+    message: str,
+) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError, match=message):
+        RuntimeConfig(_env_file=None, **overrides)
 
 
 def test_runtime_config_normalizes_approved_egress_targets(monkeypatch, tmp_path: Path) -> None:
