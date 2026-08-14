@@ -1473,6 +1473,7 @@ def test_release_gate_pre_exposure_runtime_sweep_with_monitoring_reset_and_appro
         "WEBHOOK_EXPORTER_ENABLED=1",
         "WEBHOOK_EXPORTER_URL=https://example.invalid/hook",
         "APPROVED_EGRESS_TARGETS=webhook:example.invalid:443",
+        "APPROVED_EGRESS_CIDRS=93.184.216.0/24",
         "RUNTIME_STATUS_ENABLED=1",
         f"RUNTIME_STATUS_PATH={status_path}",
         "JSONL_ARCHIVE_ENABLED=0",
@@ -1495,7 +1496,11 @@ def test_release_gate_pre_exposure_runtime_sweep_with_monitoring_reset_and_appro
         transport=httpx.MockTransport(webhook_handler),
     )
 
-    approved_targets = enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
+    approved_targets = enforce_runtime_egress_policy(
+        config=runtime.config,
+        exporters=runtime.exporters,
+        resolver=lambda host, port: ("93.184.216.34",),
+    )
     assert approved_targets == ("webhook:example.invalid:443",)
 
     def read_status() -> dict:

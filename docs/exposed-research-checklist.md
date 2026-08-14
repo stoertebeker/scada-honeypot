@@ -25,6 +25,9 @@ Use this checklist before any internet-facing deployment.
 - Modbus public mapping is intentional
 - Ops is not public
 - every active exporter has an approved target
+- every resolved exporter address is in `APPROVED_EGRESS_CIDRS` and an
+  independent host/perimeter firewall allowlist
+- all known routed OT ranges are listed in `PROHIBITED_OT_CIDRS`
 - every active exporter has a named recipient
 - no exporter uses `.example`, `.invalid`, `.test`, or documentation IP ranges
 

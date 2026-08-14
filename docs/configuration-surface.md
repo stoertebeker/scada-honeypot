@@ -35,7 +35,8 @@ wiring, or evidence paths:
 - SQLite evidence age/row/byte quotas, per-source cardinality limits,
   free-space watermark, health reserve, and sweep interval
 - JSONL file/total byte ceilings, maximum age, and compressed rotation
-- exporter enablement, endpoints, tokens, and explicit egress approvals
+- exporter enablement, endpoints, tokens, explicit target/network/recipient
+  approvals, and prohibited OT CIDRs
 - image source and GeoIP updater inputs
 - plant capacity and alert thresholds used to construct the rule engine
 - outbox runner batch and retry timing

@@ -41,10 +41,25 @@ NATed clients share one per-source gateway quota by design.
 Exporters are deny-by-default. Active exporters require:
 
 - `APPROVED_EGRESS_TARGETS`
+- `APPROVED_EGRESS_CIDRS`
 - `APPROVED_EGRESS_RECIPIENTS`
 
 Documentation-only hostnames and documentation IP ranges are rejected for active
 exporters during production exposure checks.
+
+Webhook and Telegram URLs must use HTTPS without userinfo. The runtime resolves
+all A and AAAA answers, rejects every non-global/special address and any address
+outside `APPROVED_EGRESS_CIDRS`, then pins the vetted addresses at the actual
+HTTP socket boundary. TLS still verifies the original hostname through SNI, so
+a later DNS answer cannot redirect delivery to a sensitive network.
+Known routed OT ranges, including public allocations, must be entered in
+`PROHIBITED_OT_CIDRS`; this denylist overrides all approvals.
+
+SMTP uses certificate-verified implicit TLS from connection start; plaintext
+SMTP and opportunistic STARTTLS are unsupported. `APPROVED_EGRESS_CIDRS` is the
+application's independent socket allowlist, but it does not replace a host,
+VPC, or perimeter firewall allowlist. That outer firewall must permit only the
+same collector/mail CIDRs and must deny every real OT route.
 
 ## GeoIP Maintenance
 

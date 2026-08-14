@@ -24,7 +24,8 @@ Edit `.env` only for deployment-specific values:
 - optional GeoIP updater release and out-of-band Country/ASN SHA-256 pins;
   automatic updates remain disabled unless all three pins are set deliberately
 - optional Ops Basic Auth
-- optional exporter targets and recipients
+- optional exporter targets, narrow public A/AAAA CIDRs, and recipients; mirror
+  the CIDRs in an independent host or perimeter firewall allowlist
 
 ## Verify Before Exposure
 

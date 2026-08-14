@@ -32,6 +32,8 @@ Enable exporters only when real approved targets exist:
 WEBHOOK_EXPORTER_ENABLED=1
 WEBHOOK_EXPORTER_URL=https://collector.example.net/honeypot-ingest
 APPROVED_EGRESS_TARGETS=webhook:collector.example.net:443
+APPROVED_EGRESS_CIDRS=<narrow-public-collector-cidr>
+PROHIBITED_OT_CIDRS=<all-routed-real-ot-cidrs>
 APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live
 ```
 

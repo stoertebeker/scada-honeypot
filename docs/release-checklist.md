@@ -33,8 +33,8 @@ Review:
 - findings log
 - event store
 - JSONL archive
-- exporter approval config
-- firewall/NAT mapping
+- exporter target, CIDR, recipient, prohibited-OT, and TLS configuration
+- ingress firewall/NAT mapping and independent exporter egress firewall rules
 
 ## Documentation Checks
 

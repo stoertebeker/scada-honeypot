@@ -70,7 +70,9 @@ bounded independently by file size, total bytes, and age.
 - `runtime_ingress`: non-loopback binds require explicit approval.
 - `runtime_exposure`: production exposure requires public ingress metadata,
   named operators, and non-placeholder exporter targets.
-- `runtime_egress`: exporters are deny-by-default.
+- `runtime_egress`: exporters are deny-by-default; HTTPS/SMTP-TLS destinations
+  require global A/AAAA answers, CIDR approval, OT-denylist clearance, and
+  socket-level address pinning.
 - `config_core`: validates coordinates, ports, cookies, proxies, exporters, and
   local debug constraints.
 

@@ -21,7 +21,7 @@ Reason:
 - Ops remains reachable only from the operator path
 - `--verify-exposed-research-target-host` completes
 - event store, JSONL archive, and findings log are persisted
-- exporter targets and recipients are approved and non-placeholder
+- exporter targets, CIDRs, recipients, and TLS are approved and non-placeholder
 - rollback and reset procedure is known
 
 ## Security Reminder

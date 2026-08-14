@@ -75,7 +75,9 @@ values usually need changes:
 - `WEATHER_PROVIDER`: `disabled`, `deterministic`, `open_meteo_forecast`, or `open_meteo_satellite`
 - `WEATHER_LATITUDE` / `WEATHER_LONGITUDE`: real weather coordinates, never shown in the HMI
 - `OPS_BASIC_AUTH_ENABLED`: optional Basic Auth for the Ops backend
-- `APPROVED_EGRESS_TARGETS` and `APPROVED_EGRESS_RECIPIENTS`: required when exporters are enabled
+- `APPROVED_EGRESS_TARGETS`, `APPROVED_EGRESS_CIDRS`, and
+  `APPROVED_EGRESS_RECIPIENTS`: independent target, network, and recipient
+  approvals required when exporters are enabled
 
 Ops Basic Auth is enforced by the FastAPI Ops backend. It protects only the Ops
 backend, not the attacker-facing HMI.
@@ -88,6 +90,15 @@ Low-change runtime defaults that are safe to change after startup are managed
 in Ops `/settings`. Deployment-critical values such as ports, bind policy,
 egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
 `.env`.
+
+Exporter webhooks require HTTPS without embedded credentials. Before startup,
+all A and AAAA answers must be globally routable and covered by the narrow
+`APPROVED_EGRESS_CIDRS` socket allowlist; connections are pinned to those
+addresses to prevent DNS rebinding. `PROHIBITED_OT_CIDRS` overrides every
+approval for known routed OT ranges. SMTP uses certificate-verified implicit TLS
+on port `465`. Keep an independent host or perimeter firewall allowlist in
+addition to the application policy, and never route the honeypot toward OT
+networks.
 
 GeoIP downloads are maintenance traffic, not attacker-facing traffic. To enable
 them, obtain the Country and ASN archive SHA-256 values through a controlled,

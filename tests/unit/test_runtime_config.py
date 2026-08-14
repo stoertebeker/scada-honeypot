@@ -46,7 +46,10 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.jsonl_archive_max_total_bytes == 512 * 1024 * 1024
     assert config.runtime_status_enabled is False
     assert config.runtime_status_interval_seconds == 5
+    assert config.smtp_port == 465
     assert config.approved_egress_targets == ()
+    assert config.approved_egress_cidrs == ()
+    assert config.prohibited_ot_cidrs == ()
     assert config.approved_ingress_bindings == ()
     assert config.honeypot_local_debug is False
     assert config.hmi_cookie_secure is False
@@ -228,6 +231,28 @@ def test_runtime_config_normalizes_approved_egress_targets(monkeypatch, tmp_path
         "webhook:example.invalid:443",
         "smtp:mail.example.invalid:25",
     )
+
+
+def test_runtime_config_normalizes_and_validates_approved_egress_cidrs(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    config = RuntimeConfig(
+        _env_file=None,
+        approved_egress_cidrs="93.184.216.34/24, 2606:2800:220::/48,93.184.216.0/24",
+    )
+
+    assert config.approved_egress_cidrs == (
+        "93.184.216.34/24",
+        "2606:2800:220::/48",
+        "93.184.216.0/24",
+    )
+
+    with pytest.raises(ValidationError, match="APPROVED_EGRESS_CIDRS"):
+        RuntimeConfig(_env_file=None, approved_egress_cidrs="not-a-network")
+
+    with pytest.raises(ValidationError, match="PROHIBITED_OT_CIDRS"):
+        RuntimeConfig(_env_file=None, prohibited_ot_cidrs="not-a-network")
 
 
 def test_runtime_config_normalizes_approved_ingress_bindings(monkeypatch, tmp_path: Path) -> None:

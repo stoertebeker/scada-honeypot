@@ -144,13 +144,15 @@ class RuntimeConfig(BaseSettings):
     webhook_exporter_url: AnyUrl | None = None
     smtp_exporter_enabled: bool = False
     smtp_host: str | None = None
-    smtp_port: int = Field(default=25, ge=1, le=65535)
+    smtp_port: int = Field(default=465, ge=1, le=65535)
     smtp_from: str | None = None
     smtp_to: str | None = None
     telegram_exporter_enabled: bool = False
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     approved_egress_targets: Annotated[tuple[str, ...], NoDecode] = ()
+    approved_egress_cidrs: Annotated[tuple[str, ...], NoDecode] = ()
+    prohibited_ot_cidrs: Annotated[tuple[str, ...], NoDecode] = ()
     approved_ingress_bindings: Annotated[tuple[str, ...], NoDecode] = ()
     approved_egress_recipients: Annotated[tuple[str, ...], NoDecode] = ()
     public_ingress_mappings: Annotated[tuple[str, ...], NoDecode] = ()
@@ -210,6 +212,8 @@ class RuntimeConfig(BaseSettings):
 
     @field_validator(
         "approved_egress_targets",
+        "approved_egress_cidrs",
+        "prohibited_ot_cidrs",
         "approved_ingress_bindings",
         "approved_egress_recipients",
         "public_ingress_mappings",
@@ -253,6 +257,21 @@ class RuntimeConfig(BaseSettings):
                 raise ValueError("TRUSTED_PROXY_CIDRS darf keine Wildcard-Netze wie 0.0.0.0/0 oder ::/0 enthalten")
         if self.forwarded_header_enabled and not self.trusted_proxy_cidrs:
             raise ValueError("TRUSTED_PROXY_CIDRS ist erforderlich, wenn FORWARDED_HEADER_ENABLED aktiv ist")
+        return self
+
+    @model_validator(mode="after")
+    def validate_egress_cidrs(self) -> "RuntimeConfig":
+        for setting, raw_cidrs in (
+            ("APPROVED_EGRESS_CIDRS", self.approved_egress_cidrs),
+            ("PROHIBITED_OT_CIDRS", self.prohibited_ot_cidrs),
+        ):
+            for raw_cidr in raw_cidrs:
+                try:
+                    ip_network(raw_cidr, strict=False)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"{setting} enthaelt ein ungueltiges CIDR: {raw_cidr}"
+                    ) from exc
         return self
 
     @model_validator(mode="after")

@@ -538,12 +538,12 @@ def verify_exposed_research_runtime(*, env_file: str | None = ".env") -> int:
     hmi_address: tuple[str, int] | None = None
     runtime_started = False
     try:
-        enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
         enforce_exposed_research_policy(
             config=runtime.config,
             exporters=runtime.exporters,
             allow_local_debug=False,
         )
+        enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
         runtime.start()
         runtime_started = True
         modbus_address = _loopback_runtime_address(runtime.modbus_service.address)
@@ -636,8 +636,8 @@ def main(*, env_file: str | None = ".env") -> int:
     """Startet den aktuellen lokalen Runtime-Slice fuer Modbus und HMI auf localhost."""
 
     runtime = build_local_runtime(env_file=env_file)
-    enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
     enforce_exposed_research_policy(config=runtime.config, exporters=runtime.exporters)
+    enforce_runtime_egress_policy(config=runtime.config, exporters=runtime.exporters)
     runtime.start()
     print(_runtime_banner(runtime))
     _run_until_stopped(runtime)

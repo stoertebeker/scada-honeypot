@@ -11,7 +11,7 @@ ready for any arbitrary internet exposure.
 - Docker Compose config is valid
 - HMI and Modbus share the same state
 - Ops remains host-loopback only
-- exporter egress is approved
+- exporter target, resolved CIDRs, recipients, and TLS egress are approved
 - target-host sweep passes
 - findings log is written
 
@@ -31,4 +31,5 @@ docker compose up -d
 - HMI and Modbus inconsistency
 - missing events for visible actions
 - exporter traffic to unapproved targets
+- exporter DNS answers outside the application and perimeter CIDR allowlists
 - real OT access from the honeypot path

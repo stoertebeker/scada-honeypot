@@ -567,6 +567,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "geoip2" },
+    { name = "httpcore" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "maxminddb" },
@@ -588,6 +589,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1.0" },
     { name = "geoip2", specifier = ">=4.8,<5.0" },
+    { name = "httpcore", specifier = ">=1.0,<2.0" },
     { name = "httpx", specifier = ">=0.28,<1.0" },
     { name = "jinja2", specifier = ">=3.1,<4.0" },
     { name = "maxminddb", specifier = ">=2.8,<3.0" },

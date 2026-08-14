@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import smtplib
+import socket
+import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -28,13 +30,14 @@ class SmtpExporter:
     host: str
     mail_from: str
     rcpt_to: str
-    port: int = 25
+    port: int = 465
     retry_after_seconds: int = 30
     timeout_seconds: float = 5.0
     exporter_id: str = "smtp-exporter"
     target_type: str = "smtp"
     subject_prefix: str = "SCADA Honeypot Alert Batch"
     client_factory: Callable[[str, int, float], SmtpClient] | None = None
+    pinned_addresses: tuple[str, ...] = ()
 
     def capabilities(self) -> ExporterCapabilities:
         return ExporterCapabilities(
@@ -103,7 +106,15 @@ class SmtpExporter:
     def _connect_client(self) -> SmtpClient:
         if self.client_factory is not None:
             return self.client_factory(self.host, self.port, self.timeout_seconds)
-        return smtplib.SMTP(self.host, self.port, timeout=self.timeout_seconds)
+        if not self.pinned_addresses:
+            raise OSError("SMTP-Ziel wurde nicht durch die Egress-Policy gepinnt")
+        return _PinnedSmtpSslClient(
+            hostname=self.host,
+            port=self.port,
+            timeout=self.timeout_seconds,
+            addresses=self.pinned_addresses,
+            context=ssl.create_default_context(),
+        )
 
     def _build_message(self, batch: Sequence[AlertRecord]) -> EmailMessage:
         message = EmailMessage()
@@ -117,3 +128,37 @@ class SmtpExporter:
             )
         message.set_content("\n".join(body_lines))
         return message
+
+
+class _PinnedSmtpSslClient(smtplib.SMTP_SSL):
+    def __init__(
+        self,
+        *,
+        hostname: str,
+        port: int,
+        timeout: float,
+        addresses: tuple[str, ...],
+        context: ssl.SSLContext,
+    ) -> None:
+        self._tls_hostname = hostname
+        self._pinned_addresses = addresses
+        super().__init__(host=hostname, port=port, timeout=timeout, context=context)
+
+    def _get_socket(self, host: str, port: int, timeout: float):
+        del host
+        last_error: OSError | None = None
+        for address in self._pinned_addresses:
+            raw_socket: socket.socket | None = None
+            try:
+                raw_socket = socket.create_connection((address, port), timeout)
+                return self.context.wrap_socket(
+                    raw_socket,
+                    server_hostname=self._tls_hostname,
+                )
+            except OSError as exc:
+                last_error = exc
+                if raw_socket is not None:
+                    raw_socket.close()
+        if last_error is None:
+            raise OSError("SMTP-Ziel hat keine gepinnte Adresse")
+        raise last_error

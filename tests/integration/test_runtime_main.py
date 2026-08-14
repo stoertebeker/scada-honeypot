@@ -311,7 +311,10 @@ def test_build_local_runtime_starts_nonlocal_bound_services_when_explicitly_enab
     assert_port_closed(loopback_hmi_address)
 
 
-def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(tmp_path: Path) -> None:
+def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
     findings_path = tmp_path / "logs" / "findings.md"
@@ -332,12 +335,23 @@ def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(tmp_path: 
                 "WEBHOOK_EXPORTER_ENABLED=1",
                 "WEBHOOK_EXPORTER_URL=https://collector.ops.lab/honeypot-ingest",
                 "APPROVED_EGRESS_TARGETS=webhook:collector.ops.lab:443",
+                "APPROVED_EGRESS_CIDRS=93.184.216.0/24",
                 "APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live",
                 f"EVENT_STORE_PATH={event_store_path}",
             )
         )
         + "\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "honeypot.runtime_egress._resolve_host_addresses",
+        lambda host, port: ("93.184.216.34",),
+    )
+    monkeypatch.setattr(
+        "honeypot.runtime_egress.PinnedHttpTransport",
+        lambda host, addresses: httpx.MockTransport(
+            lambda request: httpx.Response(202, request=request)
+        ),
     )
 
     assert cli(["--env-file", str(env_file), "--verify-exposed-research"]) == 0
@@ -354,7 +368,7 @@ def test_cli_verify_exposed_research_runs_start_read_alert_stop_sweep(tmp_path: 
 
 
 def test_cli_verify_exposed_research_target_host_prints_artifact_summary(
-    tmp_path: Path, capsys
+    tmp_path: Path, capsys, monkeypatch
 ) -> None:
     env_file = tmp_path / ".env"
     event_store_path = tmp_path / "events" / "honeypot.db"
@@ -380,6 +394,7 @@ def test_cli_verify_exposed_research_target_host_prints_artifact_summary(
                 "WEBHOOK_EXPORTER_ENABLED=1",
                 "WEBHOOK_EXPORTER_URL=https://collector.ops.lab/honeypot-ingest",
                 "APPROVED_EGRESS_TARGETS=webhook:collector.ops.lab:443",
+                "APPROVED_EGRESS_CIDRS=93.184.216.0/24",
                 "APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live",
                 f"EVENT_STORE_PATH={event_store_path}",
                 "JSONL_ARCHIVE_ENABLED=1",
@@ -388,6 +403,16 @@ def test_cli_verify_exposed_research_target_host_prints_artifact_summary(
         )
         + "\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "honeypot.runtime_egress._resolve_host_addresses",
+        lambda host, port: ("93.184.216.34",),
+    )
+    monkeypatch.setattr(
+        "honeypot.runtime_egress.PinnedHttpTransport",
+        lambda host, addresses: httpx.MockTransport(
+            lambda request: httpx.Response(202, request=request)
+        ),
     )
 
     assert cli(["--env-file", str(env_file), "--verify-exposed-research-target-host"]) == 0
