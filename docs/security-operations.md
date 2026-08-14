@@ -46,6 +46,19 @@ Exporters are deny-by-default. Active exporters require:
 Documentation-only hostnames and documentation IP ranges are rejected for active
 exporters during production exposure checks.
 
+## GeoIP Maintenance
+
+Automatic DB-IP updates are disabled by default. Enable them only with a pinned
+`YYYY-MM` release and independently controlled SHA-256 pins for both compressed
+archives. Do not derive the runtime pins from the same download transaction.
+
+The container invokes the updater as the unprivileged `honeypot` user. Each run
+has compressed and decompressed byte ceilings, a maximum gzip expansion ratio,
+a total deadline, MMDB structural validation, and a `256 MiB` application-level
+directory budget. A failed candidate is deleted and never replaces the last
+valid database. Retain a host/filesystem quota as an outer containment layer;
+the application budget is not a substitute for one.
+
 ## Ops Backend
 
 Ops contains:

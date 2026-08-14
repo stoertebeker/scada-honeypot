@@ -2,48 +2,89 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import gzip
+import hashlib
 import io
 import json
 from pathlib import Path
 import urllib.error
 
+import pytest
+
 from honeypot.geoip_update import (
     DBIP_ATTRIBUTION_LABEL,
     DBIP_ATTRIBUTION_URL,
     DBIP_LICENSE_NAME,
+    GeoIpDownloadLimits,
+    GeoIpUpdateError,
     update_dbip_lite,
 )
 
 
 class FakeResponse(io.BytesIO):
-    def __init__(self, payload: bytes) -> None:
+    def __init__(
+        self,
+        payload: bytes,
+        *,
+        clock: FakeClock | None = None,
+        content_length: int | None = None,
+    ) -> None:
         super().__init__(payload)
-        self.headers = {"Last-Modified": "Wed, 01 Apr 2026 06:54:00 GMT"}
+        self.headers = {
+            "Content-Length": str(len(payload) if content_length is None else content_length),
+            "Last-Modified": "Wed, 01 Apr 2026 06:54:00 GMT",
+        }
+        self._clock = clock
 
-    def __enter__(self) -> "FakeResponse":
+    def read(self, size: int = -1) -> bytes:
+        if self._clock is not None:
+            self._clock.advance(2.0)
+        return super().read(size)
+
+    def __enter__(self) -> FakeResponse:
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
 
 
-def test_update_dbip_lite_downloads_country_and_asn_and_writes_cc_by_metadata(tmp_path: Path) -> None:
+class FakeClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+
+    def __call__(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
+
+
+def test_update_dbip_lite_downloads_pinned_country_and_asn_and_writes_metadata(
+    tmp_path: Path,
+) -> None:
     requested_urls: list[str] = []
+    archives = {
+        "country": gzip.compress(_mmdb_payload("country"), mtime=0),
+        "asn": gzip.compress(_mmdb_payload("asn"), mtime=0),
+    }
 
     def opener(request, *, timeout):
         del timeout
         requested_urls.append(request.full_url)
-        return FakeResponse(gzip.compress(_mmdb_payload(request.full_url)))
+        dataset = "country" if "country" in request.full_url else "asn"
+        return FakeResponse(archives[dataset])
 
     results = update_dbip_lite(
         target_dir=tmp_path,
+        release="2026-04",
+        expected_sha256=_checksums(archives),
         now=datetime(2026, 4, 29, tzinfo=UTC),
         opener=opener,
+        mmdb_validator=lambda path, dataset: None,
     )
 
     assert {result.name for result in results} == {"country", "asn"}
-    assert (tmp_path / "dbip-country-lite.mmdb").read_bytes() == _mmdb_payload(requested_urls[0])
-    assert (tmp_path / "dbip-asn-lite.mmdb").read_bytes() == _mmdb_payload(requested_urls[1])
+    assert (tmp_path / "dbip-country-lite.mmdb").read_bytes() == _mmdb_payload("country")
+    assert (tmp_path / "dbip-asn-lite.mmdb").read_bytes() == _mmdb_payload("asn")
     metadata = json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["provider"] == "DB-IP Lite"
     assert metadata["license"] == DBIP_LICENSE_NAME
@@ -53,28 +94,147 @@ def test_update_dbip_lite_downloads_country_and_asn_and_writes_cc_by_metadata(tm
     }
     assert {dataset["name"] for dataset in metadata["datasets"]} == {"country", "asn"}
     assert all(dataset["release"] == "2026-04" for dataset in metadata["datasets"])
+    assert len(requested_urls) == 2
 
 
-def test_update_dbip_lite_falls_back_to_previous_month_when_current_release_is_missing(tmp_path: Path) -> None:
-    requested_urls: list[str] = []
+def test_update_requires_release_and_out_of_band_sha256_before_network_access(tmp_path: Path) -> None:
+    opened = False
 
     def opener(request, *, timeout):
-        del timeout
-        requested_urls.append(request.full_url)
-        if "2026-05" in request.full_url:
-            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", hdrs=None, fp=None)
-        return FakeResponse(gzip.compress(_mmdb_payload(request.full_url)))
+        nonlocal opened
+        del request, timeout
+        opened = True
+        raise AssertionError("network must not be reached")
+
+    with pytest.raises(GeoIpUpdateError, match="pinned release"):
+        update_dbip_lite(
+            target_dir=tmp_path,
+            expected_sha256={"country": "0" * 64, "asn": "1" * 64},
+            opener=opener,
+        )
+
+    with pytest.raises(GeoIpUpdateError, match="SHA-256"):
+        update_dbip_lite(target_dir=tmp_path, release="2026-04", opener=opener)
+
+    assert opened is False
+
+
+@pytest.mark.parametrize("invalid_value", [float("nan"), float("inf"), 0.0, -1.0])
+def test_download_limits_reject_non_finite_and_non_positive_values(invalid_value: float) -> None:
+    with pytest.raises(GeoIpUpdateError, match="finite and greater than zero"):
+        GeoIpDownloadLimits(max_expansion_ratio=invalid_value)
+
+
+@pytest.mark.parametrize("advertise_size", [True, False])
+def test_update_rejects_compressed_archive_over_limit(
+    tmp_path: Path,
+    advertise_size: bool,
+) -> None:
+    archive = gzip.compress(_mmdb_payload("compressed-limit"), mtime=0) + b"padding" * 100
+    advertised = len(archive) if advertise_size else 1
+
+    with pytest.raises(GeoIpUpdateError, match="compressed"):
+        update_dbip_lite(
+            target_dir=tmp_path,
+            release="2026-04",
+            datasets=("country",),
+            expected_sha256={"country": hashlib.sha256(archive).hexdigest()},
+            limits=GeoIpDownloadLimits(max_compressed_bytes=len(archive) - 1),
+            opener=lambda request, timeout: FakeResponse(
+                archive,
+                content_length=advertised,
+            ),
+            mmdb_validator=lambda path, dataset: None,
+        )
+
+
+def test_update_rejects_gzip_bomb_and_preserves_existing_database(tmp_path: Path) -> None:
+    target = tmp_path / "dbip-country-lite.mmdb"
+    target.write_bytes(b"previous-valid-mmdb")
+    archive = gzip.compress(b"A" * 64_000, mtime=0)
 
     results = update_dbip_lite(
         target_dir=tmp_path,
-        now=datetime(2026, 5, 1, tzinfo=UTC),
-        opener=opener,
+        release="2026-04",
+        datasets=("country",),
+        expected_sha256={"country": hashlib.sha256(archive).hexdigest()},
+        limits=GeoIpDownloadLimits(
+            max_compressed_bytes=1_024,
+            max_decompressed_bytes=128_000,
+            max_expansion_ratio=10.0,
+            total_deadline_seconds=30.0,
+            max_directory_bytes=256_000,
+        ),
+        opener=lambda request, timeout: FakeResponse(archive),
+        mmdb_validator=lambda path, dataset: None,
     )
 
-    assert any("2026-05" in url for url in requested_urls)
-    assert all(result.release == "2026-04" for result in results)
-    metadata = json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
-    assert all(dataset["release"] == "2026-04" for dataset in metadata["datasets"])
+    assert results == ()
+    assert target.read_bytes() == b"previous-valid-mmdb"
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_update_enforces_total_deadline_during_response_reads(tmp_path: Path) -> None:
+    clock = FakeClock()
+    archive = gzip.compress(_mmdb_payload("slow"), mtime=0)
+
+    with pytest.raises(GeoIpUpdateError, match="deadline"):
+        update_dbip_lite(
+            target_dir=tmp_path,
+            release="2026-04",
+            datasets=("country",),
+            expected_sha256={"country": hashlib.sha256(archive).hexdigest()},
+            limits=GeoIpDownloadLimits(total_deadline_seconds=1.0),
+            opener=lambda request, timeout: FakeResponse(archive, clock=clock),
+            monotonic=clock,
+            mmdb_validator=lambda path, dataset: None,
+        )
+
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_update_rejects_checksum_mismatch_and_invalid_mmdb(tmp_path: Path) -> None:
+    archive = gzip.compress(_mmdb_payload("invalid"), mtime=0)
+
+    with pytest.raises(GeoIpUpdateError, match="SHA-256 mismatch"):
+        update_dbip_lite(
+            target_dir=tmp_path,
+            release="2026-04",
+            datasets=("country",),
+            expected_sha256={"country": "0" * 64},
+            opener=lambda request, timeout: FakeResponse(archive),
+            mmdb_validator=lambda path, dataset: None,
+        )
+
+    with pytest.raises(GeoIpUpdateError, match="valid MMDB"):
+        update_dbip_lite(
+            target_dir=tmp_path,
+            release="2026-04",
+            datasets=("country",),
+            expected_sha256={"country": hashlib.sha256(archive).hexdigest()},
+            opener=lambda request, timeout: FakeResponse(archive),
+        )
+
+    assert not (tmp_path / "dbip-country-lite.mmdb").exists()
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_update_enforces_directory_quota_before_replacing_database(tmp_path: Path) -> None:
+    nested_dir = tmp_path / "nested"
+    nested_dir.mkdir()
+    (nested_dir / "unrelated.bin").write_bytes(b"x" * 2_000)
+    archive = gzip.compress(_mmdb_payload("quota"), mtime=0)
+
+    with pytest.raises(GeoIpUpdateError, match="directory quota"):
+        update_dbip_lite(
+            target_dir=tmp_path,
+            release="2026-04",
+            datasets=("country",),
+            expected_sha256={"country": hashlib.sha256(archive).hexdigest()},
+            limits=GeoIpDownloadLimits(max_directory_bytes=3_000),
+            opener=lambda request, timeout: FakeResponse(archive),
+            mmdb_validator=lambda path, dataset: None,
+        )
 
 
 def test_update_dbip_lite_optional_mode_does_not_block_without_downloads(tmp_path: Path) -> None:
@@ -85,6 +245,7 @@ def test_update_dbip_lite_optional_mode_does_not_block_without_downloads(tmp_pat
     results = update_dbip_lite(
         target_dir=tmp_path,
         release="2026-04",
+        expected_sha256={"country": "0" * 64, "asn": "1" * 64},
         optional=True,
         opener=opener,
     )
@@ -93,5 +254,9 @@ def test_update_dbip_lite_optional_mode_does_not_block_without_downloads(tmp_pat
     assert not (tmp_path / "metadata.json").exists()
 
 
+def _checksums(archives: dict[str, bytes]) -> dict[str, str]:
+    return {name: hashlib.sha256(payload).hexdigest() for name, payload in archives.items()}
+
+
 def _mmdb_payload(seed: str) -> bytes:
-    return (f"MMDB:{seed}\n".encode("ascii") * 128)[:2048]
+    return (f"MMDB:{seed}\n".encode("ascii") * 256)[:4096]

@@ -57,9 +57,25 @@ def test_compose_uses_single_production_runtime() -> None:
     assert "EVENT_STORE_PATH: /app/data/events.sqlite3" in compose_yaml
     assert "JSONL_ARCHIVE_PATH: /app/logs/events.jsonl" in compose_yaml
     assert "PCAP_CAPTURE_PATH: /app/pcap/session.pcapng" in compose_yaml
-    assert "GEOIP_DBIP_AUTO_UPDATE" in compose_yaml
+    assert "GEOIP_DBIP_AUTO_UPDATE: ${GEOIP_DBIP_AUTO_UPDATE:-0}" in compose_yaml
+    assert "GEOIP_DBIP_COUNTRY_SHA256" in compose_yaml
+    assert "GEOIP_DBIP_ASN_SHA256" in compose_yaml
+    assert "GEOIP_DBIP_MAX_COMPRESSED_BYTES" in compose_yaml
+    assert "GEOIP_DBIP_MAX_DECOMPRESSED_BYTES" in compose_yaml
+    assert "GEOIP_DBIP_MAX_EXPANSION_RATIO" in compose_yaml
+    assert "GEOIP_DBIP_TOTAL_DEADLINE_SECONDS" in compose_yaml
+    assert "GEOIP_DBIP_MAX_DIRECTORY_BYTES" in compose_yaml
     assert "./data/geoip:/app/data/geoip:rw" in compose_yaml
     assert "python -m honeypot.geoip_update" in entrypoint
+    assert "gosu honeypot" in entrypoint
+    assert "set -- python -m honeypot.geoip_update" not in entrypoint
+    assert "--country-sha256" in entrypoint
+    assert "--asn-sha256" in entrypoint
+    assert "--max-compressed-bytes" in entrypoint
+    assert "--max-decompressed-bytes" in entrypoint
+    assert "--max-expansion-ratio" in entrypoint
+    assert "--total-deadline-seconds" in entrypoint
+    assert "--max-directory-bytes" in entrypoint
     assert "! -name geoip" in entrypoint
     assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
     assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint
@@ -106,6 +122,7 @@ def test_example_env_keeps_only_host_ports_configurable_without_exposing_ops() -
     assert "HMI_PUBLISHED_HOST" not in active_keys
     assert "MODBUS_PUBLISHED_HOST" not in active_keys
     assert "OPS_PUBLISHED_HOST" not in active_keys
+    assert "GEOIP_DBIP_AUTO_UPDATE=0" in env_text
     assert active_keys.isdisjoint(reserved_reference_keys)
     for key in reserved_reference_keys:
         assert f"# {key}=" in env_text

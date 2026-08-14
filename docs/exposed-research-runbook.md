@@ -21,6 +21,8 @@ Edit `.env` only for deployment-specific values:
   other than the safe defaults
 - the patch-pinned `MODBUS_GATEWAY_IMAGE`, when updating HAProxy deliberately
 - weather provider and coordinates
+- optional GeoIP updater release and out-of-band Country/ASN SHA-256 pins;
+  automatic updates remain disabled unless all three pins are set deliberately
 - optional Ops Basic Auth
 - optional exporter targets and recipients
 

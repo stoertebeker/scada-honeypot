@@ -70,6 +70,8 @@ values usually need changes:
   Modbus handler capacity, defaults `64` / `8`
 - `HONEYPOT_*_LIMIT`: optional finite overrides for container PIDs, memory,
   CPU, and open file descriptors
+- `GEOIP_DBIP_AUTO_UPDATE`: disabled by default; enabling it requires a pinned
+  release plus out-of-band SHA-256 pins for both DB-IP archives
 - `WEATHER_PROVIDER`: `disabled`, `deterministic`, `open_meteo_forecast`, or `open_meteo_satellite`
 - `WEATHER_LATITUDE` / `WEATHER_LONGITUDE`: real weather coordinates, never shown in the HMI
 - `OPS_BASIC_AUTH_ENABLED`: optional Basic Auth for the Ops backend
@@ -86,6 +88,14 @@ Low-change runtime defaults that are safe to change after startup are managed
 in Ops `/settings`. Deployment-critical values such as ports, bind policy,
 egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
 `.env`.
+
+GeoIP downloads are maintenance traffic, not attacker-facing traffic. To enable
+them, obtain the Country and ASN archive SHA-256 values through a controlled,
+out-of-band process, then set `GEOIP_DBIP_RELEASE`,
+`GEOIP_DBIP_COUNTRY_SHA256`, `GEOIP_DBIP_ASN_SHA256`, and finally
+`GEOIP_DBIP_AUTO_UPDATE=1`. The updater rejects unpinned artifacts, enforces
+compressed/decompressed/ratio/deadline/directory bounds, validates MMDB
+structure, and runs as the unprivileged `honeypot` user in the container.
 
 ## Components
 
