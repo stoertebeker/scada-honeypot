@@ -1015,6 +1015,52 @@ async def test_ops_credentials_page_shows_all_time_and_campaign_passwords(tmp_pa
     assert "winter2026,1" in export.text
 
 
+@pytest.mark.asyncio
+async def test_ops_credential_exports_neutralize_username_and_password_formulas(
+    tmp_path: Path,
+) -> None:
+    store = SQLiteEventStore(tmp_path / "events" / "ops-credential-formulas.db")
+    observed_at = datetime(2026, 4, 26, 21, 30, tzinfo=UTC)
+    formula_values = ("=1+1", "+1+1", "-1+1", "@SUM(A1:A2)", "  =1+1")
+    for index, formula_value in enumerate(formula_values):
+        store.record_login_credential_attempt(
+            campaign_id="camp_formula",
+            source_ip="198.51.100.23",
+            user_agent="curl/8.0",
+            endpoint="/service/login",
+            username=formula_value,
+            password=formula_values[-(index + 1)],
+            observed_at=observed_at,
+            max_unique_passwords=1_000_000,
+            max_credential_length=256,
+            capture_password=True,
+        )
+    app = create_ops_app(event_store=store, config=build_config(tmp_path))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://ops") as client:
+        username_export = await client.get("/credentials/export/usernames.csv")
+        password_export = await client.get("/credentials/export/passwords.csv")
+
+    username_rows = list(csv.DictReader(io.StringIO(username_export.text)))
+    password_rows = list(csv.DictReader(io.StringIO(password_export.text)))
+
+    assert username_export.status_code == 200
+    assert password_export.status_code == 200
+    assert {row["credential_value"] for row in username_rows} == {
+        "'" + value for value in formula_values
+    }
+    assert {row["credential_value"] for row in password_rows} == {
+        "'" + value for value in formula_values
+    }
+    assert {
+        row.credential_value for row in store.fetch_login_credential_top(value_type="username")
+    } == set(formula_values)
+    assert {
+        row.credential_value for row in store.fetch_login_credential_top(value_type="password")
+    } == set(formula_values)
+
+
 def test_login_credential_store_caps_unique_passwords_but_counts_existing(tmp_path: Path) -> None:
     store = SQLiteEventStore(tmp_path / "events" / "credential-limit.db")
     observed_at = datetime(2026, 4, 26, 21, 0, tzinfo=UTC)

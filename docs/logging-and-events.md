@@ -47,6 +47,9 @@ The HMI service-login lure records:
 - service logout events
 
 Credential display and export are available only in the protected Ops backend.
+Credential CSV exports prefix formula-like cells with an apostrophe so spreadsheet
+software treats attacker-controlled values as text; stored forensic values remain
+unchanged.
 Do not use real passwords as lure credentials.
 
 ## Alerts

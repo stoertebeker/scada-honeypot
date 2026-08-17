@@ -1133,13 +1133,16 @@ def _credential_csv_stream(
     buffer.truncate(0)
     for row in event_store.iter_login_credential_export(value_type=value_type):
         writer.writerow(
-            (
-                row.value_type,
-                row.credential_value,
-                row.count,
-                _format_dt_iso(row.first_seen),
-                _format_dt_iso(row.last_seen),
-                row.credential_fingerprint,
+            tuple(
+                _csv_safe_cell(value)
+                for value in (
+                    row.value_type,
+                    row.credential_value,
+                    row.count,
+                    _format_dt_iso(row.first_seen),
+                    _format_dt_iso(row.last_seen),
+                    row.credential_fingerprint,
+                )
             )
         )
         yield buffer.getvalue()
