@@ -76,6 +76,9 @@ def test_compose_uses_single_production_runtime() -> None:
     assert "--max-expansion-ratio" in entrypoint
     assert "--total-deadline-seconds" in entrypoint
     assert "--max-directory-bytes" in entrypoint
+    assert "--approved-egress-targets" in entrypoint
+    assert "--approved-egress-cidrs" in entrypoint
+    assert "--prohibited-ot-cidrs" in entrypoint
     assert "! -name geoip" in entrypoint
     assert "export HMI_BIND_HOST=0.0.0.0" in entrypoint
     assert "export MODBUS_BIND_HOST=0.0.0.0" in entrypoint

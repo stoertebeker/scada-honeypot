@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -15,6 +16,9 @@ from honeypot.weather_core.provider import (
     DeterministicDiurnalWeatherProvider,
     PlausibleHistoricalWeatherProvider,
 )
+
+OPEN_METEO_LIVE_BASE_URL = "https://api.open-meteo.com"
+OPEN_METEO_ARCHIVE_BASE_URL = "https://archive-api.open-meteo.com"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +34,8 @@ class OpenMeteoForecastProvider:
     timeout_seconds: float = 10.0
     cache_ttl_seconds: int = 900
     transport: httpx.BaseTransport | None = None
-    base_url: str = "https://api.open-meteo.com/v1/forecast"
+    transport_factory: Callable[[], httpx.BaseTransport] | None = None
+    base_url: str = f"{OPEN_METEO_LIVE_BASE_URL}/v1/forecast"
     provider_name: str = "open_meteo_forecast"
     fallback_provider: DeterministicDiurnalWeatherProvider = field(default_factory=DeterministicDiurnalWeatherProvider)
     _cache: dict[tuple[str, float, float, str], _CachedObservation] = field(default_factory=dict, init=False, repr=False)
@@ -89,7 +94,8 @@ class OpenMeteoForecastProvider:
             "forecast_hours": 1,
             "past_hours": 1,
         }
-        with httpx.Client(timeout=self.timeout_seconds, transport=self.transport, trust_env=False) as client:
+        transport = self.transport_factory() if self.transport_factory is not None else self.transport
+        with httpx.Client(timeout=self.timeout_seconds, transport=transport, trust_env=False) as client:
             response = client.get(self.base_url, params=params)
             response.raise_for_status()
             return response.json()
@@ -133,7 +139,7 @@ class OpenMeteoForecastProvider:
 class OpenMeteoSatelliteRadiationProvider(OpenMeteoForecastProvider):
     """Satellite-Radiation-Adapter mit gleichem Leak- und Cache-Kurs."""
 
-    base_url: str = "https://api.open-meteo.com/v1/satellite-radiation"
+    base_url: str = f"{OPEN_METEO_LIVE_BASE_URL}/v1/satellite-radiation"
     provider_name: str = "open_meteo_satellite"
 
     def _fetch_payload(self, *, latitude: float, longitude: float, timezone: str) -> dict[str, Any]:
@@ -145,7 +151,8 @@ class OpenMeteoSatelliteRadiationProvider(OpenMeteoForecastProvider):
             "forecast_hours": 1,
             "past_hours": 1,
         }
-        with httpx.Client(timeout=self.timeout_seconds, transport=self.transport, trust_env=False) as client:
+        transport = self.transport_factory() if self.transport_factory is not None else self.transport
+        with httpx.Client(timeout=self.timeout_seconds, transport=transport, trust_env=False) as client:
             response = client.get(self.base_url, params=params)
             response.raise_for_status()
             return response.json()
@@ -157,7 +164,8 @@ class OpenMeteoHistoricalArchiveProvider:
 
     timeout_seconds: float = 10.0
     transport: httpx.BaseTransport | None = None
-    base_url: str = "https://archive-api.open-meteo.com/v1/archive"
+    transport_factory: Callable[[], httpx.BaseTransport] | None = None
+    base_url: str = f"{OPEN_METEO_ARCHIVE_BASE_URL}/v1/archive"
     provider_name: str = "open_meteo_archive"
     fallback_provider: PlausibleHistoricalWeatherProvider = field(default_factory=PlausibleHistoricalWeatherProvider)
     _range_cache: dict[tuple[float, float, str], tuple[WeatherObservation, ...]] = field(default_factory=dict, init=False, repr=False)
@@ -267,7 +275,8 @@ class OpenMeteoHistoricalArchiveProvider:
         }
         if elevation_m is not None:
             params["elevation"] = elevation_m
-        with httpx.Client(timeout=self.timeout_seconds, transport=self.transport, trust_env=False) as client:
+        transport = self.transport_factory() if self.transport_factory is not None else self.transport
+        with httpx.Client(timeout=self.timeout_seconds, transport=transport, trust_env=False) as client:
             response = client.get(self.base_url, params=params)
             response.raise_for_status()
             return response.json()

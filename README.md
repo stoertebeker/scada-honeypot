@@ -77,7 +77,7 @@ values usually need changes:
 - `OPS_BASIC_AUTH_ENABLED`: optional Basic Auth for the Ops backend
 - `APPROVED_EGRESS_TARGETS`, `APPROVED_EGRESS_CIDRS`, and
   `APPROVED_EGRESS_RECIPIENTS`: independent target, network, and recipient
-  approvals required when exporters are enabled
+  approvals; target/network approval also gates Open-Meteo and automatic GeoIP
 
 Ops Basic Auth is enforced by the FastAPI Ops backend. It protects only the Ops
 backend, not the attacker-facing HMI.
@@ -99,20 +99,29 @@ in Ops `/settings`. Deployment-critical values such as ports, bind policy,
 egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
 `.env`.
 
-Exporter webhooks require HTTPS without embedded credentials. Before startup,
-all A and AAAA answers must be globally routable and covered by the narrow
-`APPROVED_EGRESS_CIDRS` socket allowlist; connections are pinned to those
+Exporter and Open-Meteo targets are deny-by-default. Before startup, all A and
+AAAA answers must be globally routable and covered by the narrow
+`APPROVED_EGRESS_CIDRS` socket allowlist; HTTP connections are pinned to those
 addresses to prevent DNS rebinding. `PROHIBITED_OT_CIDRS` overrides every
-approval for known routed OT ranges. SMTP uses certificate-verified implicit TLS
-on port `465`. Keep an independent host or perimeter firewall allowlist in
+approval for known routed OT ranges. SMTP uses certificate-verified implicit
+TLS on port `465`. Keep an independent host or perimeter firewall allowlist in
 addition to the application policy, and never route the honeypot toward OT
 networks.
+
+When an Open-Meteo provider is selected, approve both
+`weather-open-meteo:api.open-meteo.com:443` and
+`weather-open-meteo-archive:archive-api.open-meteo.com:443`, plus every resolved
+public A/AAAA network. Startup fails closed before historical weather seeding if
+one approval is missing.
 
 GeoIP downloads are maintenance traffic, not attacker-facing traffic. To enable
 them, obtain the Country and ASN archive SHA-256 values through a controlled,
 out-of-band process, then set `GEOIP_DBIP_RELEASE`,
 `GEOIP_DBIP_COUNTRY_SHA256`, `GEOIP_DBIP_ASN_SHA256`, and finally
-`GEOIP_DBIP_AUTO_UPDATE=1`. The updater rejects unpinned artifacts, enforces
+`GEOIP_DBIP_AUTO_UPDATE=1`. Also add
+`geoip-dbip:download.db-ip.com:443` to `APPROVED_EGRESS_TARGETS` and cover every
+resolved address in `APPROVED_EGRESS_CIDRS`. The updater rejects missing egress
+approval before network access, rejects unpinned artifacts, enforces
 compressed/decompressed/ratio/deadline/directory bounds, validates MMDB
 structure, and runs as the unprivileged `honeypot` user in the container.
 

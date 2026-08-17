@@ -13,9 +13,12 @@ import pytest
 from honeypot.geoip_update import (
     DBIP_ATTRIBUTION_LABEL,
     DBIP_ATTRIBUTION_URL,
+    DBIP_EGRESS_TARGET_SPEC,
     DBIP_LICENSE_NAME,
     GeoIpDownloadLimits,
     GeoIpUpdateError,
+    _RejectRedirectHandler,
+    main as geoip_main,
     update_dbip_lite,
 )
 
@@ -252,6 +255,118 @@ def test_update_dbip_lite_optional_mode_does_not_block_without_downloads(tmp_pat
 
     assert results == ()
     assert not (tmp_path / "metadata.json").exists()
+
+
+def test_geoip_default_downloader_rejects_cross_target_redirects() -> None:
+    handler = _RejectRedirectHandler()
+
+    redirected = handler.redirect_request(
+        None,
+        None,
+        302,
+        "Found",
+        {},
+        "https://redirected.example.net/archive.mmdb.gz",
+    )
+
+    assert redirected is None
+
+
+def test_geoip_cli_rejects_missing_egress_approval_even_in_optional_mode(
+    monkeypatch,
+    capsys,
+) -> None:
+    update_called = False
+
+    def fake_update(**kwargs):
+        nonlocal update_called
+        del kwargs
+        update_called = True
+        return ()
+
+    monkeypatch.setattr("honeypot.geoip_update.update_dbip_lite", fake_update)
+
+    result = geoip_main(("--optional",))
+
+    assert result == 1
+    assert update_called is False
+    assert "APPROVED_EGRESS_TARGETS" in capsys.readouterr().err
+
+
+def test_geoip_cli_accepts_explicit_target_and_cidr_approval(monkeypatch) -> None:
+    update_called = False
+
+    def fake_update(**kwargs):
+        nonlocal update_called
+        del kwargs
+        update_called = True
+        return ()
+
+    monkeypatch.setattr("honeypot.geoip_update.update_dbip_lite", fake_update)
+    monkeypatch.setattr(
+        "honeypot.geoip_update.resolve_host_addresses",
+        lambda host, port: ("93.184.216.34",),
+    )
+
+    result = geoip_main(
+        (
+            "--approved-egress-targets",
+            DBIP_EGRESS_TARGET_SPEC,
+            "--approved-egress-cidrs",
+            "93.184.216.0/24",
+        )
+    )
+
+    assert result == 0
+    assert update_called is True
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected_error"),
+    (
+        ((), "APPROVED_EGRESS_CIDRS"),
+        (
+            (
+                "--approved-egress-cidrs",
+                "93.184.216.0/24",
+                "--prohibited-ot-cidrs",
+                "93.184.216.0/24",
+            ),
+            "PROHIBITED_OT_CIDRS",
+        ),
+    ),
+)
+def test_geoip_cli_rejects_missing_cidr_or_prohibited_network(
+    monkeypatch,
+    capsys,
+    extra_args: tuple[str, ...],
+    expected_error: str,
+) -> None:
+    update_called = False
+
+    def fake_update(**kwargs):
+        nonlocal update_called
+        del kwargs
+        update_called = True
+        return ()
+
+    monkeypatch.setattr("honeypot.geoip_update.update_dbip_lite", fake_update)
+    monkeypatch.setattr(
+        "honeypot.geoip_update.resolve_host_addresses",
+        lambda host, port: ("93.184.216.34",),
+    )
+
+    result = geoip_main(
+        (
+            "--approved-egress-targets",
+            DBIP_EGRESS_TARGET_SPEC,
+            *extra_args,
+        )
+    )
+
+    assert result == 1
+    assert update_called is False
+    assert expected_error in capsys.readouterr().err
 
 
 def _checksums(archives: dict[str, bytes]) -> dict[str, str]:

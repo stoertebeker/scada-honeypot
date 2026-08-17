@@ -21,6 +21,9 @@ if [ "${GEOIP_DBIP_AUTO_UPDATE:-0}" = "1" ]; then
             --max-expansion-ratio "${GEOIP_DBIP_MAX_EXPANSION_RATIO:-64}" \
             --total-deadline-seconds "${GEOIP_DBIP_TOTAL_DEADLINE_SECONDS:-120}" \
             --max-directory-bytes "${GEOIP_DBIP_MAX_DIRECTORY_BYTES:-268435456}" \
+            --approved-egress-targets "${APPROVED_EGRESS_TARGETS:-}" \
+            --approved-egress-cidrs "${APPROVED_EGRESS_CIDRS:-}" \
+            --prohibited-ot-cidrs "${PROHIBITED_OT_CIDRS:-}" \
             --optional
     }
     if [ "$(id -u)" = "0" ]; then

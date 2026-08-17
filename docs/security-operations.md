@@ -38,20 +38,23 @@ NATed clients share one per-source gateway quota by design.
 
 ## Egress
 
-Exporters are deny-by-default. Active exporters require:
+Exporters and auxiliary weather/GeoIP traffic are deny-by-default. Active
+network paths require:
 
 - `APPROVED_EGRESS_TARGETS`
 - `APPROVED_EGRESS_CIDRS`
-- `APPROVED_EGRESS_RECIPIENTS`
+- `APPROVED_EGRESS_RECIPIENTS` for exporter deliveries
 
 Documentation-only hostnames and documentation IP ranges are rejected for active
 exporters during production exposure checks.
 
-Webhook and Telegram URLs must use HTTPS without userinfo. The runtime resolves
-all A and AAAA answers, rejects every non-global/special address and any address
-outside `APPROVED_EGRESS_CIDRS`, then pins the vetted addresses at the actual
-HTTP socket boundary. TLS still verifies the original hostname through SNI, so
-a later DNS answer cannot redirect delivery to a sensitive network.
+Webhook, Telegram, and Open-Meteo URLs use HTTPS without userinfo. The runtime
+resolves all A and AAAA answers, rejects every non-global/special address and
+any address outside `APPROVED_EGRESS_CIDRS`, then pins the vetted addresses at
+the actual HTTP socket boundary. TLS still verifies the original hostname
+through SNI, so a later DNS answer cannot redirect delivery to a sensitive
+network. Open-Meteo requires the live and historical target specs before any
+history seeding occurs.
 Known routed OT ranges, including public allocations, must be entered in
 `PROHIBITED_OT_CIDRS`; this denylist overrides all approvals.
 
@@ -66,6 +69,12 @@ same collector/mail CIDRs and must deny every real OT route.
 Automatic DB-IP updates are disabled by default. Enable them only with a pinned
 `YYYY-MM` release and independently controlled SHA-256 pins for both compressed
 archives. Do not derive the runtime pins from the same download transaction.
+The entrypoint also requires `geoip-dbip:download.db-ip.com:443` in
+`APPROVED_EGRESS_TARGETS`; every resolved address must fit
+`APPROVED_EGRESS_CIDRS` and remain outside `PROHIBITED_OT_CIDRS`. Missing policy
+approval fails container startup even though download availability is optional.
+The updater ignores environment proxies and rejects redirects so the approved
+DB-IP hostname cannot silently delegate the request to another target.
 
 The container invokes the updater as the unprivileged `honeypot` user. Each run
 has compressed and decompressed byte ceilings, a maximum gzip expansion ratio,

@@ -68,6 +68,28 @@ def test_exposed_research_policy_rejects_placeholder_webhook_targets(monkeypatch
         )
 
 
+def test_exposed_research_policy_rejects_unapproved_open_meteo_targets(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        monkeypatch,
+        tmp_path,
+        allow_nonlocal_bind=True,
+        modbus_bind_host="0.0.0.0",
+        hmi_bind_host="0.0.0.0",
+        public_ingress_mappings="modbus:502:1502,hmi:80:8080",
+        watch_officer_name="blue-watch",
+        duty_engineer_name="ops-duty",
+        weather_provider="open_meteo_forecast",
+        weather_latitude=52.52,
+        weather_longitude=13.405,
+    )
+
+    with pytest.raises(RuntimeError, match="APPROVED_EGRESS_TARGETS"):
+        enforce_exposed_research_policy(config=config, exporters={})
+
+
 def test_exposed_research_policy_accepts_named_roles_recipients_and_realistic_targets(
     monkeypatch,
     tmp_path: Path,

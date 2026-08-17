@@ -39,6 +39,15 @@ APPROVED_EGRESS_RECIPIENTS=webhook:observer-collector-live
 
 Do not keep documentation hostnames in a live deployment.
 
+Open-Meteo requires both fixed targets; automatic GeoIP requires its DB-IP
+target. Merge only the paths actually enabled on the host with any exporter
+specs already present in `APPROVED_EGRESS_TARGETS`:
+
+```env
+APPROVED_EGRESS_TARGETS=weather-open-meteo:api.open-meteo.com:443,weather-open-meteo-archive:archive-api.open-meteo.com:443,geoip-dbip:download.db-ip.com:443
+APPROVED_EGRESS_CIDRS=<narrow-public-provider-cidrs>
+```
+
 ## Operator Roles
 
 Set these in the real deployment when running exposed research:

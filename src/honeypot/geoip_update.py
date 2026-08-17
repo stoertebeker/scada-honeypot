@@ -25,9 +25,12 @@ import tempfile
 import time
 from typing import Any
 import urllib.error
+from urllib.parse import urlsplit
 import urllib.request
 
 import maxminddb
+
+from honeypot.runtime_egress import EgressTarget, resolve_approved_egress_targets, resolve_host_addresses
 
 DBIP_PROVIDER_NAME = "DB-IP Lite"
 DBIP_ATTRIBUTION_LABEL = "IP Geolocation by DB-IP"
@@ -35,6 +38,13 @@ DBIP_ATTRIBUTION_URL = "https://db-ip.com"
 DBIP_LICENSE_NAME = "Creative Commons Attribution 4.0 International (CC BY 4.0)"
 DBIP_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 DBIP_DOWNLOAD_BASE_URL = "https://download.db-ip.com/free"
+_DBIP_DOWNLOAD_URL = urlsplit(DBIP_DOWNLOAD_BASE_URL)
+_DBIP_EGRESS_TARGET = EgressTarget(
+    target_type="geoip-dbip",
+    host=str(_DBIP_DOWNLOAD_URL.hostname),
+    port=443 if _DBIP_DOWNLOAD_URL.port is None else _DBIP_DOWNLOAD_URL.port,
+)
+DBIP_EGRESS_TARGET_SPEC = _DBIP_EGRESS_TARGET.spec
 DBIP_SOURCE_PAGES = {
     "country": "https://db-ip.com/db/download/ip-to-country-lite",
     "asn": "https://db-ip.com/db/download/ip-to-asn-lite",
@@ -54,6 +64,12 @@ _READ_CHUNK_BYTES = 64 * 1024
 
 class GeoIpUpdateError(RuntimeError):
     """Raised when a GeoIP update cannot be completed."""
+
+
+class _RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        del req, fp, code, msg, headers, newurl
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +174,7 @@ def update_dbip_lite(
     target_dir = target_dir.expanduser()
     target_dir.mkdir(parents=True, exist_ok=True)
     release_candidates = _release_candidates(release=release, now=normalized_now)
-    open_url = urllib.request.urlopen if opener is None else opener
+    open_url = _open_dbip_url if opener is None else opener
     validate_mmdb = _validate_mmdb if mmdb_validator is None else mmdb_validator
     deadline = monotonic() + download_limits.total_deadline_seconds
 
@@ -324,6 +340,7 @@ def _download_gzip_mmdb(
         temp_path.unlink(missing_ok=True)
         raise
 
+
     return GeoIpDatasetResult(
         name=dataset,
         release=release,
@@ -336,6 +353,14 @@ def _download_gzip_mmdb(
         source_sha256=source_sha256,
         last_modified=last_modified,
     )
+
+
+def _open_dbip_url(request: urllib.request.Request, *, timeout: float):
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _RejectRedirectHandler(),
+    )
+    return opener.open(request, timeout=timeout)
 
 
 def _reject_oversized_content_length(
@@ -460,6 +485,28 @@ def _format_dt(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _split_csv_setting(raw_value: str) -> tuple[str, ...]:
+    return tuple(item.strip().lower() for item in raw_value.split(",") if item.strip())
+
+
+def _enforce_dbip_egress_policy(
+    *,
+    approved_targets: str,
+    approved_cidrs: str,
+    prohibited_cidrs: str,
+) -> None:
+    try:
+        resolve_approved_egress_targets(
+            targets=(_DBIP_EGRESS_TARGET,),
+            approved_target_specs=_split_csv_setting(approved_targets),
+            approved_cidrs=_split_csv_setting(approved_cidrs),
+            prohibited_cidrs=_split_csv_setting(prohibited_cidrs),
+            resolver=resolve_host_addresses,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise GeoIpUpdateError(str(exc)) from exc
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Download DB-IP Lite Country and ASN MMDBs.")
     parser.add_argument("--provider", choices=("dbip-lite",), default="dbip-lite")
@@ -479,6 +526,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-expansion-ratio", type=float, default=64.0)
     parser.add_argument("--total-deadline-seconds", type=float, default=120.0)
     parser.add_argument("--max-directory-bytes", type=int, default=256 * 1024 * 1024)
+    parser.add_argument("--approved-egress-targets", default="")
+    parser.add_argument("--approved-egress-cidrs", default="")
+    parser.add_argument("--prohibited-ot-cidrs", default="")
     parser.add_argument(
         "--optional",
         action="store_true",
@@ -487,6 +537,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        _enforce_dbip_egress_policy(
+            approved_targets=args.approved_egress_targets,
+            approved_cidrs=args.approved_egress_cidrs,
+            prohibited_cidrs=args.prohibited_ot_cidrs,
+        )
         results = update_dbip_lite(
             target_dir=args.target_dir,
             release=args.release,
