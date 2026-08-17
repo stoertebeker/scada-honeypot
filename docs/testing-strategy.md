@@ -33,6 +33,7 @@ lifecycle, stop behavior, and findings output.
 
 - HMI and Modbus use the same plant truth.
 - Service controls require a valid service session and CSRF token.
+- Service sessions remain globally and per-user bounded under repeated successful logins.
 - Service logout clears server-side session state and cookie.
 - Local debug cannot be combined with non-loopback binds.
 - Exporter failures do not break core runtime behavior.

@@ -84,7 +84,9 @@ backend, not the attacker-facing HMI.
 
 The HMI service-login credentials are lure credentials. Set them in the Ops
 backend under `/settings`, section `Service Login Lure`; do not put real
-passwords there.
+passwords there. Server-side service sessions are swept on use, capped globally
+and per lure username, and protected by a successful-login admission window.
+The boot-only limits are configured with the `SERVICE_SESSION_*` variables.
 
 Low-change runtime defaults that are safe to change after startup are managed
 in Ops `/settings`. Deployment-critical values such as ports, bind policy,

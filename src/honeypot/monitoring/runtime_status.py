@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event, Lock, Thread
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from honeypot.exporter_runner import BackgroundOutboxRunnerService, OutboxDrainResult
 from honeypot.exporter_sdk import HoneypotExporter
@@ -52,6 +52,7 @@ class RuntimeStatusWriter:
     event_archive: JsonlEventArchive | None = None
     ops_service: AddressableService | None = None
     outbox_runner_service: BackgroundOutboxRunnerService | None = None
+    service_session_metrics_provider: Callable[[], Mapping[str, int]] | None = None
     clock: Clock = field(default_factory=SystemClock)
 
     def render_payload(self, *, running: bool) -> dict[str, Any]:
@@ -104,6 +105,11 @@ class RuntimeStatusWriter:
                     "bind_host": hmi_host,
                     "port": hmi_port,
                     "overview_url": f"http://{hmi_host}:{hmi_port}/overview",
+                    "service_sessions": (
+                        None
+                        if self.service_session_metrics_provider is None
+                        else dict(self.service_session_metrics_provider())
+                    ),
                 },
                 "ops": ops_payload,
                 "outbox_runner": {

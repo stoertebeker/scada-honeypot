@@ -30,6 +30,7 @@ wiring, or evidence paths:
   limits; gateway connection/rate ceilings remain version-controlled
 - the private Modbus listener's global handler ceiling and PROXY trust mode
 - Ops enablement, Ops Basic Auth, secure-cookie flags, and trusted proxies
+- global/per-user service-session caps and successful-login admission limits
 - weather provider, coordinates, and provider startup tuning
 - event store, JSONL archive, findings, runtime-status, and PCAP paths
 - SQLite evidence age/row/byte quotas, per-source cardinality limits,

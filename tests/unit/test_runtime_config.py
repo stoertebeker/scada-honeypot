@@ -54,6 +54,10 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.honeypot_local_debug is False
     assert config.hmi_cookie_secure is False
     assert config.service_cookie_secure is False
+    assert config.service_session_max_active == 128
+    assert config.service_session_max_active_per_user == 8
+    assert config.service_session_max_admissions_per_user == 8
+    assert config.service_session_admission_window_seconds == 60
     assert config.forwarded_header_enabled is False
     assert config.trusted_proxy_cidrs == ()
     assert config.approved_egress_recipients == ()
@@ -176,6 +180,27 @@ def test_runtime_status_interval_must_be_positive(monkeypatch, tmp_path: Path) -
 
     with pytest.raises(ValidationError):
         RuntimeConfig(_env_file=None, runtime_status_interval_seconds=0)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"service_session_max_active": 0},
+        {"service_session_max_active": 2, "service_session_max_active_per_user": 3},
+        {"service_session_max_admissions_per_user": 0},
+        {"service_session_admission_window_seconds": 0},
+    ),
+)
+def test_service_session_limits_must_be_positive_and_consistent(
+    monkeypatch,
+    tmp_path: Path,
+    overrides: dict[str, int],
+) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, **overrides)
 
 
 @pytest.mark.parametrize(

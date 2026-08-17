@@ -364,6 +364,17 @@ def test_build_local_runtime_wires_runtime_status_service_when_enabled(tmp_path:
     assert runtime.runtime_status_service.writer.ops_service is runtime.ops_service
     assert runtime.runtime_status_service.interval_seconds == 2
     assert tuple(runtime.exporters) == ("webhook",)
+    payload = runtime.runtime_status_service.writer.render_payload(running=False)
+    assert payload["runtime"]["hmi"]["service_sessions"] == {
+        "active": 0,
+        "expired": 0,
+        "evicted": 0,
+        "rejected": 0,
+        "max_active": 128,
+        "max_active_per_user": 8,
+        "max_admissions_per_user": 8,
+        "admission_window_seconds": 60,
+    }
 
 
 def test_runtime_status_service_writes_local_status_file(tmp_path: Path) -> None:

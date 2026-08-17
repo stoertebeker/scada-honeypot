@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from math import ceil
 import secrets
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from threading import RLock
 from typing import Any, Callable, Protocol
 from urllib.parse import parse_qs, urlencode
 from uuid import uuid4
@@ -377,6 +379,7 @@ class ServiceSession:
     username: str
     expires_at: Any
     csrf_token: str
+    last_used_sequence: int
 
 
 class ServiceControlPort(Protocol):
@@ -450,41 +453,140 @@ class ServiceControlPort(Protocol):
 class ServiceSessionStore:
     clock: Clock
     idle_timeout: timedelta = SERVICE_SESSION_IDLE_TIMEOUT
+    max_active: int = 128
+    max_active_per_user: int = 8
+    max_admissions_per_user: int = 8
+    admission_window: timedelta = timedelta(minutes=1)
     _sessions: dict[str, ServiceSession] = field(default_factory=dict, init=False, repr=False)
+    _admissions_by_user: dict[str, list[Any]] = field(default_factory=dict, init=False, repr=False)
+    _expired_count: int = field(default=0, init=False, repr=False)
+    _evicted_count: int = field(default=0, init=False, repr=False)
+    _rejected_count: int = field(default=0, init=False, repr=False)
+    _sequence: int = field(default=0, init=False, repr=False)
+    _lock: RLock = field(default_factory=RLock, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.idle_timeout <= timedelta(0):
+            raise ValueError("idle_timeout muss groesser als 0 sein")
+        if self.max_active <= 0:
+            raise ValueError("max_active muss groesser als 0 sein")
+        if self.max_active_per_user <= 0 or self.max_active_per_user > self.max_active:
+            raise ValueError("max_active_per_user muss zwischen 1 und max_active liegen")
+        if self.max_admissions_per_user <= 0:
+            raise ValueError("max_admissions_per_user muss groesser als 0 sein")
+        if self.admission_window <= timedelta(0):
+            raise ValueError("admission_window muss groesser als 0 sein")
 
     def create(self, *, username: str) -> ServiceSession:
-        now = self.clock.now()
-        session = ServiceSession(
-            handle=f"svc_{uuid4().hex}",
-            username=username,
-            expires_at=ensure_utc_datetime(now + self.idle_timeout),
-            csrf_token=secrets.token_urlsafe(SERVICE_CSRF_TOKEN_BYTES),
-        )
-        self._sessions[session.handle] = session
-        return session
+        now = ensure_utc_datetime(self.clock.now())
+        with self._lock:
+            self._sweep_locked(now)
+            admissions = self._admissions_by_user.setdefault(username, [])
+            if len(admissions) >= self.max_admissions_per_user:
+                self._rejected_count += 1
+                retry_after = ceil(
+                    max(
+                        1.0,
+                        (ensure_utc_datetime(admissions[0]) + self.admission_window - now).total_seconds(),
+                    )
+                )
+                raise ServiceSessionAdmissionRejected(retry_after_seconds=retry_after)
+
+            while self._active_for_user_locked(username) >= self.max_active_per_user:
+                self._evict_lru_locked(username=username)
+            while len(self._sessions) >= self.max_active:
+                self._evict_lru_locked()
+
+            session = ServiceSession(
+                handle=f"svc_{uuid4().hex}",
+                username=username,
+                expires_at=ensure_utc_datetime(now + self.idle_timeout),
+                csrf_token=secrets.token_urlsafe(SERVICE_CSRF_TOKEN_BYTES),
+                last_used_sequence=self._next_sequence_locked(),
+            )
+            self._sessions[session.handle] = session
+            admissions.append(now)
+            return session
 
     def touch(self, handle: str | None) -> ServiceSession | None:
-        if handle is None:
-            return None
-        session = self._sessions.get(handle)
-        if session is None:
-            return None
         now = ensure_utc_datetime(self.clock.now())
-        if now >= ensure_utc_datetime(session.expires_at):
-            self._sessions.pop(handle, None)
-            return None
-        refreshed = ServiceSession(
-            handle=session.handle,
-            username=session.username,
-            expires_at=ensure_utc_datetime(now + self.idle_timeout),
-            csrf_token=session.csrf_token,
-        )
-        self._sessions[handle] = refreshed
-        return refreshed
+        with self._lock:
+            self._sweep_locked(now)
+            if handle is None:
+                return None
+            session = self._sessions.get(handle)
+            if session is None:
+                return None
+            refreshed = ServiceSession(
+                handle=session.handle,
+                username=session.username,
+                expires_at=ensure_utc_datetime(now + self.idle_timeout),
+                csrf_token=session.csrf_token,
+                last_used_sequence=self._next_sequence_locked(),
+            )
+            self._sessions[handle] = refreshed
+            return refreshed
 
     def destroy(self, handle: str | None) -> None:
-        if handle is not None:
+        with self._lock:
+            if handle is not None:
+                self._sessions.pop(handle, None)
+
+    def metrics(self) -> dict[str, int]:
+        now = ensure_utc_datetime(self.clock.now())
+        with self._lock:
+            self._sweep_locked(now)
+            return {
+                "active": len(self._sessions),
+                "expired": self._expired_count,
+                "evicted": self._evicted_count,
+                "rejected": self._rejected_count,
+                "max_active": self.max_active,
+                "max_active_per_user": self.max_active_per_user,
+                "max_admissions_per_user": self.max_admissions_per_user,
+                "admission_window_seconds": int(self.admission_window.total_seconds()),
+            }
+
+    def _sweep_locked(self, now: Any) -> None:
+        expired_handles = tuple(
+            handle
+            for handle, session in self._sessions.items()
+            if now >= ensure_utc_datetime(session.expires_at)
+        )
+        for handle in expired_handles:
             self._sessions.pop(handle, None)
+        self._expired_count += len(expired_handles)
+
+        cutoff = now - self.admission_window
+        for username, admissions in tuple(self._admissions_by_user.items()):
+            retained = [admitted_at for admitted_at in admissions if ensure_utc_datetime(admitted_at) > cutoff]
+            if retained:
+                self._admissions_by_user[username] = retained
+            else:
+                self._admissions_by_user.pop(username, None)
+
+    def _active_for_user_locked(self, username: str) -> int:
+        return sum(1 for session in self._sessions.values() if session.username == username)
+
+    def _evict_lru_locked(self, *, username: str | None = None) -> None:
+        candidates = (
+            session
+            for session in self._sessions.values()
+            if username is None or session.username == username
+        )
+        oldest = min(candidates, key=lambda session: (session.last_used_sequence, session.handle))
+        self._sessions.pop(oldest.handle, None)
+        self._evicted_count += 1
+
+    def _next_sequence_locked(self) -> int:
+        self._sequence += 1
+        return self._sequence
+
+
+class ServiceSessionAdmissionRejected(RuntimeError):
+    def __init__(self, *, retry_after_seconds: int) -> None:
+        super().__init__("service session admission limit reached")
+        self.retry_after_seconds = retry_after_seconds
 
 
 class HmiFormRequestError(ValueError):
@@ -677,7 +779,13 @@ def create_hmi_app(
     texts = _load_locale_texts(config)
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
     hmi_clock = _hmi_clock(event_recorder)
-    service_sessions = ServiceSessionStore(clock=hmi_clock)
+    service_sessions = ServiceSessionStore(
+        clock=hmi_clock,
+        max_active=config.service_session_max_active,
+        max_active_per_user=config.service_session_max_active_per_user,
+        max_admissions_per_user=config.service_session_max_admissions_per_user,
+        admission_window=timedelta(seconds=config.service_session_admission_window_seconds),
+    )
     service_login_tracker = ServiceLoginCampaignTracker(clock=hmi_clock, event_recorder=event_recorder, config=config)
     app = FastAPI(
         title=config.hmi_title,
@@ -685,6 +793,7 @@ def create_hmi_app(
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.service_session_metrics_provider = service_sessions.metrics
 
     @app.exception_handler(StarletteHTTPException)
     async def hmi_http_exception(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
@@ -1300,6 +1409,32 @@ def create_hmi_app(
                 set_cookie=set_cookie,
             )
 
+        try:
+            service_session = service_sessions.create(username=username)
+        except ServiceSessionAdmissionRejected as exc:
+            auth_event = _build_service_auth_event(
+                request=request,
+                config=config,
+                event_recorder=event_recorder,
+                session_id=session_id,
+                username=username,
+                result="rejected",
+                campaign_id=None,
+            )
+            if auth_event is not None:
+                event_recorder.record(auth_event)
+            response = _service_login_failure_response(
+                request=request,
+                templates=templates,
+                config=config,
+                texts=texts,
+                session_id=session_id,
+                set_cookie=set_cookie,
+                status_code=429,
+            )
+            response.headers["Retry-After"] = str(exc.retry_after_seconds)
+            return response
+
         service_login_tracker.register_success(request)
         auth_event = _build_service_auth_event(
             request=request,
@@ -1312,7 +1447,6 @@ def create_hmi_app(
         )
         if auth_event is not None:
             event_recorder.record(auth_event)
-        service_session = service_sessions.create(username=username)
         response = RedirectResponse(url="/service/panel", status_code=303)
         if set_cookie:
             _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
@@ -3349,6 +3483,7 @@ def _service_login_failure_response(
     texts: dict[str, str],
     session_id: str,
     set_cookie: bool,
+    status_code: int = 200,
 ) -> HTMLResponse:
     view_model = build_service_login_view_model(
         config=config,
@@ -3366,6 +3501,7 @@ def _service_login_failure_response(
             current_path=request.url.path,
             page=view_model,
         ),
+        status_code=status_code,
     )
     if set_cookie:
         _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
@@ -3613,6 +3749,7 @@ def _build_service_auth_event(
     requested_value = {"username": username, "http_path": request.url.path}
     if campaign_id is not None:
         requested_value["campaign_id"] = campaign_id
+    http_status = 303 if result == "success" else 429 if result == "rejected" else 200
     return event_recorder.build_event(
         event_type="hmi.auth.service_login_attempt",
         category="auth",
@@ -3628,7 +3765,8 @@ def _build_service_auth_event(
         service=HMI_SERVICE,
         endpoint_or_register=request.url.path,
         requested_value=requested_value,
-        resulting_value={"http_status": 303 if result == "success" else 200},
+        resulting_value={"http_status": http_status},
+        error_code=("service_session_admission_limited" if result == "rejected" else None),
         message=f"Service login attempt {result}",
         tags=("auth", "service", "web"),
     )

@@ -108,6 +108,20 @@ to gzip, and enforces independent file, total-byte, and age bounds. Monitor
 especially dropped/pruned counters and `last_error`. Host or volume quotas are
 still required as an outer containment layer.
 
+## HMI Service Sessions
+
+Keep `SERVICE_SESSION_MAX_ACTIVE`, `SERVICE_SESSION_MAX_ACTIVE_PER_USER`, and
+the `SERVICE_SESSION_MAX_ADMISSIONS_PER_USER` per
+`SERVICE_SESSION_ADMISSION_WINDOW_SECONDS` budget finite. Expired sessions are
+swept during create, touch, and monitoring; full stores evict the least recently
+used eligible session deterministically. Admission-limit responses return HTTP
+`429` without allocating a new service session.
+
+Monitor `runtime.hmi.service_sessions` in runtime status. `active` is a gauge;
+`expired`, `evicted`, and `rejected` are cumulative process-lifetime counters.
+Unexpected growth in the latter two indicates login pressure or limits that are
+too tight for the intended lab workflow.
+
 ## Weather Privacy
 
 Weather coordinates may be real internally. They must not appear in HMI pages,

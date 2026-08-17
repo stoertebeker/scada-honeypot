@@ -50,6 +50,10 @@ Credential display and export are available only in the protected Ops backend.
 Credential CSV exports prefix formula-like cells with an apostrophe so spreadsheet
 software treats attacker-controlled values as text; stored forensic values remain
 unchanged.
+Successful service-login admission is bounded separately from authentication.
+Rejected admissions are recorded as `hmi.auth.service_login_attempt` with result
+`rejected`; runtime status exposes active, expired, evicted, and rejected session
+metrics without credential labels.
 Do not use real passwords as lure credentials.
 
 ## Alerts

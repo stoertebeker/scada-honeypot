@@ -377,6 +377,7 @@ def build_local_runtime(
                 ops_service=ops_service,
                 exporters=exporters,
                 outbox_runner_service=outbox_runner_service,
+                service_session_metrics_provider=hmi_app.state.service_session_metrics_provider,
                 clock=event_recorder.clock,
             ),
             interval_seconds=config.runtime_status_interval_seconds,

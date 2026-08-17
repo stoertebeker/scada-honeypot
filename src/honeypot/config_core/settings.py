@@ -107,6 +107,10 @@ class RuntimeConfig(BaseSettings):
     enable_service_login: bool = True
     hmi_cookie_secure: bool = False
     service_cookie_secure: bool = False
+    service_session_max_active: int = Field(default=128, ge=1, le=10_000)
+    service_session_max_active_per_user: int = Field(default=8, ge=1, le=10_000)
+    service_session_max_admissions_per_user: int = Field(default=8, ge=1, le=10_000)
+    service_session_admission_window_seconds: int = Field(default=60, ge=1, le=86_400)
     forwarded_header_enabled: bool = False
     trusted_proxy_cidrs: Annotated[tuple[str, ...], NoDecode] = ()
 
@@ -257,6 +261,14 @@ class RuntimeConfig(BaseSettings):
                 raise ValueError("TRUSTED_PROXY_CIDRS darf keine Wildcard-Netze wie 0.0.0.0/0 oder ::/0 enthalten")
         if self.forwarded_header_enabled and not self.trusted_proxy_cidrs:
             raise ValueError("TRUSTED_PROXY_CIDRS ist erforderlich, wenn FORWARDED_HEADER_ENABLED aktiv ist")
+        return self
+
+    @model_validator(mode="after")
+    def validate_service_session_limits(self) -> "RuntimeConfig":
+        if self.service_session_max_active_per_user > self.service_session_max_active:
+            raise ValueError(
+                "SERVICE_SESSION_MAX_ACTIVE_PER_USER darf SERVICE_SESSION_MAX_ACTIVE nicht uebersteigen"
+            )
         return self
 
     @model_validator(mode="after")

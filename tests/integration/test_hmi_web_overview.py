@@ -18,6 +18,8 @@ from honeypot.hmi_web.app import (
     SERVICE_LOGIN_PASSWORD,
     SERVICE_LOGIN_USERNAME,
     SERVICE_SESSION_COOKIE_NAME,
+    ServiceSessionAdmissionRejected,
+    ServiceSessionStore,
     SESSION_COOKIE_NAME,
 )
 from honeypot.main import build_local_runtime
@@ -1509,6 +1511,156 @@ async def test_service_panel_requires_authentication(tmp_path: Path) -> None:
     assert response.status_code == 401
     assert "Authentication Required" in response.text
     assert "Open /service/login to continue." in response.text
+
+
+def test_service_session_store_sweeps_all_expired_sessions_on_create_and_touch() -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 21, 0, tzinfo=UTC))
+    sessions = ServiceSessionStore(
+        clock=clock,
+        idle_timeout=timedelta(seconds=1),
+        max_active=5_001,
+        max_active_per_user=5_001,
+        max_admissions_per_user=5_001,
+        admission_window=timedelta(hours=2),
+    )
+
+    for _ in range(5_000):
+        sessions.create(username="admin")
+    clock.advance(timedelta(hours=1))
+    sessions.create(username="admin")
+
+    assert sessions.metrics()["active"] == 1
+    assert sessions.metrics()["expired"] == 5_000
+
+    clock.advance(timedelta(seconds=2))
+    assert sessions.touch(None) is None
+    assert sessions.metrics()["active"] == 0
+    assert sessions.metrics()["expired"] == 5_001
+
+
+def test_service_session_store_evicts_lru_at_per_user_and_global_caps() -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 21, 0, tzinfo=UTC))
+    per_user_sessions = ServiceSessionStore(
+        clock=clock,
+        max_active=3,
+        max_active_per_user=2,
+        max_admissions_per_user=100,
+        admission_window=timedelta(hours=1),
+    )
+    oldest = per_user_sessions.create(username="admin")
+    clock.advance(timedelta(seconds=1))
+    retained = per_user_sessions.create(username="admin")
+    clock.advance(timedelta(seconds=1))
+    assert per_user_sessions.touch(oldest.handle) is not None
+    replacement = per_user_sessions.create(username="admin")
+
+    assert per_user_sessions.touch(retained.handle) is None
+    assert per_user_sessions.touch(oldest.handle) is not None
+    assert per_user_sessions.touch(replacement.handle) is not None
+    assert per_user_sessions.metrics()["active"] == 2
+    assert per_user_sessions.metrics()["evicted"] == 1
+
+    global_sessions = ServiceSessionStore(
+        clock=clock,
+        max_active=2,
+        max_active_per_user=2,
+        max_admissions_per_user=100,
+        admission_window=timedelta(hours=1),
+    )
+    global_oldest = global_sessions.create(username="alice")
+    clock.advance(timedelta(seconds=1))
+    global_sessions.create(username="bob")
+    clock.advance(timedelta(seconds=1))
+    global_sessions.create(username="carol")
+
+    assert global_sessions.touch(global_oldest.handle) is None
+    assert global_sessions.metrics()["active"] == 2
+    assert global_sessions.metrics()["evicted"] == 1
+
+
+def test_service_session_store_remains_memory_bounded_under_login_pressure() -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 21, 0, tzinfo=UTC))
+    sessions = ServiceSessionStore(
+        clock=clock,
+        max_active=128,
+        max_active_per_user=128,
+        max_admissions_per_user=5_000,
+        admission_window=timedelta(hours=1),
+    )
+
+    for _ in range(5_000):
+        sessions.create(username="admin")
+
+    assert sessions.metrics()["active"] == 128
+    assert sessions.metrics()["evicted"] == 4_872
+    assert sessions.metrics()["rejected"] == 0
+
+
+def test_service_session_admission_recovers_after_window() -> None:
+    clock = FrozenClock(datetime(2026, 4, 26, 21, 0, tzinfo=UTC))
+    sessions = ServiceSessionStore(
+        clock=clock,
+        max_active=2,
+        max_active_per_user=2,
+        max_admissions_per_user=1,
+        admission_window=timedelta(minutes=1),
+    )
+    sessions.create(username="admin")
+
+    with pytest.raises(ServiceSessionAdmissionRejected) as rejected:
+        sessions.create(username="admin")
+
+    assert rejected.value.retry_after_seconds == 60
+    clock.advance(timedelta(seconds=60))
+    admitted = sessions.create(username="admin")
+
+    assert admitted.username == "admin"
+    assert sessions.metrics()["active"] == 2
+    assert sessions.metrics()["rejected"] == 1
+
+
+@pytest.mark.asyncio
+async def test_service_login_admission_limit_rejects_without_allocating_session(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    config = build_config(tmp_path).model_copy(
+        update={
+            "service_session_max_active": 4,
+            "service_session_max_active_per_user": 4,
+            "service_session_max_admissions_per_user": 2,
+            "service_session_admission_window_seconds": 60,
+        }
+    )
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-service-session-admission.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        responses = [
+            await client.post(
+                "/service/login",
+                data={"username": SERVICE_LOGIN_USERNAME, "password": SERVICE_LOGIN_PASSWORD},
+                follow_redirects=False,
+            )
+            for _ in range(3)
+        ]
+
+    metrics = app.state.service_session_metrics_provider()
+    auth_events = [
+        event for event in store.fetch_events() if event.event_type == "hmi.auth.service_login_attempt"
+    ]
+
+    assert [response.status_code for response in responses] == [303, 303, 429]
+    assert SERVICE_SESSION_COOKIE_NAME not in responses[-1].cookies
+    assert responses[-1].headers["retry-after"] == "60"
+    assert metrics["active"] == 2
+    assert metrics["rejected"] == 1
+    assert [event.result for event in auth_events] == ["success", "success", "rejected"]
+    assert auth_events[-1].error_code == "service_session_admission_limited"
 
 
 @pytest.mark.asyncio
