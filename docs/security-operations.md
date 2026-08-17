@@ -122,6 +122,33 @@ Monitor `runtime.hmi.service_sessions` in runtime status. `active` is a gauge;
 Unexpected growth in the latter two indicates login pressure or limits that are
 too tight for the intended lab workflow.
 
+## HMI Forensic Session Attribution
+
+The anonymous `hmi_session` cookie is a versioned HMAC token. Only a verified,
+server-issued `hmi_<uuid>` identifier is written to events and used by Ops
+source analytics. Invalid, malformed, oversized, future-dated, or expired
+cookies are replaced and are never treated as authoritative session IDs.
+
+Set `HMI_SESSION_SIGNING_KEY` to a deployment-specific value of at least 32
+bytes when attribution must survive restarts. If it is empty, startup generates
+an ephemeral key; this is safe for a single process but intentionally invalidates
+all pre-restart cookies and is unsuitable for multiple independent workers.
+`HMI_SESSION_MAX_AGE_SECONDS` defaults to `86400` and accepts values from 60
+seconds through 30 days.
+
+Rotate without losing attribution continuity:
+
+1. Copy the old current key to `HMI_SESSION_PREVIOUS_SIGNING_KEY`.
+2. Install a newly generated value as `HMI_SESSION_SIGNING_KEY` and restart.
+3. Keep the previous key for at least `HMI_SESSION_MAX_AGE_SECONDS`; accepted
+   old cookies are immediately reissued under the current key.
+4. Clear `HMI_SESSION_PREVIOUS_SIGNING_KEY` and restart after the overlap.
+
+Generate and transport these keys through the deployment secret mechanism; do
+not commit populated values to the repository. Setting only a previous key,
+using keys shorter than 32 bytes, or reusing the same key in both slots fails
+configuration validation.
+
 ## Weather Privacy
 
 Weather coordinates may be real internally. They must not appear in HMI pages,

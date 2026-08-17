@@ -87,6 +87,12 @@ backend under `/settings`, section `Service Login Lure`; do not put real
 passwords there. Server-side service sessions are swept on use, capped globally
 and per lure username, and protected by a successful-login admission window.
 The boot-only limits are configured with the `SERVICE_SESSION_*` variables.
+Anonymous forensic attribution uses versioned, HMAC-authenticated HMI session
+cookies. For continuity across restarts, set a deployment-specific
+`HMI_SESSION_SIGNING_KEY` of at least 32 bytes; otherwise the process generates
+an ephemeral key. `HMI_SESSION_MAX_AGE_SECONDS` defaults to one day. See
+`docs/security-operations.md` for the overlap procedure using
+`HMI_SESSION_PREVIOUS_SIGNING_KEY`.
 
 Low-change runtime defaults that are safe to change after startup are managed
 in Ops `/settings`. Deployment-critical values such as ports, bind policy,

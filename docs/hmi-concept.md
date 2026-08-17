@@ -64,3 +64,9 @@ When HTTPS is provided by a reverse proxy, set:
 HMI_COOKIE_SECURE=1
 SERVICE_COOKIE_SECURE=1
 ```
+
+Anonymous HMI correlation uses a versioned, authenticated cookie. Configure a
+stable `HMI_SESSION_SIGNING_KEY` (minimum 32 bytes) when forensic attribution
+must survive a restart; otherwise the process uses an ephemeral key. Invalid or
+expired cookies are replaced before any session identifier reaches event
+storage.

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated
 from typing import Literal
 
-from pydantic import AnyUrl, Field, ValidationError, field_validator, model_validator
+from pydantic import AnyUrl, Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 LOCALE_PATTERN = re.compile(r"^[a-z]{2}(?:-[A-Z]{2})?$")
@@ -106,6 +106,9 @@ class RuntimeConfig(BaseSettings):
     honeypot_local_debug: bool = False
     enable_service_login: bool = True
     hmi_cookie_secure: bool = False
+    hmi_session_signing_key: SecretStr | None = None
+    hmi_session_previous_signing_key: SecretStr | None = None
+    hmi_session_max_age_seconds: int = Field(default=86_400, ge=60, le=2_592_000)
     service_cookie_secure: bool = False
     service_session_max_active: int = Field(default=128, ge=1, le=10_000)
     service_session_max_active_per_user: int = Field(default=8, ge=1, le=10_000)
@@ -195,6 +198,8 @@ class RuntimeConfig(BaseSettings):
         "telegram_chat_id",
         "ops_basic_auth_username",
         "ops_basic_auth_password",
+        "hmi_session_signing_key",
+        "hmi_session_previous_signing_key",
         "watch_officer_name",
         "duty_engineer_name",
         mode="before",
@@ -268,6 +273,27 @@ class RuntimeConfig(BaseSettings):
         if self.service_session_max_active_per_user > self.service_session_max_active:
             raise ValueError(
                 "SERVICE_SESSION_MAX_ACTIVE_PER_USER darf SERVICE_SESSION_MAX_ACTIVE nicht uebersteigen"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_hmi_session_signing_keys(self) -> "RuntimeConfig":
+        current = self.hmi_session_signing_key
+        previous = self.hmi_session_previous_signing_key
+        if previous is not None and current is None:
+            raise ValueError(
+                "HMI_SESSION_SIGNING_KEY ist erforderlich, wenn "
+                "HMI_SESSION_PREVIOUS_SIGNING_KEY gesetzt ist"
+            )
+        for setting, key in (
+            ("HMI_SESSION_SIGNING_KEY", current),
+            ("HMI_SESSION_PREVIOUS_SIGNING_KEY", previous),
+        ):
+            if key is not None and len(key.get_secret_value().encode("utf-8")) < 32:
+                raise ValueError(f"{setting} muss mindestens 32 Byte lang sein")
+        if current is not None and previous is not None and current == previous:
+            raise ValueError(
+                "HMI_SESSION_PREVIOUS_SIGNING_KEY muss sich von HMI_SESSION_SIGNING_KEY unterscheiden"
             )
         return self
 

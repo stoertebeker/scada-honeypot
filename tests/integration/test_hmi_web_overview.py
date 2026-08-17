@@ -12,6 +12,7 @@ from honeypot.event_core import AlertRecord, EventRecorder
 from honeypot.hmi_web import create_hmi_app
 from honeypot.hmi_web.app import (
     HMI_ALARM_HISTORY_LIMIT,
+    HMI_SESSION_COOKIE_MAX_BYTES,
     MAX_FORM_BODY_BYTES,
     SERVICE_CSRF_FIELD_NAME,
     SERVICE_LOGIN_FAILURE_LIMIT,
@@ -35,11 +36,12 @@ def build_snapshot() -> PlantSnapshot:
     return PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
 
 
-def build_config(tmp_path: Path) -> RuntimeConfig:
+def build_config(tmp_path: Path, **overrides: object) -> RuntimeConfig:
     return RuntimeConfig(
         _env_file=None,
         event_store_path=tmp_path / "events" / "placeholder.db",
         jsonl_archive_enabled=False,
+        **overrides,
     )
 
 
@@ -231,7 +233,7 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert "Closed" in overview_response.text
     assert "invb-01" in overview_response.text
     assert "840 W/m2" in overview_response.text
-    assert root_response.cookies["hmi_session"].startswith("hmi_")
+    assert root_response.cookies["hmi_session"].startswith("v1.")
     assert client_session_id == root_response.cookies["hmi_session"]
     assert len(events) == 2
     overview_event = next(event for event in events if event.endpoint_or_register == "/overview")
@@ -241,6 +243,150 @@ async def test_overview_page_renders_root_and_logs_hmi_events(tmp_path: Path) ->
     assert overview_event.requested_value == {"http_method": "GET", "http_path": "/overview"}
     assert overview_event.resulting_value == {"http_status": 200}
     assert overview_event.session_id is not None
+    assert overview_event.session_id.startswith("hmi_")
+    assert overview_event.session_id != client_session_id
+    assert {event.session_id for event in events} == {overview_event.session_id}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "forged_cookie",
+    (
+        "attacker-chosen-session",
+        "x" * (HMI_SESSION_COOKIE_MAX_BYTES + 1),
+    ),
+)
+async def test_hmi_rejects_forged_or_oversized_session_cookie(
+    tmp_path: Path,
+    forged_cookie: str,
+) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-forged-session.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        cookies={SESSION_COOKIE_NAME: forged_cookie},
+    ) as client:
+        response = await client.get("/overview")
+        follow_up_response = await client.get("/overview")
+
+    events = store.fetch_events()
+    source_activity = store.fetch_source_activity(limit=1)[0]
+
+    assert response.status_code == 200
+    assert follow_up_response.status_code == 200
+    assert response.cookies[SESSION_COOKIE_NAME].startswith("v1.")
+    assert response.cookies[SESSION_COOKIE_NAME] != forged_cookie
+    assert events[0].session_id is not None
+    assert events[0].session_id.startswith("hmi_")
+    assert events[0].session_id != forged_cookie
+    assert {event.session_id for event in events} == {events[0].session_id}
+    assert source_activity.session_count == 1
+
+
+@pytest.mark.asyncio
+async def test_hmi_rejects_tampered_session_cookie(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-tampered-session.db")
+    recorder = EventRecorder(store=store, clock=FrozenClock(snapshot.start_time))
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=build_config(tmp_path),
+        event_recorder=recorder,
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first_response = await client.get("/overview")
+        valid_cookie = first_response.cookies[SESSION_COOKIE_NAME]
+        tampered_cookie = f"{valid_cookie[:-1]}{'A' if valid_cookie[-1] != 'A' else 'B'}"
+        client.cookies.set(SESSION_COOKIE_NAME, tampered_cookie)
+        second_response = await client.get("/overview")
+
+    events = store.fetch_events()
+
+    assert second_response.status_code == 200
+    assert second_response.cookies[SESSION_COOKIE_NAME] != tampered_cookie
+    assert events[0].session_id != events[1].session_id
+
+
+@pytest.mark.asyncio
+async def test_hmi_replaces_expired_session_cookie(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    clock = FrozenClock(snapshot.start_time)
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-expired-session.db")
+    recorder = EventRecorder(store=store, clock=clock)
+    config = build_config(tmp_path, hmi_session_max_age_seconds=60)
+    app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=config,
+        event_recorder=recorder,
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first_response = await client.get("/overview")
+        first_cookie = first_response.cookies[SESSION_COOKIE_NAME]
+        clock.advance(timedelta(seconds=61))
+        second_response = await client.get("/overview")
+
+    events = store.fetch_events()
+
+    assert second_response.status_code == 200
+    assert second_response.cookies[SESSION_COOKIE_NAME] != first_cookie
+    assert events[0].session_id != events[1].session_id
+
+
+@pytest.mark.asyncio
+async def test_hmi_rotates_valid_previous_signing_key_without_losing_attribution(tmp_path: Path) -> None:
+    snapshot = build_snapshot()
+    clock = FrozenClock(snapshot.start_time)
+    store = SQLiteEventStore(tmp_path / "events" / "hmi-rotated-session.db")
+    recorder = EventRecorder(store=store, clock=clock)
+    old_key = "old-hmi-session-key-" + ("a" * 32)
+    new_key = "new-hmi-session-key-" + ("b" * 32)
+    old_config = build_config(tmp_path, hmi_session_signing_key=old_key)
+    old_app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=old_config,
+        event_recorder=recorder,
+    )
+    old_transport = httpx.ASGITransport(app=old_app)
+    async with httpx.AsyncClient(transport=old_transport, base_url="http://testserver") as client:
+        old_response = await client.get("/overview")
+        old_cookie = old_response.cookies[SESSION_COOKIE_NAME]
+
+    rotated_config = build_config(
+        tmp_path,
+        hmi_session_signing_key=new_key,
+        hmi_session_previous_signing_key=old_key,
+    )
+    rotated_app = create_hmi_app(
+        snapshot_provider=lambda: snapshot,
+        config=rotated_config,
+        event_recorder=recorder,
+    )
+    rotated_transport = httpx.ASGITransport(app=rotated_app)
+    async with httpx.AsyncClient(
+        transport=rotated_transport,
+        base_url="http://testserver",
+        cookies={SESSION_COOKIE_NAME: old_cookie},
+    ) as client:
+        rotated_response = await client.get("/overview")
+
+    events = store.fetch_events()
+
+    assert rotated_response.status_code == 200
+    assert rotated_response.cookies[SESSION_COOKIE_NAME] != old_cookie
+    assert events[0].session_id == events[1].session_id
 
 
 @pytest.mark.asyncio

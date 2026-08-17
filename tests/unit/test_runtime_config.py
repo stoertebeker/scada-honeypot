@@ -53,6 +53,9 @@ def test_runtime_config_loads_documented_defaults(monkeypatch, tmp_path: Path) -
     assert config.approved_ingress_bindings == ()
     assert config.honeypot_local_debug is False
     assert config.hmi_cookie_secure is False
+    assert config.hmi_session_signing_key is None
+    assert config.hmi_session_previous_signing_key is None
+    assert config.hmi_session_max_age_seconds == 86_400
     assert config.service_cookie_secure is False
     assert config.service_session_max_active == 128
     assert config.service_session_max_active_per_user == 8
@@ -390,6 +393,54 @@ def test_runtime_config_reads_cookie_secure_flags(monkeypatch, tmp_path: Path) -
 
     assert config.hmi_cookie_secure is True
     assert config.service_cookie_secure is True
+
+
+def test_runtime_config_reads_hmi_session_signing_key_rotation(monkeypatch, tmp_path: Path) -> None:
+    write_locale_bundle(tmp_path, "en")
+    env_file = tmp_path / ".env"
+    current_key = "current-hmi-session-key-" + ("a" * 32)
+    previous_key = "previous-hmi-session-key-" + ("b" * 32)
+    env_file.write_text(
+        (
+            f"HMI_SESSION_SIGNING_KEY={current_key}\n"
+            f"HMI_SESSION_PREVIOUS_SIGNING_KEY={previous_key}\n"
+            "HMI_SESSION_MAX_AGE_SECONDS=3600\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    config = load_runtime_config(env_file=env_file)
+
+    assert config.hmi_session_signing_key is not None
+    assert config.hmi_session_signing_key.get_secret_value() == current_key
+    assert config.hmi_session_previous_signing_key is not None
+    assert config.hmi_session_previous_signing_key.get_secret_value() == previous_key
+    assert config.hmi_session_max_age_seconds == 3600
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"hmi_session_signing_key": "too-short"},
+        {"hmi_session_previous_signing_key": "p" * 32},
+        {
+            "hmi_session_signing_key": "same-key-" + ("x" * 32),
+            "hmi_session_previous_signing_key": "same-key-" + ("x" * 32),
+        },
+        {"hmi_session_max_age_seconds": 59},
+    ),
+)
+def test_runtime_config_rejects_invalid_hmi_session_signing_settings(
+    monkeypatch,
+    tmp_path: Path,
+    overrides: dict[str, object],
+) -> None:
+    write_locale_bundle(tmp_path, "en")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError):
+        RuntimeConfig(_env_file=None, **overrides)
 
 
 def test_runtime_config_normalizes_trusted_proxy_cidrs(monkeypatch, tmp_path: Path) -> None:

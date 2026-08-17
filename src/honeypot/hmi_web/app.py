@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from base64 import urlsafe_b64encode
+import hashlib
+import hmac
 import json
 from math import ceil
 import secrets
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -33,6 +37,11 @@ HMI_COMPONENT = "hmi-web"
 HMI_SERVICE = "web-hmi"
 HMI_PROTOCOL = "http"
 SESSION_COOKIE_NAME = "hmi_session"
+HMI_SESSION_COOKIE_VERSION = "v1"
+HMI_SESSION_COOKIE_MAX_BYTES = 512
+HMI_SESSION_CLOCK_SKEW = timedelta(seconds=60)
+HMI_SESSION_ID_PATTERN = re.compile(r"^hmi_[0-9a-f]{32}$")
+HMI_SESSION_SIGNATURE_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 SERVICE_SESSION_COOKIE_NAME = "service_session"
 SERVICE_SESSION_IDLE_TIMEOUT = timedelta(minutes=20)
 MAX_FORM_BODY_BYTES = 8 * 1024
@@ -66,6 +75,68 @@ class NavItem:
     href: str
     label_key: str
     is_current: bool
+
+
+@dataclass(frozen=True, slots=True)
+class HmiSessionCookieCodec:
+    """Issues and verifies bounded anonymous HMI attribution cookies."""
+
+    clock: Clock
+    current_key: bytes
+    previous_key: bytes | None
+    max_age: timedelta
+
+    def resolve(self, cookie_value: str | None) -> tuple[str, str | None]:
+        if cookie_value is None or len(cookie_value.encode("utf-8")) > HMI_SESSION_COOKIE_MAX_BYTES:
+            return self._new_session()
+
+        parts = cookie_value.split(".")
+        if len(parts) != 4:
+            return self._new_session()
+        version, issued_text, session_id, signature = parts
+        if version != HMI_SESSION_COOKIE_VERSION or HMI_SESSION_ID_PATTERN.fullmatch(session_id) is None:
+            return self._new_session()
+        if HMI_SESSION_SIGNATURE_PATTERN.fullmatch(signature) is None:
+            return self._new_session()
+        if not issued_text.isascii() or not issued_text.isdigit() or len(issued_text) > 12:
+            return self._new_session()
+
+        issued_at = int(issued_text)
+        if str(issued_at) != issued_text:
+            return self._new_session()
+        now = int(ensure_utc_datetime(self.clock.now()).timestamp())
+        if issued_at > now + int(HMI_SESSION_CLOCK_SKEW.total_seconds()):
+            return self._new_session()
+        if now - issued_at > int(self.max_age.total_seconds()):
+            return self._new_session()
+
+        payload = ".".join((version, issued_text, session_id))
+        if self._signature_matches(payload, signature, self.current_key):
+            return session_id, None
+        if self.previous_key is not None and self._signature_matches(payload, signature, self.previous_key):
+            return session_id, self.issue(session_id)
+        return self._new_session()
+
+    def issue(self, session_id: str) -> str:
+        if HMI_SESSION_ID_PATTERN.fullmatch(session_id) is None:
+            raise ValueError("session_id muss eine serverseitig ausgestellte HMI-ID sein")
+        issued_at = int(ensure_utc_datetime(self.clock.now()).timestamp())
+        payload = f"{HMI_SESSION_COOKIE_VERSION}.{issued_at}.{session_id}"
+        signature = self._signature(payload, self.current_key)
+        return f"{payload}.{signature}"
+
+    def _new_session(self) -> tuple[str, str]:
+        session_id = f"hmi_{uuid4().hex}"
+        return session_id, self.issue(session_id)
+
+    @staticmethod
+    def _signature(payload: str, key: bytes) -> str:
+        digest = hmac.new(key, payload.encode("ascii"), hashlib.sha256).digest()
+        return urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+    @classmethod
+    def _signature_matches(cls, payload: str, supplied: str, key: bytes) -> bool:
+        return secrets.compare_digest(supplied, cls._signature(payload, key))
 
 
 @dataclass(frozen=True, slots=True)
@@ -779,6 +850,22 @@ def create_hmi_app(
     texts = _load_locale_texts(config)
     templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
     hmi_clock = _hmi_clock(event_recorder)
+    current_hmi_session_key = (
+        secrets.token_bytes(32)
+        if config.hmi_session_signing_key is None
+        else config.hmi_session_signing_key.get_secret_value().encode("utf-8")
+    )
+    previous_hmi_session_key = (
+        None
+        if config.hmi_session_previous_signing_key is None
+        else config.hmi_session_previous_signing_key.get_secret_value().encode("utf-8")
+    )
+    hmi_session_cookie_codec = HmiSessionCookieCodec(
+        clock=hmi_clock,
+        current_key=current_hmi_session_key,
+        previous_key=previous_hmi_session_key,
+        max_age=timedelta(seconds=config.hmi_session_max_age_seconds),
+    )
     service_sessions = ServiceSessionStore(
         clock=hmi_clock,
         max_active=config.service_session_max_active,
@@ -794,6 +881,7 @@ def create_hmi_app(
         openapi_url=None,
     )
     app.state.service_session_metrics_provider = service_sessions.metrics
+    app.state.hmi_session_cookie_codec = hmi_session_cookie_codec
 
     @app.exception_handler(StarletteHTTPException)
     async def hmi_http_exception(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
@@ -899,7 +987,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -951,7 +1039,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
         if service_session is not None:
             _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
 
@@ -983,7 +1071,7 @@ def create_hmi_app(
         control = request.query_params.get("control", "").strip()
         response = RedirectResponse(url="/service/login", status_code=303)
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         try:
             block = _require_inverter_block(snapshot, asset_id)
@@ -1059,7 +1147,7 @@ def create_hmi_app(
         session_id, set_cookie = _session_state(request)
         response = RedirectResponse(url="/service/login", status_code=303)
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_unauthenticated_control_attempt(
             request=request,
@@ -1096,7 +1184,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -1134,7 +1222,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -1172,7 +1260,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -1224,7 +1312,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -1269,7 +1357,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
 
         _record_page_view(
             request=request,
@@ -1320,7 +1408,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
         if service_session is not None:
             _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
 
@@ -1449,7 +1537,7 @@ def create_hmi_app(
             event_recorder.record(auth_event)
         response = RedirectResponse(url="/service/panel", status_code=303)
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
         _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
         return response
 
@@ -1498,7 +1586,7 @@ def create_hmi_app(
             )
         response = RedirectResponse(url="/service/login", status_code=303)
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
         _delete_service_session_cookie(response, secure=config.service_cookie_secure)
         return response
 
@@ -1543,7 +1631,7 @@ def create_hmi_app(
             ),
         )
         if set_cookie:
-            _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+            _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
         _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
         _record_page_view(
             request=request,
@@ -3482,7 +3570,7 @@ def _service_login_failure_response(
     config: RuntimeConfig,
     texts: dict[str, str],
     session_id: str,
-    set_cookie: bool,
+    set_cookie: str | None,
     status_code: int = 200,
 ) -> HTMLResponse:
     view_model = build_service_login_view_model(
@@ -3504,21 +3592,19 @@ def _service_login_failure_response(
         status_code=status_code,
     )
     if set_cookie:
-        _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+        _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
     return response
 
 
-def _session_state(request: Request) -> tuple[str, bool]:
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    if session_id is not None:
-        return session_id, False
-    return f"hmi_{uuid4().hex}", True
+def _session_state(request: Request) -> tuple[str, str | None]:
+    codec: HmiSessionCookieCodec = request.app.state.hmi_session_cookie_codec
+    return codec.resolve(request.cookies.get(SESSION_COOKIE_NAME))
 
 
-def _set_session_cookie(response: HTMLResponse, session_id: str, *, secure: bool) -> None:
+def _set_session_cookie(response: HTMLResponse, cookie_value: str, *, secure: bool) -> None:
     response.set_cookie(
         SESSION_COOKIE_NAME,
-        session_id,
+        cookie_value,
         httponly=True,
         samesite="lax",
         secure=secure,
@@ -3588,7 +3674,7 @@ def _require_inverter_block(snapshot: PlantSnapshot, asset_id: str):
 def _service_panel_redirect_response(
     *,
     session_id: str,
-    set_cookie: bool,
+    set_cookie: str | None,
     service_session: ServiceSession,
     config: RuntimeConfig,
     status_code: str,
@@ -3599,7 +3685,7 @@ def _service_panel_redirect_response(
         status_code=303,
     )
     if set_cookie:
-        _set_session_cookie(response, session_id, secure=config.hmi_cookie_secure)
+        _set_session_cookie(response, set_cookie, secure=config.hmi_cookie_secure)
     _set_service_session_cookie(response, service_session, secure=config.service_cookie_secure)
     return response
 
