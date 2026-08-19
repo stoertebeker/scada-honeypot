@@ -272,7 +272,7 @@ def test_geoip_default_downloader_rejects_cross_target_redirects() -> None:
     assert redirected is None
 
 
-def test_geoip_cli_rejects_missing_egress_approval_even_in_optional_mode(
+def test_geoip_cli_skips_missing_egress_approval_in_optional_mode(
     monkeypatch,
     capsys,
 ) -> None:
@@ -287,6 +287,29 @@ def test_geoip_cli_rejects_missing_egress_approval_even_in_optional_mode(
     monkeypatch.setattr("honeypot.geoip_update.update_dbip_lite", fake_update)
 
     result = geoip_main(("--optional",))
+
+    assert result == 0
+    assert update_called is False
+    captured = capsys.readouterr()
+    assert "warning:" in captured.err
+    assert "APPROVED_EGRESS_TARGETS" in captured.err
+
+
+def test_geoip_cli_rejects_missing_egress_approval_without_optional_mode(
+    monkeypatch,
+    capsys,
+) -> None:
+    update_called = False
+
+    def fake_update(**kwargs):
+        nonlocal update_called
+        del kwargs
+        update_called = True
+        return ()
+
+    monkeypatch.setattr("honeypot.geoip_update.update_dbip_lite", fake_update)
+
+    result = geoip_main(())
 
     assert result == 1
     assert update_called is False

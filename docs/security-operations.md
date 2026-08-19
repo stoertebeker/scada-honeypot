@@ -72,7 +72,8 @@ archives. Do not derive the runtime pins from the same download transaction.
 The entrypoint also requires `geoip-dbip:download.db-ip.com:443` in
 `APPROVED_EGRESS_TARGETS`; every resolved address must fit
 `APPROVED_EGRESS_CIDRS` and remain outside `PROHIBITED_OT_CIDRS`. Missing policy
-approval fails container startup even though download availability is optional.
+approval is logged as a warning by the optional entrypoint update and startup
+continues without a download; a direct non-optional updater invocation fails.
 The updater ignores environment proxies and rejects redirects so the approved
 DB-IP hostname cannot silently delegate the request to another target.
 

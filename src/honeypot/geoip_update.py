@@ -561,6 +561,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             optional=args.optional,
         )
     except GeoIpUpdateError as exc:
+        if args.optional:
+            print(f"warning: {exc}", file=sys.stderr)
+            return 0
         print(f"error: {exc}", file=sys.stderr)
         return 1
     for result in results:
