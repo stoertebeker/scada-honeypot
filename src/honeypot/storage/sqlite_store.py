@@ -30,6 +30,7 @@ _SOURCE_ACTIVITY_SORT_COLUMNS = {
 }
 _SOURCE_ACTIVITY_SORT_DIRECTIONS = {"asc", "desc"}
 _SOURCE_ACTIVITY_DERIVED_SORTS = {"top_type", "top_endpoint"}
+_EVENT_RETENTION_DELETE_BATCH_SIZE = 1_000
 
 
 def _filesystem_free_bytes(path: Path) -> int:
@@ -1922,21 +1923,51 @@ def _prune_events(
         (max_rows_per_source,),
     )
     event_count = int(connection.execute("SELECT COUNT(*) FROM retention_event_ids").fetchone()[0])
-    dependent_outbox = connection.execute(
-        """
-        DELETE FROM outbox
-        WHERE payload_ref IN (
-            SELECT alert_id FROM alert_log
-            WHERE event_id IN (SELECT event_id FROM retention_event_ids)
-        )
-        """
-    ).rowcount
-    dependent_alerts = connection.execute(
-        "DELETE FROM alert_log WHERE event_id IN (SELECT event_id FROM retention_event_ids)"
-    ).rowcount
     connection.execute(
-        "DELETE FROM event_log WHERE event_id IN (SELECT event_id FROM retention_event_ids)"
+        "CREATE TEMP TABLE IF NOT EXISTS retention_event_delete_batch (event_id TEXT PRIMARY KEY)"
     )
+    dependent_outbox = 0
+    dependent_alerts = 0
+    while True:
+        connection.execute("DELETE FROM retention_event_delete_batch")
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO retention_event_delete_batch
+            SELECT event_id FROM retention_event_ids
+            ORDER BY event_id
+            LIMIT ?
+            """,
+            (_EVENT_RETENTION_DELETE_BATCH_SIZE,),
+        )
+        batch_count = int(
+            connection.execute("SELECT COUNT(*) FROM retention_event_delete_batch").fetchone()[0]
+        )
+        if batch_count == 0:
+            break
+        dependent_outbox += connection.execute(
+            """
+            DELETE FROM outbox
+            WHERE payload_ref IN (
+                SELECT alert_id FROM alert_log
+                WHERE event_id IN (SELECT event_id FROM retention_event_delete_batch)
+            )
+            """
+        ).rowcount
+        dependent_alerts += connection.execute(
+            """
+            DELETE FROM alert_log
+            WHERE event_id IN (SELECT event_id FROM retention_event_delete_batch)
+            """
+        ).rowcount
+        connection.execute(
+            "DELETE FROM event_log WHERE event_id IN (SELECT event_id FROM retention_event_delete_batch)"
+        )
+        connection.execute(
+            """
+            DELETE FROM retention_event_ids
+            WHERE event_id IN (SELECT event_id FROM retention_event_delete_batch)
+            """
+        )
     return event_count, dependent_alerts, dependent_outbox
 
 

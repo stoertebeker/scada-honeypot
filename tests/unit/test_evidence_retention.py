@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 import gzip
+import importlib
 import sqlite3
 
 from honeypot.event_core import EventRecorder
@@ -88,6 +89,60 @@ def test_sqlite_retention_prunes_expired_evidence_on_restart(tmp_path) -> None:
 
     assert reopened.fetch_events() == ()
     assert reopened.evidence_retention_status()["counters"]["events_pruned"] == 1
+
+
+def test_sqlite_event_retention_deletes_events_and_dependents_in_batches(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    sqlite_store = importlib.import_module("honeypot.storage.sqlite_store")
+    monkeypatch.setattr(sqlite_store, "_EVENT_RETENTION_DELETE_BATCH_SIZE", 2)
+    now = datetime(2026, 8, 14, 10, 0, tzinfo=UTC)
+    db_path = tmp_path / "events.db"
+    store = SQLiteEventStore(
+        db_path,
+        retention_policy=_policy(
+            max_event_rows=2,
+            max_event_rows_per_source=2,
+            max_alert_rows=10,
+            max_outbox_rows=10,
+            sweep_interval_writes=100,
+        ),
+        now_provider=lambda: now,
+    )
+    recorder = EventRecorder(store=store, clock=FrozenClock(now))
+    events = tuple(
+        _event(recorder, index=index, source_ip="203.0.113.10") for index in range(7)
+    )
+    for event in events:
+        assert recorder.record(event).persisted is True
+    for event in (events[0], events[3]):
+        alert = recorder.build_alert(
+            event=event,
+            alarm_code=f"RETENTION_BATCH_{event.event_id}",
+            severity="high",
+            state="active_unacknowledged",
+        )
+        assert store.append_alert_with_targets(
+            alert,
+            target_types=("webhook",),
+            next_attempt_at=now,
+        ) is not None
+
+    store.enforce_retention(reference_time=now)
+
+    assert {event.event_id for event in store.fetch_events()} == {
+        events[5].event_id,
+        events[6].event_id,
+    }
+    assert store.count_rows("alert_log") == 0
+    assert store.count_rows("outbox") == 0
+    counters = store.evidence_retention_status()["counters"]
+    assert counters["events_pruned"] == 5
+    assert counters["alerts_pruned"] == 2
+    assert counters["outbox_pruned"] == 2
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_pruned_parent_event_cannot_create_orphan_alert_or_outbox(tmp_path) -> None:
