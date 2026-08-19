@@ -77,7 +77,7 @@ values usually need changes:
 - `OPS_BASIC_AUTH_ENABLED`: optional Basic Auth for the Ops backend
 - `APPROVED_EGRESS_TARGETS`, `APPROVED_EGRESS_CIDRS`, and
   `APPROVED_EGRESS_RECIPIENTS`: independent target, network, and recipient
-  approvals; target/network approval also gates Open-Meteo and automatic GeoIP
+  approvals required for exporters and automatic GeoIP updates
 
 Ops Basic Auth is enforced by the FastAPI Ops backend. It protects only the Ops
 backend, not the attacker-facing HMI.
@@ -99,8 +99,8 @@ in Ops `/settings`. Deployment-critical values such as ports, bind policy,
 egress approvals, evidence paths, proxy trust, and exporter endpoints remain in
 `.env`.
 
-Exporter and Open-Meteo targets are deny-by-default. Before startup, all A and
-AAAA answers must be globally routable and covered by the narrow
+Exporter targets are deny-by-default. Before startup, all A and AAAA answers
+must be globally routable and covered by the narrow
 `APPROVED_EGRESS_CIDRS` socket allowlist; HTTP connections are pinned to those
 addresses to prevent DNS rebinding. `PROHIBITED_OT_CIDRS` overrides every
 approval for known routed OT ranges. SMTP uses certificate-verified implicit
@@ -108,11 +108,10 @@ TLS on port `465`. Keep an independent host or perimeter firewall allowlist in
 addition to the application policy, and never route the honeypot toward OT
 networks.
 
-When an Open-Meteo provider is selected, approve both
-`weather-open-meteo:api.open-meteo.com:443` and
-`weather-open-meteo-archive:archive-api.open-meteo.com:443`, plus every resolved
-public A/AAAA network. Startup fails closed before historical weather seeding if
-one approval is missing.
+Open-Meteo providers use fixed HTTPS endpoints and ignore environment proxy
+settings, but they are not pinned through the application's approved-egress
+allowlist. Enforce a separate host or perimeter firewall rule when strict
+weather egress control is required.
 
 GeoIP downloads are maintenance traffic, not attacker-facing traffic. To enable
 them, obtain the Country and ASN archive SHA-256 values through a controlled,

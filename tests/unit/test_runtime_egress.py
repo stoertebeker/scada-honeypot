@@ -8,12 +8,7 @@ from honeypot.config_core import RuntimeConfig
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter, WebhookExporter
 from honeypot.exporter_runner.pinned_http import PinnedHttpTransport, PinnedNetworkBackend
 from honeypot.exporter_runner.smtp_exporter import _PinnedSmtpSslClient
-from honeypot.runtime_egress import (
-    enforce_auxiliary_egress_policy,
-    enforce_runtime_egress_policy,
-    planned_auxiliary_egress_targets,
-    planned_egress_targets,
-)
+from honeypot.runtime_egress import enforce_runtime_egress_policy, planned_egress_targets
 
 
 PUBLIC_V4 = "93.184.216.34"
@@ -45,118 +40,6 @@ def test_planned_egress_targets_normalize_tls_exporter_destinations() -> None:
         "telegram:api.telegram.org:443",
     )
 
-
-def test_planned_auxiliary_egress_targets_cover_open_meteo_live_and_history(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    write_locale_bundle(tmp_path, "en")
-    monkeypatch.chdir(tmp_path)
-    config = RuntimeConfig(
-        _env_file=None,
-        weather_provider="open_meteo_forecast",
-        weather_latitude=52.52,
-        weather_longitude=13.405,
-    )
-
-    targets = planned_auxiliary_egress_targets(config)
-
-    assert tuple(target.spec for target in targets) == (
-        "weather-open-meteo:api.open-meteo.com:443",
-        "weather-open-meteo-archive:archive-api.open-meteo.com:443",
-    )
-
-
-def test_auxiliary_egress_policy_rejects_unapproved_open_meteo_before_network(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    write_locale_bundle(tmp_path, "en")
-    monkeypatch.chdir(tmp_path)
-    config = RuntimeConfig(
-        _env_file=None,
-        weather_provider="open_meteo_satellite",
-        weather_latitude=52.52,
-        weather_longitude=13.405,
-    )
-    resolved = False
-
-    def resolver(host: str, port: int) -> tuple[str, ...]:
-        nonlocal resolved
-        del host, port
-        resolved = True
-        return (PUBLIC_V4,)
-
-    with pytest.raises(RuntimeError, match="APPROVED_EGRESS_TARGETS"):
-        enforce_auxiliary_egress_policy(config=config, resolver=resolver)
-
-    assert resolved is False
-
-
-def test_auxiliary_egress_policy_resolves_approved_open_meteo_targets(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    write_locale_bundle(tmp_path, "en")
-    monkeypatch.chdir(tmp_path)
-    config = RuntimeConfig(
-        _env_file=None,
-        weather_provider="open_meteo_forecast",
-        weather_latitude=52.52,
-        weather_longitude=13.405,
-        approved_egress_targets=(
-            "weather-open-meteo:api.open-meteo.com:443",
-            "weather-open-meteo-archive:archive-api.open-meteo.com:443",
-        ),
-        approved_egress_cidrs="93.184.216.0/24",
-    )
-
-    targets = enforce_auxiliary_egress_policy(
-        config=config,
-        resolver=lambda host, port: (PUBLIC_V4,),
-    )
-
-    assert tuple((target.spec, target.addresses) for target in targets) == (
-        ("weather-open-meteo:api.open-meteo.com:443", (PUBLIC_V4,)),
-        ("weather-open-meteo-archive:archive-api.open-meteo.com:443", (PUBLIC_V4,)),
-    )
-
-
-def test_auxiliary_egress_policy_requires_independent_cidr_approval(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    write_locale_bundle(tmp_path, "en")
-    monkeypatch.chdir(tmp_path)
-    config = RuntimeConfig(
-        _env_file=None,
-        weather_provider="open_meteo_forecast",
-        weather_latitude=52.52,
-        weather_longitude=13.405,
-        approved_egress_targets=(
-            "weather-open-meteo:api.open-meteo.com:443",
-            "weather-open-meteo-archive:archive-api.open-meteo.com:443",
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="APPROVED_EGRESS_CIDRS"):
-        enforce_auxiliary_egress_policy(
-            config=config,
-            resolver=lambda host, port: (PUBLIC_V4,),
-        )
-
-
-def test_auxiliary_egress_policy_skips_disabled_and_deterministic_weather(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    write_locale_bundle(tmp_path, "en")
-    monkeypatch.chdir(tmp_path)
-
-    for provider in ("disabled", "deterministic"):
-        config = RuntimeConfig(_env_file=None, weather_provider=provider)
-        assert planned_auxiliary_egress_targets(config) == ()
-        assert enforce_auxiliary_egress_policy(config=config) == ()
 
 @pytest.mark.parametrize(
     "url",

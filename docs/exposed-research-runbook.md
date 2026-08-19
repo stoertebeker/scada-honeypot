@@ -20,13 +20,12 @@ Edit `.env` only for deployment-specific values:
 - finite honeypot container resource limits, when the deployment needs values
   other than the safe defaults
 - the patch-pinned `MODBUS_GATEWAY_IMAGE`, when updating HAProxy deliberately
-- weather provider and coordinates; Open-Meteo also requires both documented
-  live/history target specs and their resolved public CIDRs
+- weather provider and coordinates
 - optional GeoIP updater release and out-of-band Country/ASN SHA-256 pins;
   automatic updates remain disabled unless all three pins and the DB-IP
   target/CIDR approvals are set deliberately
 - optional Ops Basic Auth
-- exporter and auxiliary targets, narrow public A/AAAA CIDRs, and exporter
+- exporter and GeoIP auxiliary targets, narrow public A/AAAA CIDRs, and exporter
   recipients; mirror the CIDRs in an independent host or perimeter firewall
   allowlist
 

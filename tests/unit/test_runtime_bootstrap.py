@@ -7,7 +7,6 @@ import pytest
 
 from honeypot.asset_domain import PlantSnapshot, load_plant_fixture
 from honeypot.exporter_runner import WebhookExporter
-from honeypot.exporter_runner.pinned_http import PinnedHttpTransport
 from honeypot.main import MODULES, bootstrap_runtime, build_local_runtime, cli, main, verify_exposed_research_runtime
 from honeypot.time_core import FrozenClock
 
@@ -229,7 +228,7 @@ def test_build_local_runtime_wires_deterministic_weather_provider(tmp_path: Path
     assert runtime.evolution_service.weather_elevation_m == 34
 
 
-def test_build_local_runtime_rejects_unapproved_open_meteo_before_history_seed(
+def test_build_local_runtime_allows_open_meteo_without_egress_approvals(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -241,40 +240,6 @@ def test_build_local_runtime_rejects_unapproved_open_meteo_before_history_seed(
             "WEATHER_PROVIDER=open_meteo_forecast\n"
             "WEATHER_LATITUDE=52.52\n"
             "WEATHER_LONGITUDE=13.405\n"
-        ),
-        encoding="utf-8",
-    )
-    seeded = False
-
-    def capture_seed(**kwargs) -> None:
-        nonlocal seeded
-        del kwargs
-        seeded = True
-
-    monkeypatch.setattr("honeypot.main.seed_plant_history_if_empty", capture_seed)
-
-    with pytest.raises(RuntimeError, match="APPROVED_EGRESS_TARGETS"):
-        build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
-
-    assert seeded is False
-
-
-def test_build_local_runtime_pins_approved_open_meteo_live_and_history(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    env_file = tmp_path / ".env"
-    event_store_path = tmp_path / "events" / "honeypot.db"
-    env_file.write_text(
-        (
-            f"EVENT_STORE_PATH={event_store_path}\n"
-            "WEATHER_PROVIDER=open_meteo_forecast\n"
-            "WEATHER_LATITUDE=52.52\n"
-            "WEATHER_LONGITUDE=13.405\n"
-            "APPROVED_EGRESS_TARGETS="
-            "weather-open-meteo:api.open-meteo.com:443,"
-            "weather-open-meteo-archive:archive-api.open-meteo.com:443\n"
-            "APPROVED_EGRESS_CIDRS=93.184.216.0/24\n"
         ),
         encoding="utf-8",
     )
@@ -284,27 +249,14 @@ def test_build_local_runtime_pins_approved_open_meteo_live_and_history(
         captured["history_provider"] = kwargs["weather_provider"]
 
     monkeypatch.setattr("honeypot.main.seed_plant_history_if_empty", capture_seed)
-    monkeypatch.setattr(
-        "honeypot.runtime_egress._resolve_host_addresses",
-        lambda host, port: ("93.184.216.34",),
-    )
 
     runtime = build_local_runtime(env_file=str(env_file), modbus_port=0, hmi_port=0)
     live_provider = runtime.evolution_service.weather_provider
     history_provider = captured["history_provider"]
 
     assert live_provider is not None
-    assert live_provider.transport_factory is not None
-    assert history_provider.transport_factory is not None
-    live_transport = live_provider.transport_factory()
-    history_transport = history_provider.transport_factory()
-    next_live_transport = live_provider.transport_factory()
-    assert isinstance(live_transport, PinnedHttpTransport)
-    assert isinstance(history_transport, PinnedHttpTransport)
-    assert next_live_transport is not live_transport
-    live_transport.close()
-    history_transport.close()
-    next_live_transport.close()
+    assert live_provider.provider_name == "open_meteo_forecast"
+    assert history_provider.provider_name == "open_meteo_archive"
 
 
 def test_build_local_runtime_uses_ops_modbus_timing_with_env_fallback(tmp_path: Path) -> None:

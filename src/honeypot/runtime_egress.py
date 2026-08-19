@@ -12,10 +12,6 @@ from honeypot.config_core import RuntimeConfig
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter, WebhookExporter
 from honeypot.exporter_runner.pinned_http import PinnedHttpTransport
 from honeypot.exporter_sdk import HoneypotExporter
-from honeypot.weather_core.open_meteo import OPEN_METEO_ARCHIVE_BASE_URL, OPEN_METEO_LIVE_BASE_URL
-
-WEATHER_LIVE_EGRESS_TYPE = "weather-open-meteo"
-WEATHER_ARCHIVE_EGRESS_TYPE = "weather-open-meteo-archive"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,35 +47,6 @@ def enforce_runtime_egress_policy(
         target = next(target for target in resolved_targets if target.target_type == target_type)
         _pin_exporter_destination(exporter=exporter, target=target)
     return tuple(target.spec for target in resolved_targets)
-
-
-def planned_auxiliary_egress_targets(config: RuntimeConfig) -> tuple[EgressTarget, ...]:
-    """Return fixed auxiliary HTTPS targets required by the selected runtime."""
-
-    if config.weather_provider not in {"open_meteo_forecast", "open_meteo_satellite"}:
-        return ()
-    live_host, live_port = _url_host_port(OPEN_METEO_LIVE_BASE_URL)
-    archive_host, archive_port = _url_host_port(OPEN_METEO_ARCHIVE_BASE_URL)
-    return (
-        EgressTarget(target_type=WEATHER_LIVE_EGRESS_TYPE, host=live_host, port=live_port),
-        EgressTarget(target_type=WEATHER_ARCHIVE_EGRESS_TYPE, host=archive_host, port=archive_port),
-    )
-
-
-def enforce_auxiliary_egress_policy(
-    *,
-    config: RuntimeConfig,
-    resolver: Callable[[str, int], Sequence[str]] | None = None,
-) -> tuple[EgressTarget, ...]:
-    """Approve and resolve fixed weather targets before any provider call."""
-
-    return resolve_approved_egress_targets(
-        targets=planned_auxiliary_egress_targets(config),
-        approved_target_specs=config.approved_egress_targets,
-        approved_cidrs=config.approved_egress_cidrs,
-        prohibited_cidrs=config.prohibited_ot_cidrs,
-        resolver=resolver,
-    )
 
 
 def resolve_approved_egress_targets(

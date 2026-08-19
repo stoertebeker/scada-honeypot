@@ -1,7 +1,6 @@
 """Lokaler Prozesseinstieg fuer den ersten gemeinsamen Runtime-Pfad."""
 
 import argparse
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -22,16 +21,9 @@ from honeypot.exporter_runner import (
     TelegramExporter,
     WebhookExporter,
 )
-from honeypot.exporter_runner.pinned_http import PinnedHttpTransport
 from honeypot.exporter_sdk import HoneypotExporter
 from honeypot.history_core import apply_history_sample_to_snapshot
-from honeypot.runtime_egress import (
-    EgressTarget,
-    WEATHER_ARCHIVE_EGRESS_TYPE,
-    WEATHER_LIVE_EGRESS_TYPE,
-    enforce_auxiliary_egress_policy,
-    enforce_runtime_egress_policy,
-)
+from honeypot.runtime_egress import enforce_runtime_egress_policy
 from honeypot.runtime_exposure import append_exposed_research_finding, enforce_exposed_research_policy
 from honeypot.runtime_ingress import enforce_runtime_ingress_policy
 from honeypot.hmi_web import LocalHmiHttpService, create_hmi_app
@@ -225,15 +217,11 @@ def build_local_runtime(
         hmi_port=effective_hmi_port,
         ops_port=effective_ops_port,
     )
-    auxiliary_egress_targets = enforce_auxiliary_egress_policy(config=config)
 
     manifest = bootstrap_runtime()
     snapshot = PlantSnapshot.from_fixture(load_plant_fixture("normal_operation"))
     runtime_clock = SystemClock() if clock is None else clock
-    weather_provider = _build_weather_provider(
-        config,
-        auxiliary_egress_targets=auxiliary_egress_targets,
-    )
+    weather_provider = _build_weather_provider(config)
     event_store = SQLiteEventStore(
         config.event_store_path,
         retention_policy=SQLiteRetentionPolicy(
@@ -291,10 +279,7 @@ def build_local_runtime(
         weather_latitude=config.weather_latitude,
         weather_longitude=config.weather_longitude,
         weather_elevation_m=config.weather_elevation_m,
-        weather_provider=_build_history_weather_provider(
-            config,
-            auxiliary_egress_targets=auxiliary_egress_targets,
-        ),
+        weather_provider=_build_history_weather_provider(config),
     )
     latest_history = event_store.fetch_plant_history(limit=1)
     if latest_history and weather_provider is not None:
@@ -466,11 +451,7 @@ def _build_exporters(config: RuntimeConfig) -> dict[str, HoneypotExporter]:
     return exporters
 
 
-def _build_weather_provider(
-    config: RuntimeConfig,
-    *,
-    auxiliary_egress_targets: Sequence[EgressTarget] = (),
-) -> WeatherObservationProvider | None:
+def _build_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider | None:
     if config.weather_provider == "disabled":
         return None
     if config.weather_provider == "deterministic":
@@ -479,46 +460,19 @@ def _build_weather_provider(
         return OpenMeteoForecastProvider(
             timeout_seconds=float(config.weather_request_timeout_seconds),
             cache_ttl_seconds=config.weather_cache_ttl_seconds,
-            transport_factory=_pinned_transport_factory(
-                auxiliary_egress_targets,
-                target_type=WEATHER_LIVE_EGRESS_TYPE,
-            ),
         )
     return OpenMeteoSatelliteRadiationProvider(
         timeout_seconds=float(config.weather_request_timeout_seconds),
         cache_ttl_seconds=config.weather_cache_ttl_seconds,
-        transport_factory=_pinned_transport_factory(
-            auxiliary_egress_targets,
-            target_type=WEATHER_LIVE_EGRESS_TYPE,
-        ),
     )
 
 
-def _build_history_weather_provider(
-    config: RuntimeConfig,
-    *,
-    auxiliary_egress_targets: Sequence[EgressTarget] = (),
-) -> WeatherObservationProvider:
+def _build_history_weather_provider(config: RuntimeConfig) -> WeatherObservationProvider:
     if config.weather_provider in {"open_meteo_forecast", "open_meteo_satellite"}:
         return OpenMeteoHistoricalArchiveProvider(
             timeout_seconds=float(config.weather_request_timeout_seconds),
-            transport_factory=_pinned_transport_factory(
-                auxiliary_egress_targets,
-                target_type=WEATHER_ARCHIVE_EGRESS_TYPE,
-            ),
         )
     return PlausibleHistoricalWeatherProvider()
-
-
-def _pinned_transport_factory(
-    targets: Sequence[EgressTarget],
-    *,
-    target_type: str,
-) -> Callable[[], PinnedHttpTransport]:
-    target = next((candidate for candidate in targets if candidate.target_type == target_type), None)
-    if target is None or not target.addresses:
-        raise RuntimeError(f"aufgeloestes Auxiliary-Egress-Ziel fehlt: {target_type}")
-    return lambda: PinnedHttpTransport(host=target.host, addresses=target.addresses)
 
 
 def _modbus_response_timing_provider(

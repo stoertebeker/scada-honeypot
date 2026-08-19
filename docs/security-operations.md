@@ -38,8 +38,8 @@ NATed clients share one per-source gateway quota by design.
 
 ## Egress
 
-Exporters and auxiliary weather/GeoIP traffic are deny-by-default. Active
-network paths require:
+Exporters and GeoIP maintenance traffic are deny-by-default. Active approved
+paths require:
 
 - `APPROVED_EGRESS_TARGETS`
 - `APPROVED_EGRESS_CIDRS`
@@ -48,13 +48,17 @@ network paths require:
 Documentation-only hostnames and documentation IP ranges are rejected for active
 exporters during production exposure checks.
 
-Webhook, Telegram, and Open-Meteo URLs use HTTPS without userinfo. The runtime
-resolves all A and AAAA answers, rejects every non-global/special address and
-any address outside `APPROVED_EGRESS_CIDRS`, then pins the vetted addresses at
-the actual HTTP socket boundary. TLS still verifies the original hostname
-through SNI, so a later DNS answer cannot redirect delivery to a sensitive
-network. Open-Meteo requires the live and historical target specs before any
-history seeding occurs.
+Webhook and Telegram URLs use HTTPS without userinfo. The runtime resolves all
+A and AAAA answers, rejects every non-global/special address and any address
+outside `APPROVED_EGRESS_CIDRS`, then pins the vetted addresses at the actual
+HTTP socket boundary. TLS still verifies the original hostname through SNI, so
+a later DNS answer cannot redirect delivery to a sensitive network.
+
+Open-Meteo uses fixed HTTPS endpoints with environment proxy discovery disabled,
+but its live and historical requests are not pinned through the application
+allowlist. Deployments requiring strict weather egress control must enforce it
+at the host, VPC, or perimeter firewall.
+
 Known routed OT ranges, including public allocations, must be entered in
 `PROHIBITED_OT_CIDRS`; this denylist overrides all approvals.
 

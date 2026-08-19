@@ -11,7 +11,6 @@ from urllib.parse import urlsplit
 from honeypot.config_core import RuntimeConfig
 from honeypot.exporter_runner import SmtpExporter, TelegramExporter, WebhookExporter
 from honeypot.exporter_sdk import HoneypotExporter
-from honeypot.runtime_egress import planned_auxiliary_egress_targets
 
 DOCUMENTATION_NETWORKS = (
     ip_network("192.0.2.0/24"),
@@ -96,18 +95,6 @@ def enforce_exposed_research_policy(
         raise RuntimeError("exposed-research erfordert einen benannten WATCH_OFFICER_NAME")
     if not config.duty_engineer_name:
         raise RuntimeError("exposed-research erfordert einen benannten DUTY_ENGINEER_NAME")
-
-    missing_auxiliary_targets = tuple(
-        target.spec
-        for target in planned_auxiliary_egress_targets(config)
-        if target.spec not in set(config.approved_egress_targets)
-    )
-    if missing_auxiliary_targets:
-        missing_list = ", ".join(missing_auxiliary_targets)
-        raise RuntimeError(
-            "exposed-research erfordert explizite Auxiliary-Egress-Freigaben: "
-            f"{missing_list}. APPROVED_EGRESS_TARGETS muss diese Ziele enthalten."
-        )
 
     mappings = planned_public_ingress_mappings(config)
     if len(mappings) != 2:
